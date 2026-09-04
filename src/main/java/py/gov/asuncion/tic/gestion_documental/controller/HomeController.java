@@ -1,0 +1,374 @@
+package py.gov.asuncion.tic.gestion_documental.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import py.gov.asuncion.tic.gestion_documental.domain.ActuacionDocumento;
+import py.gov.asuncion.tic.gestion_documental.domain.AdjuntoDocumento;
+import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
+import py.gov.asuncion.tic.gestion_documental.domain.Documento;
+import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
+import py.gov.asuncion.tic.gestion_documental.repository.AdjuntoDocumentoRepository;
+import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
+import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
+import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
+
+import java.io.File;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Controller
+public class HomeController {
+
+    @Autowired(required = false)
+    private DocumentoService documentoService;
+
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private AdjuntoDocumentoRepository adjuntoDocumentoRepository;
+
+    @Autowired
+    private AuditoriaService auditoriaService;
+
+    /**
+     * 🏠 PANTALLA PRINCIPAL (DASHBOARD)
+     */
+    @GetMapping("/")
+    public String index(Model model) {
+        model.addAttribute("nuevoDoc", new Documento());
+
+        if (documentoService != null) {
+            Usuario usuarioLogueado = getUsuarioAutenticado();
+            model.addAttribute("usuarioLogueado", usuarioLogueado);
+
+            model.addAttribute("documentos", documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado));
+            model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
+            
+            if (usuarioLogueado != null) {
+                model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuarioLogueado));
+            } else {
+                model.addAttribute("dependenciasHijas", new ArrayList<>());
+            }
+
+            model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
+            model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
+            model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
+            model.addAttribute("dependenciasInternas", documentoService.obtenerDependenciasInternasTic());
+        } else {
+            model.addAttribute("documentos", new ArrayList<>());
+            model.addAttribute("documentosFinalizados", new ArrayList<>());
+            Map<String, Long> metricasVacias = new HashMap<>();
+            metricasVacias.put("ingresados", 0L);
+            metricasVacias.put("enEsperaInforme", 0L);
+            metricasVacias.put("pendienteSalida", 0L);
+            metricasVacias.put("urgentes", 0L);
+            model.addAttribute("metricas", metricasVacias);
+            model.addAttribute("dependencias", new ArrayList<>());
+            model.addAttribute("dependenciasInternas", new ArrayList<>());
+            model.addAttribute("tiposDoc", new ArrayList<>());
+        }
+
+        return "index";
+    }
+
+    /**
+     * ↩️ ENDPOINT DE DEVOLUCIÓN DE EXPEDIENTE
+     */
+    @PostMapping("/documento/devolver")
+    public String devolver(@RequestParam Long id, 
+                           @RequestParam String observacion, 
+                           RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.devolverDocumento(id, observacion, getUsuarioAutenticado());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Documento devuelto correctamente.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("mensajeError", "Error al devolver: " + e.getMessage());
+        }
+        return "redirect:/";
+    }
+    
+    /**
+     * 📥 GUARDAR NUEVO DOCUMENTO
+     */
+    @PostMapping("/documentos/guardar")
+    public String guardarDocumento(@ModelAttribute("nuevoDoc") Documento documento) {
+        if (documentoService != null) {
+            Usuario usuarioCarga = getUsuarioAutenticado();
+            documentoService.guardarNuevoDocumento(documento, usuarioCarga);
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * ↗️ DERIVAR EXPEDIENTE
+     */
+    @PostMapping("/documentos/derivar")
+    public String derivarDocumento(@RequestParam("documentoId") Long documentoId,
+                                   @RequestParam("dependenciaDestinoId") List<Integer> dependenciasDestinoIds,
+                                   @RequestParam("observacion") String observacion,
+                                   @RequestParam(value = "requiereInforme", defaultValue = "false") Boolean requiereInforme) {
+
+        if (documentoService != null) {
+            Usuario usuarioSesion = getUsuarioAutenticado();
+            documentoService.derivarDocumento(documentoId, dependenciasDestinoIds, observacion, requiereInforme, usuarioSesion);
+        }
+
+        return "redirect:/";
+    }
+
+    /**
+     * 📤 REGISTRAR SALIDA EXTERIOR
+     */
+    @PostMapping("/documentos/salida")
+    public String registrarSalida(@RequestParam("documentoId") Long documentoId,
+                                  @RequestParam("nroNotaSalida") String nroNotaSalida,
+                                  @RequestParam(value = "dependenciaDestinoId", required = false) Integer dependenciaDestinoId,
+                                  @RequestParam("personaRetira") String personaRetira,
+                                  @RequestParam("funcionarioEntrega") String funcionarioEntrega,
+                                  @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse) {
+
+        if (documentoService != null) {
+            Usuario usuarioCarga = getUsuarioAutenticado();
+            documentoService.registrarSalidaDocumento(documentoId, nroNotaSalida, dependenciaDestinoId, 
+                                                   personaRetira, funcionarioEntrega, archivoAcuse, usuarioCarga);
+        }
+
+        return "redirect:/";
+    }
+
+    /**
+     * ✅ CONFIRMAR ACUSE FINAL
+     */
+    @PostMapping("/documentos/confirmar-acuse")
+    public String confirmarAcuse(@RequestParam("documentoId") Long documentoId,
+                                  @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse) {
+        if (documentoService != null) {
+            Usuario usuarioCarga = getUsuarioAutenticado();
+            documentoService.confirmarEntregaYAcuse(documentoId, archivoAcuse, usuarioCarga);
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * 📄 DESCARGAR ACUSE PDF
+     */
+    @GetMapping("/documentos/descargar-acuse/{documentoId}")
+    public ResponseEntity<Resource> descargarAcuse(@PathVariable Long documentoId) {
+        List<AdjuntoDocumento> adjuntos = adjuntoDocumentoRepository.findByDocumentoId(documentoId);
+
+        if (adjuntos.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        AdjuntoDocumento adjunto = adjuntos.get(adjuntos.size() - 1);
+        File archivoFisico = new File(adjunto.getRutaAlmacenamiento());
+
+        if (!archivoFisico.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Resource recurso = new FileSystemResource(archivoFisico);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + adjunto.getNombreArchivo() + "\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(recurso);
+    }
+
+    /**
+     * 🔍 BUSCADOR MULTICRITERIO
+     */
+    @GetMapping("/documentos/buscar")
+    public String buscarDocumentos(@RequestParam(value = "texto", required = false) String texto,
+                                   @RequestParam(value = "dependenciaId", required = false) Integer dependenciaId,
+                                   @RequestParam(value = "tipoDocId", required = false) Integer tipoDocId,
+                                   @RequestParam(value = "estado", required = false) String estado,
+                                   @RequestParam(value = "fechaDesde", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate fechaDesde,
+                                   @RequestParam(value = "fechaHasta", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate fechaHasta,
+                                   Model model) {
+
+        model.addAttribute("nuevoDoc", new Documento());
+
+        if (documentoService != null) {
+            List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(
+                    texto, dependenciaId, tipoDocId, estado, fechaDesde, fechaHasta);
+
+            model.addAttribute("documentosResultados", resultados);
+            model.addAttribute("esBusqueda", true);
+            model.addAttribute("paramTexto", texto);
+            model.addAttribute("paramDependenciaId", dependenciaId);
+            model.addAttribute("paramTipoDocId", tipoDocId);
+            model.addAttribute("paramEstado", estado);
+            model.addAttribute("paramFechaDesde", fechaDesde);
+            model.addAttribute("paramFechaHasta", fechaHasta);
+
+            Usuario usuarioLogueado = getUsuarioAutenticado();
+            model.addAttribute("documentos", documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado));
+            model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizados());
+            model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
+            model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
+            model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
+            model.addAttribute("dependenciasInternas", documentoService.obtenerDependenciasInternasTic());
+        }
+
+        return "index";
+    }
+
+    /**
+     * 📝 GUARDAR ACTUACIÓN / RESPUESTA INTERNA
+     */
+    @PostMapping("/documentos/actuaciones/guardar")
+    public String guardarActuacion(@RequestParam("documentoId") Long documentoId,
+                                   @RequestParam("tipoActuacion") String tipoActuacion,
+                                   @RequestParam("numeroActuacion") String numeroActuacion,
+                                   @RequestParam("descripcionResumen") String descripcionResumen,
+                                   @RequestParam(value = "ubicacionBibliorato", required = false) String ubicacionBibliorato,
+                                   @RequestParam(value = "archivoCopiaSellada", required = false) MultipartFile archivoCopiaSellada) {
+
+        if (documentoService != null) {
+            Usuario usuarioCarga = getUsuarioAutenticado();
+            
+            if (usuarioCarga != null && usuarioCarga.getDependencia() != null) {
+                Integer dependenciaEmisoraId = usuarioCarga.getDependencia().getId();
+                
+                documentoService.registrarActuacion(documentoId, dependenciaEmisoraId, tipoActuacion, 
+                           numeroActuacion, descripcionResumen, ubicacionBibliorato, 
+                           archivoCopiaSellada, usuarioCarga);
+            } else {
+                throw new IllegalStateException("El usuario actual no tiene una dependencia asignada para registrar actuaciones.");
+            }
+        }
+
+        return "redirect:/";
+    }
+
+    /**
+     * 📥 CONFIRMAR RECEPCIÓN DE PASE INTERNO
+     */
+    @PostMapping("/documentos/actuaciones/confirmar-pase")
+    public String confirmarPaseInterno(@RequestParam("actuacionId") Long actuacionId,
+                                       @RequestParam("archivoAcusePdf") MultipartFile archivoAcusePdf) {
+
+        if (documentoService != null) {
+            documentoService.confirmarRecepcionPaseInterno(actuacionId, archivoAcusePdf);
+        }
+
+        return "redirect:/";
+    }
+
+    /**
+     * 🌐 API JSON: OBTENER ACTUACIONES (ÁRBOL DE TRAZABILIDAD)
+     */
+    @GetMapping("/api/documentos/{id}/actuaciones")
+    @ResponseBody
+    public List<Map<String, Object>> obtenerActuacionesJson(@PathVariable("id") Long id) {
+        List<Map<String, Object>> listaJson = new ArrayList<>();
+        if (documentoService != null) {
+            List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
+
+            for (var act : actuaciones) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", act.getId());
+                map.put("documentoId", id);
+                map.put("tipoActuacion", act.getTipoActuacion() != null ? act.getTipoActuacion() : "PASE_INTERNO");
+                map.put("numeroActuacion", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
+                map.put("dependencia", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getNombre() : "Sin Dependencia");
+                map.put("descripcion", act.getDescripcionResumen());
+                map.put("bibliorato", act.getUbicacionBibliorato() != null ? act.getUbicacionBibliorato() : "No especificado");
+                map.put("pdf", act.getRutaCopiaSelladaPdf());
+                map.put("paseConfirmado", act.getPaseConfirmado() != null ? act.getPaseConfirmado() : true);
+                map.put("fecha", act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+                listaJson.add(map);
+            }
+        }
+        return listaJson;
+    }
+
+    /**
+     * 🌐 API JSON: INFORMES DISPONIBLES
+     */
+    @GetMapping("/api/documentos/{id}/informes-disponibles")
+    @ResponseBody
+    public List<Map<String, Object>> obtenerInformesDisponiblesJson(@PathVariable("id") Long id) {
+        List<Map<String, Object>> listaJson = new ArrayList<>();
+        if (documentoService != null) {
+            List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
+            
+            for (ActuacionDocumento act : actuaciones) {
+                if ("INFORME_TECNICO".equals(act.getTipoActuacion()) || 
+                    "MEMO".equals(act.getTipoActuacion()) || 
+                    "PROVIDENCIA".equals(act.getTipoActuacion())) {
+                    
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", act.getId());
+                    map.put("tipo", act.getTipoActuacion());
+                    map.put("numero", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
+                    map.put("dependencia", act.getDependenciaEmisora().getNombre());
+                    map.put("resumen", act.getDescripcionResumen());
+                    listaJson.add(map);
+                }
+            }
+        }
+        return listaJson;
+    }
+
+    /**
+     * 🛡️ API JSON: BITÁCORA DE AUDITORÍA INMUTABLE
+     */
+    @GetMapping("/api/documentos/{id}/auditoria")
+    @ResponseBody
+    public List<Map<String, Object>> obtenerAuditoriaJson(@PathVariable("id") Long id) {
+        List<Map<String, Object>> listaJson = new ArrayList<>();
+        List<AuditoriaDocumento> auditorias = auditoriaService.obtenerHistorialAuditoria(id);
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
+
+        for (AuditoriaDocumento aud : auditorias) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", aud.getId());
+            map.put("evento", aud.getTipoEvento());
+            map.put("estadoAnterior", aud.getEstadoAnterior() != null ? aud.getEstadoAnterior() : "-");
+            map.put("estadoNuevo", aud.getEstadoNuevo() != null ? aud.getEstadoNuevo() : "-");
+            map.put("descripcion", aud.getDescripcionDetalle());
+            map.put("usuario", aud.getUsuarioNombreCompleto() + " (" + aud.getUsuarioUsername() + ")");
+            map.put("dependencia", aud.getDependenciaUsuario());
+            map.put("ip", aud.getDireccionIp());
+            map.put("fechaHora", aud.getFechaHora().format(fmt));
+            listaJson.add(map);
+        }
+        return listaJson;
+    }
+
+    /**
+     * 👤 MÉTODO AUXILIAR PRIVADO: OBTENER USUARIO AUTENTICADO
+     */
+    private Usuario getUsuarioAutenticado() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            String username = auth.getName();
+            return usuarioRepository.findByUsernameAndActivoTrue(username).orElse(null);
+        }
+        return usuarioRepository.findById(1).orElse(null);
+    }
+}
