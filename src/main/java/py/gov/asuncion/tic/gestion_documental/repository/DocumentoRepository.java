@@ -51,8 +51,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
         WHERE d.estadoActual <> 'FINALIZADO'
           AND (
                a.dependenciaEmisora.id = :dependenciaId
-               OR r.id = :dependenciaId
-               OR (r IS NULL AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
+               OR (r.id = :dependenciaId AND a.anulada = false)
+               OR (r IS NULL AND a.anulada = false AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
         ORDER BY d.fechaHoraIngreso DESC
     """)
@@ -66,8 +66,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
         WHERE d.estadoActual = 'FINALIZADO'
           AND (
                a.dependenciaEmisora.id = :dependenciaId
-               OR r.id = :dependenciaId
-               OR (r IS NULL AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
+               OR (r.id = :dependenciaId AND a.anulada = false)
+               OR (r IS NULL AND a.anulada = false AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
         ORDER BY d.fechaHoraSalida DESC
     """)

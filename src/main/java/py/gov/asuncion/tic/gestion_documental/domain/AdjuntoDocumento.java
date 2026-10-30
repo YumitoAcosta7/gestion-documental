@@ -40,4 +40,20 @@ public class AdjuntoDocumento {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_subida_id", nullable = false)
     private Usuario usuarioSubida;
+
+    // --- VERSIONADO (no se sobrescribe: la versión anterior queda reemplazada) ---
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "actuacion_id")
+    private ActuacionDocumento actuacion; // null = adjunto del documento (salida / acuse final)
+
+    @Column(name = "vigente", nullable = false)
+    @Builder.Default
+    private Boolean vigente = true;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reemplazado_por_id")
+    private AdjuntoDocumento reemplazadoPor;
+
+    @Column(name = "motivo_reemplazo", columnDefinition = "TEXT")
+    private String motivoReemplazo;
 }

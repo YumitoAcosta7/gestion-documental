@@ -32,6 +32,7 @@ import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.AdjuntoDocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.DocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
+import py.gov.asuncion.tic.gestion_documental.service.ArchivoService;
 import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
 
@@ -61,6 +62,9 @@ public class HomeController {
 
     @Autowired
     private DocumentoRepository documentoRepository;
+
+    @Autowired
+    private ArchivoService archivoService;
     
 
     /**
@@ -75,9 +79,11 @@ public class HomeController {
             Usuario usuarioLogueado = getUsuarioAutenticado();
             model.addAttribute("usuarioLogueado", usuarioLogueado);
 
-            model.addAttribute("documentos", documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado));
+            List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado);
+            model.addAttribute("documentos", activos);
+            agregarIndicadoresSla(model, activos, List.of());
             model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
-            
+
             // ==========================================
             // NUEVO: Cargar los documentos de salida propios
             // ==========================================
@@ -240,27 +246,144 @@ public class HomeController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        List<AdjuntoDocumento> adjuntos = adjuntoDocumentoRepository.findByDocumentoId(documentoId);
-
-        if (adjuntos.isEmpty()) {
+        // Solo la versión vigente (las reemplazadas se consultan desde el historial)
+        AdjuntoDocumento adjunto = documentoService.obtenerAdjuntoVigenteDocumento(documentoId);
+        if (adjunto == null) {
             return ResponseEntity.notFound().build();
         }
+        java.nio.file.Path ruta = archivoService.resolver(adjunto.getRutaAlmacenamiento());
+        return responderPdf(ruta, adjunto.getNombreArchivo());
+    }
 
-        AdjuntoDocumento adjunto = adjuntos.get(adjuntos.size() - 1);
-        File archivoFisico = new File(adjunto.getRutaAlmacenamiento());
+    /**
+     * 📄 DESCARGAR UNA VERSIÓN CONCRETA DE UN ADJUNTO (vigente o reemplazada)
+     */
+    @GetMapping("/documentos/adjuntos/{adjuntoId}/pdf")
+    public ResponseEntity<Resource> descargarAdjunto(@PathVariable Long adjuntoId) {
+        try {
+            java.nio.file.Path ruta = documentoService.resolverAdjunto(adjuntoId, getUsuarioAutenticado());
+            return responderPdf(ruta, ruta != null ? ruta.getFileName().toString() : null);
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+    }
 
-        if (!archivoFisico.exists()) {
+    private ResponseEntity<Resource> responderPdf(java.nio.file.Path ruta, String nombre) {
+        if (ruta == null) {
             return ResponseEntity.notFound().build();
         }
-
-        Resource recurso = new FileSystemResource(archivoFisico);
-
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
-                        .filename(adjunto.getNombreArchivo() != null ? adjunto.getNombreArchivo() : "acuse.pdf", StandardCharsets.UTF_8)
+                        .filename(nombre != null ? nombre : ruta.getFileName().toString(), StandardCharsets.UTF_8)
                         .build().toString())
                 .contentType(MediaType.APPLICATION_PDF)
-                .body(recurso);
+                .body(new FileSystemResource(ruta));
+    }
+
+    /**
+     * ↩️ RETIRAR (emisor) O RECHAZAR (receptor) UN PASE PENDIENTE DE CONFIRMACIÓN
+     */
+    @PostMapping("/documentos/actuaciones/anular-pase")
+    public String anularPase(@RequestParam("actuacionId") Long actuacionId,
+                             @RequestParam("accion") String accion,
+                             @RequestParam("motivo") String motivo,
+                             RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.anularPase(actuacionId, accion, motivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito",
+                    "RECHAZAR".equals(accion) ? "Recepción del pase rechazada." : "Pase retirado correctamente.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "No se pudo anular el pase: " + e.getMessage());
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * ⚠️ CIERRE FORZADO DE INFORMES / SALIDA EXCEPCIONAL
+     */
+    @PostMapping("/documentos/forzar-cierre")
+    public String forzarCierre(@RequestParam("documentoId") Long documentoId,
+                               @RequestParam("justificacion") String justificacion,
+                               RedirectAttributes redirectAttributes) {
+        try {
+            Documento doc = documentoService.forzarCierreInformes(documentoId, justificacion, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito",
+                    "Cierre excepcional registrado. " + doc.getCodigoCuti() + " pasó a PENDIENTE_SALIDA.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "No se pudo forzar el cierre: " + e.getMessage());
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * 🔁 REEMPLAZAR EL PDF DE UNA ACTUACIÓN (la versión anterior queda en el historial)
+     */
+    @PostMapping("/documentos/actuaciones/reemplazar-pdf")
+    public String reemplazarPdfActuacion(@RequestParam("actuacionId") Long actuacionId,
+                                         @RequestParam("archivo") MultipartFile archivo,
+                                         @RequestParam("motivo") String motivo,
+                                         RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.reemplazarPdfActuacion(actuacionId, archivo, motivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "PDF reemplazado. La versión anterior quedó en el historial.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "No se pudo reemplazar el PDF: " + e.getMessage());
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * 🔁 REEMPLAZAR EL ACUSE DEL EXPEDIENTE (salida / acuse final)
+     */
+    @PostMapping("/documentos/reemplazar-acuse")
+    public String reemplazarAcuse(@RequestParam("documentoId") Long documentoId,
+                                  @RequestParam("archivo") MultipartFile archivo,
+                                  @RequestParam("motivo") String motivo,
+                                  RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.reemplazarAdjuntoDocumento(documentoId, archivo, motivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Acuse reemplazado. La versión anterior quedó en el historial.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "No se pudo reemplazar el acuse: " + e.getMessage());
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * 🌐 API JSON: VERSIONES DE LOS ADJUNTOS DEL EXPEDIENTE (salida / acuse final)
+     */
+    @GetMapping("/api/documentos/{id}/adjuntos")
+    @ResponseBody
+    public ResponseEntity<List<Map<String, Object>>> obtenerAdjuntosJson(@PathVariable("id") Long id) {
+        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(documentoService.obtenerAdjuntosDocumento(id).stream().map(this::adjuntoJson).toList());
+    }
+
+    private Map<String, Object> adjuntoJson(AdjuntoDocumento a) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", a.getId());
+        map.put("nombre", a.getNombreArchivo());
+        map.put("tipo", a.getTipoAdjunto());
+        map.put("vigente", Boolean.TRUE.equals(a.getVigente()));
+        map.put("motivoReemplazo", a.getMotivoReemplazo());
+        map.put("usuario", a.getUsuarioSubida() != null ? a.getUsuarioSubida().getNombreCompleto() : "-");
+        map.put("fecha", a.getFechaHoraSubida() != null
+                ? a.getFechaHoraSubida().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "-");
+        return map;
+    }
+
+    // ⏱️ Indicadores de demora para la bandeja de activos y los resultados de búsqueda
+    private void agregarIndicadoresSla(Model model, List<Documento> activos, List<Documento> resultados) {
+        List<Documento> todos = new ArrayList<>(activos);
+        todos.addAll(resultados);
+        Map<Long, DocumentoService.IndicadorSla> sla = documentoService.calcularSla(todos);
+        model.addAttribute("sla", sla);
+        model.addAttribute("slaCriticos", activos.stream()
+                .map(d -> sla.get(d.getId()))
+                .filter(i -> i != null && DocumentoService.IndicadorSla.CRITICO.equals(i.nivel()))
+                .count());
     }
 
     /**
@@ -299,7 +422,9 @@ public class HomeController {
             model.addAttribute("paramFechaHasta", fechaHasta);
 
             model.addAttribute("usuarioLogueado", usuarioLogueado);
-            model.addAttribute("documentos", documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado));
+            List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado);
+            model.addAttribute("documentos", activos);
+            agregarIndicadoresSla(model, activos, resultados);
             model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
             model.addAttribute("documentosSalida", usuarioLogueado != null && usuarioLogueado.getDependencia() != null
                     ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuarioLogueado.getDependencia().getId())
@@ -367,12 +492,20 @@ public class HomeController {
     @GetMapping("/api/documentos/{id}/actuaciones")
     @ResponseBody
     public ResponseEntity<List<Map<String, Object>>> obtenerActuacionesJson(@PathVariable("id") Long id) {
-        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), id)) {
+        Usuario usuario = getUsuarioAutenticado();
+        if (!documentoService.puedeAccederDocumento(usuario, id)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         List<Map<String, Object>> listaJson = new ArrayList<>();
         if (documentoService != null) {
             List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
+
+            // Versiones de PDF de todas las actuaciones en una sola consulta
+            Map<Long, List<Map<String, Object>>> versiones = new HashMap<>();
+            for (AdjuntoDocumento adj : documentoService.obtenerVersionesPdfActuaciones(
+                    actuaciones.stream().map(ActuacionDocumento::getId).toList())) {
+                versiones.computeIfAbsent(adj.getActuacion().getId(), k -> new ArrayList<>()).add(adjuntoJson(adj));
+            }
 
             for (var act : actuaciones) {
                 Map<String, Object> map = new HashMap<>();
@@ -385,11 +518,26 @@ public class HomeController {
                 map.put("dependenciaReceptoraId", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getId() : null);
                 map.put("dependenciaReceptora", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getNombre() : null);
                 map.put("descripcion", act.getDescripcionResumen());
-                map.put("bibliorato", act.getUbicacionBibliorato() != null ? act.getUbicacionBibliorato() : "No especificado");
-                map.put("pdf", act.getRutaCopiaSelladaPdf());
+                map.put("bibliorato", act.getUbicacionBibliorato() != null && !act.getUbicacionBibliorato().isBlank()
+                        ? act.getUbicacionBibliorato() : "No especificado");
+                // Solo indica si hay PDF: la ruta interna del servidor no se expone
+                map.put("pdf", act.getRutaCopiaSelladaPdf() != null && !act.getRutaCopiaSelladaPdf().isBlank());
                 map.put("paseConfirmado", act.getPaseConfirmado() != null ? act.getPaseConfirmado() : true);
                 map.put("fecha", act.getFechaHoraActuacion() != null
                         ? act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "-");
+
+                // Anulación lógica (pases retirados / rechazados)
+                map.put("anulada", Boolean.TRUE.equals(act.getAnulada()));
+                map.put("tipoAnulacion", act.getTipoAnulacion());
+                map.put("motivoAnulacion", act.getMotivoAnulacion());
+                map.put("fechaAnulacion", act.getFechaHoraAnulacion() != null
+                        ? act.getFechaHoraAnulacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : null);
+
+                // Acciones que el usuario actual puede realizar sobre esta actuación
+                map.put("puedeRetirar", documentoService.puedeRetirarPase(act, usuario));
+                map.put("puedeRechazar", documentoService.puedeRechazarPase(act, usuario));
+                map.put("puedeReemplazarPdf", documentoService.puedeReemplazarPdf(act, usuario));
+                map.put("versiones", versiones.getOrDefault(act.getId(), List.of()));
                 listaJson.add(map);
             }
         }

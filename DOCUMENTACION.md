@@ -38,6 +38,12 @@ Otras propiedades relevantes:
 
 Los PDF antiguos que quedaron en `./uploads/acuses` se siguen encontrando; los nuevos van a `app.upload.dir`. La carpeta `uploads/` no se versiona.
 
+**Migraciones de base de datos.** Como Hibernate solo valida el esquema, cada cambio de modelo viene con un script en `db/migraciones/`. Hay que aplicarlo (pgAdmin, DBeaver o `psql`) **antes** de iniciar la versión que lo requiere; los scripts son idempotentes.
+
+| Script | Contenido |
+|---|---|
+| `V2__mejoras_operativas.sql` | Anulación lógica de actuaciones y versionado de adjuntos |
+
 Ejecutar:
 
 ```bash
@@ -80,18 +86,20 @@ Nombres de tablas y columnas tal como están mapeados en las entidades JPA.
 ### `actuaciones_documento` — pases, informes, memos y devoluciones
 - `id` (BIGINT, PK), `documento_id` (FK), `usuario_id` (FK)
 - `dependencia_emisora_id` (FK), `dependencia_receptora_pase_id` (FK, en pases y devoluciones)
-- `tipo_actuacion`: `PASE_INTERNO`, `PASE_CONFIRMADO`, `DEVOLUCION`, `INFORME_TECNICO`, `MEMO`, `ACTA_ENTREGA`, `PROVIDENCIA`
+- `tipo_actuacion`: `PASE_INTERNO`, `PASE_CONFIRMADO`, `DEVOLUCION`, `INFORME_TECNICO`, `MEMO`, `ACTA_ENTREGA`, `PROVIDENCIA`, `CIERRE_EXCEPCIONAL`
 - `numero_actuacion` (`N/AAAA` o `S/N`), `descripcion_resumen` (TEXT), `ubicacion_bibliorato`
-- `ruta_copia_sellada_pdf` (nombre del archivo PDF), `pase_confirmado` (BOOLEAN), `fecha_hora_actuacion`
+- `ruta_copia_sellada_pdf` (PDF vigente de la actuación), `pase_confirmado` (BOOLEAN), `fecha_hora_actuacion`
 - `actuacion_padre_id` (FK recursiva, reservada; el árbol se arma por dependencias, ver §5)
+- Anulación lógica (V2): `anulada`, `tipo_anulacion` (`RETIRADO`, `RECHAZADO`), `motivo_anulacion`, `fecha_hora_anulacion`, `usuario_anulacion_id`
 
 ### `auditorias_documento` — bitácora de eventos
 - `id` (BIGINT, PK), `documento_id` (FK), `tipo_evento`, `estado_anterior`, `estado_nuevo`, `descripcion_detalle`
 - `usuario_username`, `usuario_nombre_completo`, `dependencia_usuario`, `direccion_ip` (IP real de la petición), `fecha_hora`
 
-### `adjuntos_documento` — PDF a nivel de documento
+### `adjuntos_documento` — todas las versiones de los PDF
 - `id` (BIGINT, PK), `documento_id` (FK), `nombre_archivo`, `ruta_almacenamiento`
-- `tipo_adjunto` (`ACUSE_SALIDA`, `ACUSE_ENTREGA`), `tamanio_bytes`, `fecha_hora_subida`, `usuario_subida_id` (FK)
+- `tipo_adjunto` (`ACUSE_SALIDA`, `ACUSE_ENTREGA`, `COPIA_SELLADA`, `ACUSE_PASE`), `tamanio_bytes`, `fecha_hora_subida`, `usuario_subida_id` (FK)
+- Versionado (V2): `actuacion_id` (FK, null = adjunto del documento), `vigente`, `reemplazado_por_id` (FK), `motivo_reemplazo`
 
 ---
 
@@ -151,11 +159,43 @@ Reglas adicionales:
 | `GET /api/documentos/{id}/informes-disponibles` | JSON de informes/memos/providencias | Con acceso al expediente |
 | `GET /api/documentos/{id}/auditoria` | JSON de la bitácora | DIRECTOR, SECRETARIA_ADMIN |
 
+| `POST /documentos/actuaciones/anular-pase` | Retirar (emisor) o rechazar (receptor) un pase pendiente, con motivo | Dependencia emisora/receptora |
+| `POST /documentos/forzar-cierre` | Cierre excepcional de informes → `PENDIENTE_SALIDA`, con justificación | DIRECTOR, SECRETARIA_ADMIN |
+| `POST /documentos/actuaciones/reemplazar-pdf` | Nueva versión del PDF de una actuación | Dependencia que lo cargó, DIRECTOR, SECRETARIA_ADMIN |
+| `POST /documentos/reemplazar-acuse` | Nueva versión del acuse del expediente | DIRECTOR, SECRETARIA_ADMIN |
+| `GET /documentos/adjuntos/{id}/pdf` | Descarga de una versión concreta (vigente o reemplazada) | Con acceso al expediente |
+| `GET /api/documentos/{id}/adjuntos` | JSON de versiones de los acuses del expediente | Con acceso al expediente |
+
 Todos los formularios muestran el resultado como mensaje en pantalla (éxito o error).
 
 ---
 
-## 7. 🎯 ESTADO ACTUAL Y PENDIENTES
+## 7. 🧩 MEJORAS OPERATIVAS (rama `feature/mejoras-operativas`)
+
+Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
+
+**Principio común: nada se borra.** Pases y archivos se anulan o reemplazan de forma lógica, con motivo, usuario y fecha, y quedan visibles en el historial y en la auditoría.
+
+- **Retirar / rechazar pases** (`actuaciones_documento.anulada`, `tipo_anulacion`, `motivo_anulacion`, `fecha_hora_anulacion`, `usuario_anulacion_id`):
+  - Solo pases `PASE_INTERNO` todavía sin copia sellada.
+  - *Retirar*: la dependencia emisora o Dirección/Secretaría. *Rechazar*: la dependencia receptora.
+  - El pase anulado sale de la bandeja del receptor, no cuenta para informes pendientes ni para devoluciones, y en el árbol aparece tachado con el motivo.
+  - Si ya no queda ningún pase vigente pidiendo informe, el expediente vuelve de `EN_ESPERA_INFORME` a `EN_REVISION`.
+- **Cierre excepcional** (Dirección/Secretaría): pasa el expediente a `PENDIENTE_SALIDA` sin esperar las respuestas. Justificación obligatoria (mín. 20 caracteres). Queda como actuación `CIERRE_EXCEPCIONAL` en el árbol y como evento `CIERRE_FORZADO` en la auditoría, con la lista de dependencias que no respondieron.
+- **Versionado de PDF** (`adjuntos_documento.actuacion_id`, `vigente`, `reemplazado_por_id`, `motivo_reemplazo`):
+  - Cada PDF subido es una fila. Reemplazar crea una versión nueva y marca la anterior como reemplazada, con motivo.
+  - Los archivos nunca se sobrescriben en disco.
+  - El árbol muestra el historial de versiones; los finalizados tienen el botón *Versiones*.
+- **Alertas de demora (SLA):** días **hábiles** (lunes a viernes) desde el último movimiento vigente (o el ingreso).
+  - Badge amarillo desde `app.sla.dias-advertencia` (5) y rojo desde `app.sla.dias-critico` (10).
+  - Los expedientes URGENTES usan umbrales propios (2 / 4).
+  - Se calcula con una sola consulta por bandeja. No contempla feriados.
+- **Validación de PDF:** límite de 20 MB (antes Spring rechazaba todo archivo de más de 1 MB). Se comprueba la firma `%PDF-` del contenido, no solo la extensión.
+- **Suplencias:** diseño en [docs/diseno-suplencias.md](docs/diseno-suplencias.md), pendiente de decisiones institucionales.
+
+---
+
+## 8. 🎯 ESTADO ACTUAL Y PENDIENTES
 
 **Estado:** compila (`BUILD SUCCESS`). Flujos probados contra la BD: ingreso, salida directa, devolución, bloqueo de doble devolución, control de acceso por dependencia, árbol y PDF de actuaciones.
 
@@ -165,4 +205,7 @@ Todos los formularios muestran el resultado como mensaje en pantalla (éxito o e
 - El modal de salida envía `tipoRemision` e `informeActuacionId` (legajo), pero todavía no se guardan.
 - `spring.jpa.show-sql=true` está activo; desactivarlo en producción.
 - Expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes (por ejemplo TIC-2026-000001) deben revisarse manualmente.
-- No hay pruebas automatizadas además de `contextLoads`.
+- Pruebas automatizadas: solo `contextLoads` y el cálculo de días hábiles (`DiasHabilesTest`).
+- Feriados nacionales/municipales para el SLA (requiere una tabla de feriados).
+- Paginación de bandejas para grandes volúmenes (hoy se cargan todos los expedientes activos).
+- Adoptar Flyway para aplicar las migraciones de `db/migraciones` automáticamente.

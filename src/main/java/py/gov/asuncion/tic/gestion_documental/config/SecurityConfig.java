@@ -34,7 +34,7 @@ public class SecurityConfig {
                 .requestMatchers("/css/**", "/js/**", "/images/**", "/login").permitAll()
                 
                 // Acciones exclusivas de Secretaría Administradora y Dirección
-                .requestMatchers("/documentos/guardar", "/documentos/salida", "/documentos/salida-directa", "/documentos/confirmar-acuse", "/api/documentos/*/auditoria")
+                .requestMatchers("/documentos/guardar", "/documentos/salida", "/documentos/salida-directa", "/documentos/confirmar-acuse", "/documentos/forzar-cierre", "/documentos/reemplazar-acuse", "/api/documentos/*/auditoria")
                     .hasAnyRole("SECRETARIA_ADMIN", "DIRECTOR")
                 
                 // Acciones de derivación para Jefes de Departamento, Secretaría y Dirección

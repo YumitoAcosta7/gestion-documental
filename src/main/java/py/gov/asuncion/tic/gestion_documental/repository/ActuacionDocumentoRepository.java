@@ -21,8 +21,8 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
         WHERE a.documento.id = :documentoId
           AND (
                a.dependenciaEmisora.id = :dependenciaId
-               OR r.id = :dependenciaId
-               OR (r IS NULL AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
+               OR (r.id = :dependenciaId AND a.anulada = false)
+               OR (r IS NULL AND a.anulada = false AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
     """)
     boolean existeParticipacionDependencia(@Param("documentoId") Long documentoId,
@@ -30,4 +30,16 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
 
     ActuacionDocumento findTopByDocumentoIdAndDependenciaEmisoraIdAndTipoActuacionOrderByFechaHoraActuacionDesc(
             Long documentoId, Integer dependenciaEmisoraId, String tipoActuacion);
+
+    // Último pase vigente (no anulado) recibido por la dependencia: base de la devolución
+    ActuacionDocumento findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(
+            Long documentoId, Integer dependenciaReceptoraId);
+
+    // ⏱️ SLA: fecha del último movimiento vigente de cada documento (una sola consulta para toda la bandeja)
+    @Query("""
+        SELECT a.documento.id, MAX(a.fechaHoraActuacion) FROM ActuacionDocumento a
+        WHERE a.documento.id IN :documentoIds AND a.anulada = false
+        GROUP BY a.documento.id
+    """)
+    List<Object[]> obtenerUltimoMovimientoPorDocumento(@Param("documentoIds") List<Long> documentoIds);
 }

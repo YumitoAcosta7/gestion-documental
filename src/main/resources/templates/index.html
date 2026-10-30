@@ -238,7 +238,14 @@
                                         <td th:text="${doc.dependenciaOrigen?.nombre}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
-                                        <td th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</td>
+                                        <td th:with="ind=${sla != null ? sla[doc.id] : null}">
+                                            <span class="d-block" th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</span>
+                                            <!-- ⏱️ Días hábiles sin movimiento (amarillo: advertencia, rojo: crítico) -->
+                                            <span th:if="${ind != null}"
+                                                  th:class="${ind.nivel() == 'CRITICO' ? 'badge bg-danger' : (ind.nivel() == 'ADVERTENCIA' ? 'badge bg-warning text-dark' : 'badge bg-light text-muted border')}"
+                                                  th:text="${ind.diasHabiles() + (ind.diasHabiles() == 1 ? ' día' : ' días') + ' sin movimiento'}"
+                                                  title="Días hábiles desde el último movimiento del expediente">0 días</span>
+                                        </td>
                                         <td class="text-center">
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                 <i class="bi bi-clock-history"></i> Historial
@@ -258,8 +265,11 @@
             <!-- PESTAÑA 1: TRÁMITES ACTIVOS -->
             <div th:class="${esBusqueda != null && esBusqueda ? 'tab-pane fade' : 'tab-pane fade show active'}" id="activos-pane" role="tabpanel">
                 <div class="card border-0 shadow-sm rounded-3">
-                    <div class="card-header bg-white py-3">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                         <h5 class="fw-bold text-secondary m-0">Trámites en Curso</h5>
+                        <span th:if="${slaCriticos != null && slaCriticos > 0}" class="badge bg-danger fs-6">
+                            <i class="bi bi-alarm me-1"></i><span th:text="${slaCriticos}">0</span> con demora crítica
+                        </span>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -290,7 +300,14 @@
                                         <td th:text="${doc.dependenciaOrigen?.nombre}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
-                                        <td th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</td>
+                                        <td th:with="ind=${sla != null ? sla[doc.id] : null}">
+                                            <span class="d-block" th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</span>
+                                            <!-- ⏱️ Días hábiles sin movimiento (amarillo: advertencia, rojo: crítico) -->
+                                            <span th:if="${ind != null}"
+                                                  th:class="${ind.nivel() == 'CRITICO' ? 'badge bg-danger' : (ind.nivel() == 'ADVERTENCIA' ? 'badge bg-warning text-dark' : 'badge bg-light text-muted border')}"
+                                                  th:text="${ind.diasHabiles() + (ind.diasHabiles() == 1 ? ' día' : ' días') + ' sin movimiento'}"
+                                                  title="Días hábiles desde el último movimiento del expediente">0 días</span>
+                                        </td>
                                         <td class="text-center">
                                             <div class="btn-group" role="group">
                                                 <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalAgregarActuacion" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
@@ -338,6 +355,16 @@
                                                         th:data-doc-cuti="${doc.codigoCuti}"
                                                         th:title="${doc.fechaHoraSalida == null ? 'Primero debe registrar la salida física con el mensajero' : 'Subir acuse final firmado'}">
                                                     <i class="bi bi-file-earmark-check"></i> Confirmar Acuse
+                                                </button>
+
+                                                <!-- BOTÓN CIERRE EXCEPCIONAL (solo Dirección / Secretaría) -->
+                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button"
+                                                        th:if="${doc.estadoActual.name() != 'PENDIENTE_SALIDA' and doc.estadoActual.name() != 'FINALIZADO'}"
+                                                        class="btn btn-sm btn-outline-danger rounded-pill px-2 me-1"
+                                                        data-bs-toggle="modal" data-bs-target="#modalForzarCierre"
+                                                        th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"
+                                                        title="Cerrar informes y pasar a salida sin esperar todas las respuestas">
+                                                    <i class="bi bi-exclamation-octagon"></i> Cierre excepcional
                                                 </button>
                                             </div>
                                         </td>
@@ -437,6 +464,10 @@
                                             </button>
                                             <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
                                                 <i class="bi bi-shield-check"></i> Auditoría
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1 btn-ver-adjuntos"
+                                                    th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Versiones del acuse y adjuntos">
+                                                <i class="bi bi-files"></i> Versiones
                                             </button>
                                             <a th:href="@{/documentos/descargar-acuse/{id}(id=${doc.id})}" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
                                                 <i class="bi bi-file-pdf me-1"></i> Acuse Final
@@ -825,6 +856,117 @@
         </div>
     </div>
 
+    <!-- MODAL CIERRE EXCEPCIONAL DE INFORMES (Dirección / Secretaría) -->
+    <div class="modal fade" id="modalForzarCierre" tabindex="-1">
+        <div class="modal-dialog">
+            <form th:action="@{/documentos/forzar-cierre}" method="post">
+                <input type="hidden" name="documentoId" id="forzarCierreDocId" />
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-octagon me-2"></i>Cierre excepcional <span id="labelCutiForzar" class="text-warning"></span></h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-warning small py-2">
+                            El expediente pasará a <strong>PENDIENTE_SALIDA</strong> sin esperar los informes que falten.
+                            Las dependencias sin respuesta quedarán registradas en el historial y en la auditoría.
+                        </div>
+                        <label class="form-label small fw-bold">Justificación <span class="text-danger">*</span></label>
+                        <textarea name="justificacion" class="form-control" rows="3" required minlength="20"
+                                  placeholder="Ej: Plazo vencido según Res. N° ... / Instrucción de la Dirección del ..."></textarea>
+                        <div class="form-text">Mínimo 20 caracteres. Queda en la bitácora de auditoría.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger btn-sm fw-bold">Confirmar cierre excepcional</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL RETIRAR / RECHAZAR PASE -->
+    <div class="modal fade" id="modalAnularPase" tabindex="-1">
+        <div class="modal-dialog">
+            <form th:action="@{/documentos/actuaciones/anular-pase}" method="post">
+                <input type="hidden" name="actuacionId" id="anularPaseActuacionId" />
+                <input type="hidden" name="accion" id="anularPaseAccion" />
+                <div class="modal-content">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title fw-bold" id="anularPaseTitulo">Retirar pase</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="small text-muted" id="anularPaseAyuda"></p>
+                        <label class="form-label small fw-bold">Motivo <span class="text-danger">*</span></label>
+                        <textarea name="motivo" class="form-control" rows="3" required minlength="10"
+                                  placeholder="Ej: Derivado por error, corresponde al Dpto. de Redes"></textarea>
+                        <div class="form-text">El pase no se borra: queda tachado en el historial con este motivo.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-warning btn-sm fw-bold">Confirmar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL REEMPLAZAR PDF DE UNA ACTUACIÓN -->
+    <div class="modal fade" id="modalReemplazarPdf" tabindex="-1">
+        <div class="modal-dialog">
+            <form th:action="@{/documentos/actuaciones/reemplazar-pdf}" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="actuacionId" id="reemplazarPdfActuacionId" />
+                <div class="modal-content">
+                    <div class="modal-header bg-secondary text-white">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-arrow-repeat me-2"></i>Reemplazar PDF</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="small text-muted">La versión actual no se borra: queda en el historial marcada como <strong>reemplazada</strong>.</p>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Nuevo PDF <span class="text-danger">*</span></label>
+                            <input type="file" name="archivo" class="form-control form-control-sm" accept="application/pdf" required>
+                        </div>
+                        <label class="form-label small fw-bold">Motivo del reemplazo <span class="text-danger">*</span></label>
+                        <textarea name="motivo" class="form-control" rows="2" required minlength="10"
+                                  placeholder="Ej: Se escaneó la página equivocada"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm fw-bold">Subir nueva versión</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL VERSIONES DEL ACUSE / ADJUNTOS DEL EXPEDIENTE -->
+    <div class="modal fade" id="modalAdjuntos" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-files me-2"></i>Acuses y adjuntos <span id="labelCutiAdjuntos" class="text-warning"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="contenedorAdjuntos" class="mb-3"></div>
+                    <form sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')"
+                          th:action="@{/documentos/reemplazar-acuse}" method="post" enctype="multipart/form-data"
+                          class="border rounded p-3 bg-light">
+                        <input type="hidden" name="documentoId" id="adjuntosDocId" />
+                        <div class="fw-bold small mb-2"><i class="bi bi-arrow-repeat me-1"></i>Reemplazar el acuse vigente</div>
+                        <div class="row g-2">
+                            <div class="col-md-5"><input type="file" name="archivo" class="form-control form-control-sm" accept="application/pdf" required></div>
+                            <div class="col-md-5"><input type="text" name="motivo" class="form-control form-control-sm" required minlength="10" placeholder="Motivo del reemplazo"></div>
+                            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Subir</button></div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Confirmar Acuse Final -->
     <div class="modal fade" id="modalConfirmarAcuse" tabindex="-1">
         <div class="modal-dialog">
@@ -999,15 +1141,55 @@
             modalDevolver.show();
         }
 
+        // Abre un modal desde el árbol de trazabilidad (cierra primero el árbol)
+        function abrirDesdeArbol(idModal) {
+            bootstrap.Modal.getInstance(document.getElementById('modalHistorial'))?.hide();
+            new bootstrap.Modal(document.getElementById(idModal)).show();
+        }
+
+        function abrirModalAnularPase(actuacionId, accion) {
+            document.getElementById('anularPaseActuacionId').value = actuacionId;
+            document.getElementById('anularPaseAccion').value = accion;
+            const retirar = accion === 'RETIRAR';
+            document.getElementById('anularPaseTitulo').textContent = retirar ? 'Retirar derivación' : 'Rechazar recepción';
+            document.getElementById('anularPaseAyuda').textContent = retirar
+                ? 'El pase se anula y el expediente deja de figurar en la bandeja de la dependencia destino.'
+                : 'Su dependencia no recibirá el expediente. La dependencia que lo envió verá el rechazo y el motivo.';
+            abrirDesdeArbol('modalAnularPase');
+        }
+
+        function abrirModalReemplazarPdf(actuacionId) {
+            document.getElementById('reemplazarPdfActuacionId').value = actuacionId;
+            abrirDesdeArbol('modalReemplazarPdf');
+        }
+
+        // Lista de versiones de un PDF (vigente y reemplazadas)
+        function renderizarVersiones(versiones) {
+            if (!versiones || versiones.length < 2) return '';
+            let html = `<details class="mt-2 small"><summary class="text-muted">Historial del PDF (${versiones.length} versiones)</summary><ul class="list-unstyled ms-2 mt-1 mb-0">`;
+            versiones.slice().reverse().forEach(v => {
+                html += `<li class="mb-1">
+                    <a href="/documentos/adjuntos/${v.id}/pdf" target="_blank"><i class="bi bi-file-pdf"></i> ${esc(v.nombre)}</a>
+                    <span class="badge ${v.vigente ? 'bg-success' : 'bg-secondary'} ms-1">${v.vigente ? 'Vigente' : 'Reemplazada'}</span>
+                    <span class="text-muted">· ${esc(v.fecha)} · ${esc(v.usuario)}</span>
+                    ${v.motivoReemplazo ? `<div class="text-muted fst-italic ms-3">Motivo: ${esc(v.motivoReemplazo)}</div>` : ''}
+                </li>`;
+            });
+            return html + '</ul></details>';
+        }
+
         // Función recursiva para dibujar los nodos del árbol
         function renderizarNodoArbol(nodo, docId) {
             const esPaseInterno = nodo.tipoActuacion === 'PASE_INTERNO' || nodo.tipoActuacion === 'PASE_PENDIENTE_ACUSE';
-            const esPendiente = esPaseInterno && !nodo.paseConfirmado;
+            const esPendiente = esPaseInterno && !nodo.paseConfirmado && !nodo.anulada;
 
             let badgeColor = 'bg-success';
             let estadoTexto = nodo.tipoActuacion;
 
-            if (esPendiente) {
+            if (nodo.anulada) {
+                badgeColor = 'bg-secondary text-decoration-line-through';
+                estadoTexto = nodo.tipoAnulacion === 'RECHAZADO' ? '✖ RECEPCIÓN RECHAZADA' : '✖ PASE RETIRADO';
+            } else if (esPendiente) {
                 badgeColor = 'bg-warning text-dark';
                 estadoTexto = '🟡 PASE EN TRÁNSITO (PENDIENTE DE ACUSE)';
             } else if (esPaseInterno) {
@@ -1022,11 +1204,37 @@
             } else if (nodo.tipoActuacion === 'DEVOLUCION') {
                 badgeColor = 'bg-warning text-dark';
                 estadoTexto = '↩️ DEVOLUCIÓN';
+            } else if (nodo.tipoActuacion === 'CIERRE_EXCEPCIONAL') {
+                badgeColor = 'bg-danger';
+                estadoTexto = '⚠️ CIERRE EXCEPCIONAL';
             }
+
+            // Acciones disponibles para el usuario actual (calculadas en el servidor)
+            let acciones = '';
+            if (nodo.pdf) {
+                acciones += `<a href="/documentos/actuaciones/${nodo.id}/pdf" target="_blank" class="btn btn-outline-danger btn-sm py-0"><i class="bi bi-file-pdf me-1"></i>Ver PDF</a>`;
+                if (nodo.puedeReemplazarPdf) {
+                    acciones += `<button type="button" class="btn btn-outline-secondary btn-sm py-0" onclick="abrirModalReemplazarPdf(${nodo.id})" title="Subir una versión corregida"><i class="bi bi-arrow-repeat"></i></button>`;
+                }
+            } else if (esPendiente) {
+                acciones += `<button type="button" class="btn btn-warning btn-sm py-0 fw-bold" onclick="abrirModalConfirmarPase(${nodo.id})"><i class="bi bi-upload me-1"></i>Subir Acuse</button>`;
+            } else {
+                acciones += '<span class="badge bg-light text-muted border">Sin PDF</span>';
+            }
+            if (nodo.puedeRetirar) {
+                acciones += `<button type="button" class="btn btn-outline-warning btn-sm py-0" onclick="abrirModalAnularPase(${nodo.id}, 'RETIRAR')" title="Retirar derivación enviada por error"><i class="bi bi-x-circle me-1"></i>Retirar</button>`;
+            }
+            if (nodo.puedeRechazar) {
+                acciones += `<button type="button" class="btn btn-outline-danger btn-sm py-0" onclick="abrirModalAnularPase(${nodo.id}, 'RECHAZAR')" title="No corresponde a su dependencia"><i class="bi bi-hand-thumbs-down me-1"></i>Rechazar</button>`;
+            }
+
+            const detalleAnulacion = nodo.anulada
+                ? `<div class="small text-danger mb-2"><i class="bi bi-info-circle me-1"></i>${nodo.tipoAnulacion === 'RECHAZADO' ? 'Rechazado' : 'Retirado'} el ${esc(nodo.fechaAnulacion)}: ${esc(nodo.motivoAnulacion)}</div>`
+                : '';
 
             let html = `
                 <div class="tree-node">
-                    <div class="tree-card p-3">
+                    <div class="tree-card p-3 ${nodo.anulada ? 'opacity-75 bg-light' : ''}">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <div>
                                 <span class="badge ${badgeColor} me-2">${esc(estadoTexto)} ${nodo.numeroActuacion && nodo.numeroActuacion !== 'S/N' ? 'N° ' + esc(nodo.numeroActuacion) : ''}</span>
@@ -1034,19 +1242,13 @@
                             </div>
                             <small class="text-muted"><i class="bi bi-clock me-1"></i>${esc(nodo.fecha)}</small>
                         </div>
-                        <p class="small text-secondary mb-2 mt-1">${esc(nodo.descripcion)}</p>
-                        <div class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
+                        <p class="small text-secondary mb-2 mt-1 ${nodo.anulada ? 'text-decoration-line-through' : ''}">${esc(nodo.descripcion)}</p>
+                        ${detalleAnulacion}
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 bg-light p-2 rounded">
                             <small class="text-muted"><i class="bi bi-journal-bookmark me-1"></i>Bibliorato: <strong>${esc(nodo.bibliorato)}</strong></small>
-                            
-                            <div class="btn-group">
-                                ${nodo.pdf 
-                                    ? `<a href="/documentos/actuaciones/${nodo.id}/pdf" target="_blank" class="btn btn-xs btn-outline-danger btn-sm py-0"><i class="bi bi-file-pdf me-1"></i>Ver PDF</a>` 
-                                    : (esPendiente 
-                                        ? `<button type="button" class="btn btn-xs btn-warning btn-sm py-0 fw-bold" onclick="abrirModalConfirmarPase(${nodo.id})"><i class="bi bi-upload me-1"></i>Subir Acuse</button>` 
-                                        : '<span class="badge bg-light text-muted border">Sin PDF</span>')
-                                }
-                            </div>
+                            <div class="btn-group">${acciones}</div>
                         </div>
+                        ${renderizarVersiones(nodo.versiones)}
                     </div>
             `;
 
@@ -1203,6 +1405,56 @@
                 });
             }
 
+            // Modal Cierre Excepcional
+            const modalForzar = document.getElementById('modalForzarCierre');
+            if (modalForzar) {
+                modalForzar.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (button) {
+                        modalForzar.querySelector('#forzarCierreDocId').value = button.getAttribute('data-doc-id');
+                        modalForzar.querySelector('#labelCutiForzar').textContent = `(${button.getAttribute('data-doc-cuti')})`;
+                        modalForzar.querySelector('textarea').value = '';
+                    }
+                });
+            }
+
+            // Modal Versiones de acuses/adjuntos del expediente
+            const modalAdjuntosBs = new bootstrap.Modal(document.getElementById('modalAdjuntos'));
+            document.querySelectorAll('.btn-ver-adjuntos').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const docId = this.getAttribute('data-doc-id');
+                    document.getElementById('labelCutiAdjuntos').textContent = `(${this.getAttribute('data-doc-cuti')})`;
+                    const campoDoc = document.getElementById('adjuntosDocId');
+                    if (campoDoc) campoDoc.value = docId;
+                    const contenedor = document.getElementById('contenedorAdjuntos');
+                    contenedor.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>';
+                    modalAdjuntosBs.show();
+
+                    fetch(`/api/documentos/${docId}/adjuntos`)
+                        .then(res => { if (!res.ok) throw new Error('Error ' + res.status); return res.json(); })
+                        .then(lista => {
+                            if (!lista.length) {
+                                contenedor.innerHTML = '<div class="alert alert-light border small mb-0">El expediente no tiene acuses cargados.</div>';
+                                return;
+                            }
+                            let html = '<table class="table table-sm small align-middle mb-0"><thead><tr><th>Archivo</th><th>Tipo</th><th>Estado</th><th>Subido</th></tr></thead><tbody>';
+                            lista.slice().reverse().forEach(a => {
+                                html += `<tr class="${a.vigente ? '' : 'text-muted'}">
+                                    <td><a href="/documentos/adjuntos/${a.id}/pdf" target="_blank"><i class="bi bi-file-pdf text-danger"></i> ${esc(a.nombre)}</a>
+                                        ${a.motivoReemplazo ? `<div class="fst-italic">Motivo: ${esc(a.motivoReemplazo)}</div>` : ''}</td>
+                                    <td>${esc(a.tipo)}</td>
+                                    <td><span class="badge ${a.vigente ? 'bg-success' : 'bg-secondary'}">${a.vigente ? 'Vigente' : 'Reemplazado'}</span></td>
+                                    <td>${esc(a.fecha)}<div>${esc(a.usuario)}</div></td>
+                                </tr>`;
+                            });
+                            contenedor.innerHTML = html + '</tbody></table>';
+                        })
+                        .catch(err => {
+                            contenedor.innerHTML = `<div class="alert alert-danger small mb-0">No se pudieron cargar los adjuntos. ${esc(err.message)}</div>`;
+                        });
+                });
+            });
+
             // Modal Confirmar Acuse Final
             const modalAcuse = document.getElementById('modalConfirmarAcuse');
             if (modalAcuse) {
@@ -1253,7 +1505,8 @@
                                     raices.push(act);
                                 }
 
-                                if (act.dependenciaReceptoraId != null) {
+                                // Un pase retirado o rechazado nunca llegó: no es padre de nada
+                                if (act.dependenciaReceptoraId != null && !act.anulada) {
                                     ultimoRecibidoPorDependencia[act.dependenciaReceptoraId] = act;
                                 }
                             });
