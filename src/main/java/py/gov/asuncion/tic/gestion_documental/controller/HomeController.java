@@ -3,7 +3,9 @@ package py.gov.asuncion.tic.gestion_documental.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -26,6 +29,7 @@ import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.Documento;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
 import py.gov.asuncion.tic.gestion_documental.dto.DevolucionRequestDTO;
+import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.AdjuntoDocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.DocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
@@ -33,6 +37,7 @@ import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -65,7 +70,7 @@ public class HomeController {
 
     @GetMapping("/")
     public String index(Model model) {
-        model.addAttribute("nuevoDoc", new Documento());
+        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
 
         if (documentoService != null) {
             Usuario usuarioLogueado = getUsuarioAutenticado();
@@ -118,7 +123,7 @@ public class HomeController {
 
    @GetMapping("/")
     public String index(Model model) {
-        model.addAttribute("nuevoDoc", new Documento());
+        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
 
         if (documentoService != null) {
             Usuario usuarioLogueado = getUsuarioAutenticado();
@@ -197,7 +202,7 @@ public class HomeController {
      * 📥 GUARDAR NUEVO DOCUMENTO
      */
     @PostMapping("/documentos/guardar")
-    public String guardarDocumento(@ModelAttribute("nuevoDoc") Documento documento,
+    public String guardarDocumento(@ModelAttribute("nuevoDoc") NuevoDocumentoDTO documento,
                                    RedirectAttributes redirectAttributes) {
         try {
             Documento docGuardado = documentoService.guardarNuevoDocumento(documento, getUsuarioAutenticadoObligatorio());
@@ -268,13 +273,19 @@ public class HomeController {
      */
     @GetMapping("/documentos/actuaciones/{actuacionId}/pdf")
     public ResponseEntity<Resource> verPdfActuacion(@PathVariable Long actuacionId) {
-        java.nio.file.Path ruta = documentoService.resolverPdfActuacion(actuacionId);
+        java.nio.file.Path ruta;
+        try {
+            ruta = documentoService.resolverPdfActuacion(actuacionId, getUsuarioAutenticado());
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         if (ruta == null) {
             return ResponseEntity.notFound().build();
         }
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + ruta.getFileName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(ruta.getFileName().toString(), StandardCharsets.UTF_8).build().toString())
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(new FileSystemResource(ruta));
     }
@@ -284,6 +295,10 @@ public class HomeController {
      */
     @GetMapping("/documentos/descargar-acuse/{documentoId}")
     public ResponseEntity<Resource> descargarAcuse(@PathVariable Long documentoId) {
+        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), documentoId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         List<AdjuntoDocumento> adjuntos = adjuntoDocumentoRepository.findByDocumentoId(documentoId);
 
         if (adjuntos.isEmpty()) {
@@ -300,7 +315,9 @@ public class HomeController {
         Resource recurso = new FileSystemResource(archivoFisico);
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + adjunto.getNombreArchivo() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(adjunto.getNombreArchivo() != null ? adjunto.getNombreArchivo() : "acuse.pdf", StandardCharsets.UTF_8)
+                        .build().toString())
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(recurso);
     }
@@ -317,11 +334,19 @@ public class HomeController {
                                    @RequestParam(value = "fechaHasta", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate fechaHasta,
                                    Model model) {
 
-        model.addAttribute("nuevoDoc", new Documento());
+        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
 
         if (documentoService != null) {
+            Usuario usuarioLogueado = getUsuarioAutenticado();
             List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(
                     texto, dependenciaId, tipoDocId, estado, fechaDesde, fechaHasta);
+
+            // 🛡️ Departamentos y unidades solo ven en la búsqueda los expedientes de su bandeja
+            if (!documentoService.esRolAdministrativo(usuarioLogueado)) {
+                resultados = resultados.stream()
+                        .filter(d -> documentoService.puedeAccederDocumento(usuarioLogueado, d.getId()))
+                        .toList();
+            }
 
             model.addAttribute("documentosResultados", resultados);
             model.addAttribute("esBusqueda", true);
@@ -332,7 +357,6 @@ public class HomeController {
             model.addAttribute("paramFechaDesde", fechaDesde);
             model.addAttribute("paramFechaHasta", fechaHasta);
 
-            Usuario usuarioLogueado = getUsuarioAutenticado();
             model.addAttribute("usuarioLogueado", usuarioLogueado);
             model.addAttribute("documentos", documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado));
             model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
@@ -388,7 +412,7 @@ public class HomeController {
                                        @RequestParam("archivoAcusePdf") MultipartFile archivoAcusePdf,
                                        RedirectAttributes redirectAttributes) {
         try {
-            documentoService.confirmarRecepcionPaseInterno(actuacionId, archivoAcusePdf);
+            documentoService.confirmarRecepcionPaseInterno(actuacionId, archivoAcusePdf, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Recepción del pase confirmada.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error al confirmar el pase: " + e.getMessage());
@@ -401,7 +425,10 @@ public class HomeController {
      */
     @GetMapping("/api/documentos/{id}/actuaciones")
     @ResponseBody
-    public List<Map<String, Object>> obtenerActuacionesJson(@PathVariable("id") Long id) {
+    public ResponseEntity<List<Map<String, Object>>> obtenerActuacionesJson(@PathVariable("id") Long id) {
+        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         List<Map<String, Object>> listaJson = new ArrayList<>();
         if (documentoService != null) {
             List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
@@ -417,11 +444,12 @@ public class HomeController {
                 map.put("bibliorato", act.getUbicacionBibliorato() != null ? act.getUbicacionBibliorato() : "No especificado");
                 map.put("pdf", act.getRutaCopiaSelladaPdf());
                 map.put("paseConfirmado", act.getPaseConfirmado() != null ? act.getPaseConfirmado() : true);
-                map.put("fecha", act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+                map.put("fecha", act.getFechaHoraActuacion() != null
+                        ? act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "-");
                 listaJson.add(map);
             }
         }
-        return listaJson;
+        return ResponseEntity.ok(listaJson);
     }
 
     /**
@@ -429,7 +457,10 @@ public class HomeController {
      */
     @GetMapping("/api/documentos/{id}/informes-disponibles")
     @ResponseBody
-    public List<Map<String, Object>> obtenerInformesDisponiblesJson(@PathVariable("id") Long id) {
+    public ResponseEntity<List<Map<String, Object>>> obtenerInformesDisponiblesJson(@PathVariable("id") Long id) {
+        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         List<Map<String, Object>> listaJson = new ArrayList<>();
         if (documentoService != null) {
             List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
@@ -449,7 +480,7 @@ public class HomeController {
                 }
             }
         }
-        return listaJson;
+        return ResponseEntity.ok(listaJson);
     }
 
     @PostMapping("/documentos/salida-directa")

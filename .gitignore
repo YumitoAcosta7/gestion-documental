@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Credenciales locales ###
+application-local.properties
+
+### Archivos subidos (PDF de expedientes) ###
+uploads/

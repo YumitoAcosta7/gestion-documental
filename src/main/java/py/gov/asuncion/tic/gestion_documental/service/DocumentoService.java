@@ -2,6 +2,7 @@ package py.gov.asuncion.tic.gestion_documental.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -9,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.persistence.EntityNotFoundException;
 import py.gov.asuncion.tic.gestion_documental.domain.*;
 import py.gov.asuncion.tic.gestion_documental.dto.DevolucionRequestDTO;
+import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.dto.SalidaDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.*;
 
@@ -81,6 +83,42 @@ public class DocumentoService {
     }
 
 
+    // 🛡️ CONTROL DE ACCESO POR DEPENDENCIA
+    public boolean esRolAdministrativo(Usuario usuario) {
+        return usuario != null
+                && (usuario.getRol() == RolUsuario.DIRECTOR || usuario.getRol() == RolUsuario.SECRETARIA_ADMIN);
+    }
+
+    // Dirección y Secretaría acceden a todo; el resto solo a los documentos originados
+    // en su dependencia o en los que su dependencia emitió/recibió una actuación.
+    public boolean puedeAccederDocumento(Usuario usuario, Long documentoId) {
+        if (usuario == null || documentoId == null) {
+            return false;
+        }
+        if (esRolAdministrativo(usuario)) {
+            return true;
+        }
+        if (usuario.getDependencia() == null) {
+            return false;
+        }
+
+        Integer depId = usuario.getDependencia().getId();
+        Documento doc = documentoRepository.findById(documentoId).orElse(null);
+        if (doc == null) {
+            return false;
+        }
+        if (doc.getDependenciaOrigen() != null && depId.equals(doc.getDependenciaOrigen().getId())) {
+            return true;
+        }
+        return actuacionDocumentoRepository.existeParticipacionDependencia(documentoId, depId);
+    }
+
+    public void verificarAccesoDocumento(Usuario usuario, Long documentoId) {
+        if (!puedeAccederDocumento(usuario, documentoId)) {
+            throw new AccessDeniedException("Su dependencia no tiene acceso a este expediente.");
+        }
+    }
+
     public List<TipoDocumento> obtenerTiposDocumentoActivos() {
         return tipoDocumentoRepository.findByActivoTrueOrderByNombreAsc();
     }
@@ -132,6 +170,33 @@ public class DocumentoService {
     }
 
     @Transactional
+    public Documento guardarNuevoDocumento(NuevoDocumentoDTO dto, Usuario usuarioSesion) {
+        if (dto.getTipoDocumentoId() == null) {
+            throw new IllegalArgumentException("Debe seleccionar el tipo de documento.");
+        }
+        if (dto.getDependenciaOrigenId() == null) {
+            throw new IllegalArgumentException("Debe seleccionar la dependencia de origen.");
+        }
+        if (dto.getAsunto() == null || dto.getAsunto().isBlank()) {
+            throw new IllegalArgumentException("Debe ingresar el asunto del documento.");
+        }
+
+        Documento documento = new Documento();
+        documento.setTipoDocumento(tipoDocumentoRepository.findById(dto.getTipoDocumentoId())
+                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + dto.getTipoDocumentoId())));
+        documento.setDependenciaOrigen(dependenciaRepository.findById(dto.getDependenciaOrigenId())
+                .orElseThrow(() -> new IllegalArgumentException("Dependencia no encontrada: " + dto.getDependenciaOrigenId())));
+        documento.setPrioridad(dto.getPrioridad() != null ? dto.getPrioridad() : Prioridad.NORMAL);
+        documento.setNumeroDocumentoOrigen(dto.getNumeroDocumentoOrigen());
+        documento.setPersonaEntrega(dto.getPersonaEntrega());
+        documento.setNroOrdenLibro(dto.getNroOrdenLibro());
+        documento.setNroPaginaLibro(dto.getNroPaginaLibro());
+        documento.setAsunto(dto.getAsunto().trim());
+
+        return guardarNuevoDocumento(documento, usuarioSesion);
+    }
+
+    @Transactional
     public Documento guardarNuevoDocumento(Documento documento, Usuario usuarioSesion) {
         LocalDateTime ahora = LocalDateTime.now();
         int anioActual = ahora.getYear();
@@ -178,7 +243,7 @@ public class DocumentoService {
             docGuardado.getEstadoActual(), 
             "Ingreso inicial asentar en libro con N° Origen " + docGuardado.getNumeroDocumentoOrigen(), 
             usuarioSesion, 
-            "127.0.0.1"
+            null
         );
 
         return docGuardado;
@@ -295,7 +360,7 @@ public class DocumentoService {
             documento.getEstadoActual(),
             "Expediente devuelto por " + depActual.getNombre() + " a " + depDestino.getNombre() + ": " + observacion.trim(),
             usuarioActual,
-            "127.0.0.1"
+            null
         );
     }
     
@@ -313,6 +378,18 @@ public class DocumentoService {
 
         if (observacion == null || observacion.trim().length() < 5) {
             throw new IllegalArgumentException("Debe ingresar una observación o motivo válido (mínimo 5 caracteres) para derivar el documento.");
+        }
+
+        verificarAccesoDocumento(usuario, documentoId);
+
+        // Solo se puede derivar a las dependencias que el usuario tiene habilitadas
+        java.util.Set<Integer> destinosPermitidos = obtenerDependenciasHijas(usuario).stream()
+                .map(Dependencia::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        for (Integer depId : dependenciasDestinoIds) {
+            if (!destinosPermitidos.contains(depId)) {
+                throw new AccessDeniedException("No está habilitado para derivar a la dependencia seleccionada (ID " + depId + ").");
+            }
         }
 
         Documento doc = documentoRepository.findById(documentoId)
@@ -363,7 +440,7 @@ public class DocumentoService {
             doc.getEstadoActual(), 
             "Derivado a " + dependenciasDestinoIds.size() + " áreas: " + observacion, 
             usuario, 
-            "127.0.0.1"
+            null
         );
 
         return doc;
@@ -469,7 +546,7 @@ public class DocumentoService {
             docGuardado.getEstadoActual(), 
             "Documento generado y despachado directamente con N° Remisión " + nroNotaSalida, 
             usuarioSesion, 
-            "127.0.0.1"
+            null
         );
 
         return docGuardado;
@@ -546,7 +623,7 @@ public class DocumentoService {
             docGuardado.getEstadoActual(), 
             "Salida externa con N° Remisión " + nroNotaSalida + " entregada a " + personaRetira, 
             usuarioSesion, 
-            "127.0.0.1"
+            null
         );
 
         return docGuardado;
@@ -604,7 +681,7 @@ public class DocumentoService {
             EstadoDocumento.FINALIZADO, 
             "Acuse exterior firmado y adjunto. Expediente concluido.", 
             usuarioSesion, 
-            "127.0.0.1"
+            null
         );
 
         return docFinalizado;
@@ -641,6 +718,8 @@ public class DocumentoService {
                                                 String ubicacionBibliorato,
                                                 MultipartFile archivoCopiaSellada,
                                                 Usuario usuarioSesion) {
+        verificarAccesoDocumento(usuarioSesion, documentoId);
+
         Documento doc = documentoRepository.findById(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
 
@@ -694,7 +773,7 @@ public class DocumentoService {
             doc.getEstadoActual(), 
             "Nueva actuación cargada: " + tipoActuacion + " N° " + nroLimpio + " por " + depEmisora.getNombre(), 
             usuarioSesion, 
-            "127.0.0.1"
+            null
         );
 
         // 🔄 EVALUACIÓN AUTOMÁTICA DE ESTADO GLOBAL
@@ -705,11 +784,12 @@ public class DocumentoService {
 
     // Ubica el PDF de una actuación (copia sellada o acuse de pase). Se busca en la carpeta
     // relativa histórica "uploads/acuses" y en app.upload.dir.
-    public Path resolverPdfActuacion(Long actuacionId) {
+    public Path resolverPdfActuacion(Long actuacionId, Usuario usuario) {
         ActuacionDocumento actuacion = actuacionDocumentoRepository.findById(actuacionId).orElse(null);
         if (actuacion == null || actuacion.getRutaCopiaSelladaPdf() == null || actuacion.getRutaCopiaSelladaPdf().isBlank()) {
             return null;
         }
+        verificarAccesoDocumento(usuario, actuacion.getDocumento().getId());
 
         // Solo el nombre del archivo, para evitar rutas manipuladas
         Path nombre = Paths.get(actuacion.getRutaCopiaSelladaPdf()).getFileName();
@@ -726,14 +806,31 @@ public class DocumentoService {
     }
 
     @Transactional
-    public ActuacionDocumento confirmarRecepcionPaseInterno(Long actuacionId, 
-                                                            MultipartFile archivoAcusePdf) {
+    public ActuacionDocumento confirmarRecepcionPaseInterno(Long actuacionId,
+                                                            MultipartFile archivoAcusePdf,
+                                                            Usuario usuarioSesion) {
         if (archivoAcusePdf == null || archivoAcusePdf.isEmpty()) {
             throw new IllegalArgumentException("Es OBLIGATORIO subir el PDF de la copia sellada y firmada para confirmar la recepción del pase.");
         }
 
         ActuacionDocumento actuacion = actuacionDocumentoRepository.findById(actuacionId)
                 .orElseThrow(() -> new RuntimeException("Actuación no encontrada: " + actuacionId));
+
+        if (!"PASE_INTERNO".equals(actuacion.getTipoActuacion()) || Boolean.TRUE.equals(actuacion.getPaseConfirmado())) {
+            throw new IllegalStateException("La actuación no es un pase interno pendiente de confirmación.");
+        }
+
+        // Solo confirma la dependencia receptora (o Dirección/Secretaría)
+        Dependencia receptora = actuacion.getDependenciaReceptoraPase();
+        Dependencia depUsuario = usuarioSesion != null ? usuarioSesion.getDependencia() : null;
+        boolean esReceptora = depUsuario != null && (receptora != null
+                ? receptora.getId().equals(depUsuario.getId())
+                // Pases antiguos sin receptora: se identifica por la descripción "➔ <dependencia>"
+                : actuacion.getDescripcionResumen() != null
+                    && actuacion.getDescripcionResumen().contains("➔ " + depUsuario.getNombre()));
+        if (!esReceptora && !esRolAdministrativo(usuarioSesion)) {
+            throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción.");
+        }
 
         try {
             String extension = ".pdf";
@@ -760,9 +857,11 @@ public class DocumentoService {
             "CONFIRMACION_PASE_INTERNO", 
             actuacionGuardada.getDocumento().getEstadoActual(), 
             actuacionGuardada.getDocumento().getEstadoActual(), 
-            "Recepción física de pase interno confirmada con PDF para " + actuacionGuardada.getDependenciaEmisora().getNombre(), 
-            actuacionGuardada.getUsuario(), 
-            "127.0.0.1"
+            "Recepción física de pase interno confirmada con PDF por "
+                + (receptora != null ? receptora.getNombre() : "dependencia receptora")
+                + " (pase emitido por " + actuacionGuardada.getDependenciaEmisora().getNombre() + ")",
+            usuarioSesion,
+            null
         );
 
         // 🔄 EVALUACIÓN AUTOMÁTICA DE ESTADO GLOBAL
@@ -823,7 +922,7 @@ public class DocumentoService {
                 docActualizado.getEstadoActual(), 
                 "Todas las dependencias respondieron (" + respuestasRecibidas + "/" + pasesParaInforme + "). Trámite pasa automáticamente a PENDIENTE_SALIDA.", 
                 null, 
-                "127.0.0.1"
+                null
             );
         }
     }

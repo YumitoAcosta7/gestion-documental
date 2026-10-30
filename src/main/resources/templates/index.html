@@ -875,7 +875,7 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Tipo de Documento</label>
-                                <select class="form-select form-select-sm" th:field="*{tipoDocumento.id}" required>
+                                <select class="form-select form-select-sm" th:field="*{tipoDocumentoId}" required>
                                     <option value="" disabled selected>Seleccione...</option>
                                     <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}" th:text="${tipo.nombre}"></option>
                                 </select>
@@ -894,7 +894,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Dependencia de Origen</label>
-                                <select class="form-select form-select-sm" th:field="*{dependenciaOrigen.id}" required>
+                                <select class="form-select form-select-sm" th:field="*{dependenciaOrigenId}" required>
                                     <option value="" disabled selected>Seleccione área...</option>
                                     <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
                                 </select>
@@ -929,6 +929,17 @@
     <!-- Scripts Bootstrap y Control Global -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Escapa texto antes de insertarlo con innerHTML (evita inyección de HTML/JS)
+        function esc(valor) {
+            if (valor === null || valor === undefined) return "";
+            return String(valor)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
         // Función para alternar entre Derivación Única y Múltiple
         function alternarModo(modo) {
             const unico = document.getElementById('contenedorUnico');
@@ -1024,14 +1035,14 @@
                     <div class="tree-card p-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <div>
-                                <span class="badge ${badgeColor} me-2">${estadoTexto} ${nodo.numeroActuacion && nodo.numeroActuacion !== 'S/N' ? 'N° ' + nodo.numeroActuacion : ''}</span>
-                                <strong class="text-dark">${nodo.dependencia}</strong>
+                                <span class="badge ${badgeColor} me-2">${esc(estadoTexto)} ${nodo.numeroActuacion && nodo.numeroActuacion !== 'S/N' ? 'N° ' + esc(nodo.numeroActuacion) : ''}</span>
+                                <strong class="text-dark">${esc(nodo.dependencia)}</strong>
                             </div>
-                            <small class="text-muted"><i class="bi bi-clock me-1"></i>${nodo.fecha}</small>
+                            <small class="text-muted"><i class="bi bi-clock me-1"></i>${esc(nodo.fecha)}</small>
                         </div>
-                        <p class="small text-secondary mb-2 mt-1">${nodo.descripcion}</p>
+                        <p class="small text-secondary mb-2 mt-1">${esc(nodo.descripcion)}</p>
                         <div class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
-                            <small class="text-muted"><i class="bi bi-journal-bookmark me-1"></i>Bibliorato: <strong>${nodo.bibliorato}</strong></small>
+                            <small class="text-muted"><i class="bi bi-journal-bookmark me-1"></i>Bibliorato: <strong>${esc(nodo.bibliorato)}</strong></small>
                             
                             <div class="btn-group">
                                 ${nodo.pdf 
@@ -1173,12 +1184,12 @@
                                                    name="informeActuacionId" 
                                                    value="${inf.id}" 
                                                    id="inf_${inf.id}" 
-                                                   data-ref="${refTexto}"
+                                                   data-ref="${esc(refTexto)}"
                                                    onchange="actualizarTextoReferenciaSalida()"
                                                    checked>
                                             <label class="form-check-label small" for="inf_${inf.id}">
-                                                <strong>${refTexto}</strong> - ${inf.dependencia}
-                                                <span class="d-block text-secondary text-truncate" style="max-width: 500px;">${inf.resumen}</span>
+                                                <strong>${esc(refTexto)}</strong> - ${esc(inf.dependencia)}
+                                                <span class="d-block text-secondary text-truncate" style="max-width: 500px;">${esc(inf.resumen)}</span>
                                             </label>
                                         </div>
                                     `;
@@ -1280,14 +1291,14 @@
                             data.forEach(aud => {
                                 html += `
                                     <tr>
-                                        <td class="fw-bold text-nowrap"><i class="bi bi-clock me-1 text-muted"></i>${aud.fechaHora}</td>
-                                        <td><span class="badge bg-dark">${aud.evento}</span></td>
-                                        <td><span class="badge bg-light text-dark border">${aud.estadoAnterior}</span></td>
-                                        <td><span class="badge bg-primary">${aud.estadoNuevo}</span></td>
-                                        <td class="fw-semibold">${aud.usuario}</td>
-                                        <td class="small">${aud.dependencia}</td>
-                                        <td class="small text-secondary">${aud.descripcion}</td>
-                                        <td><code class="text-muted">${aud.ip}</code></td>
+                                        <td class="fw-bold text-nowrap"><i class="bi bi-clock me-1 text-muted"></i>${esc(aud.fechaHora)}</td>
+                                        <td><span class="badge bg-dark">${esc(aud.evento)}</span></td>
+                                        <td><span class="badge bg-light text-dark border">${esc(aud.estadoAnterior)}</span></td>
+                                        <td><span class="badge bg-primary">${esc(aud.estadoNuevo)}</span></td>
+                                        <td class="fw-semibold">${esc(aud.usuario)}</td>
+                                        <td class="small">${esc(aud.dependencia)}</td>
+                                        <td class="small text-secondary">${esc(aud.descripcion)}</td>
+                                        <td><code class="text-muted">${esc(aud.ip)}</code></td>
                                     </tr>
                                 `;
                             });
