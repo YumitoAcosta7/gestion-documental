@@ -57,6 +57,11 @@
                     <i class="bi bi-plus-lg me-1"></i>Nuevo Documento
                 </button>
 
+                <!-- Botón Registrar Nuevo Documento de Salida (Visible para roles autorizados) -->
+                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" class="btn btn-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalNuevoDocSalida">
+                    <i class="bi bi-plus-lg me-1"></i>Nueva Salida
+                </button>
+
                 <!-- Botón de Cerrar Sesión Compacto -->
                 <form th:action="@{/logout}" method="post" class="m-0">
                     <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-semibold" title="Cerrar Sesión">
@@ -64,6 +69,16 @@
                     </button>
                 </form>
             </div>
+        </div>
+
+        <!-- Mensajes de resultado de la última operación -->
+        <div th:if="${mensajeExito}" class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+            <i class="bi bi-check-circle-fill me-2"></i><span th:text="${mensajeExito}">Operación exitosa</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <div th:if="${error}" class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i><span th:text="${error}">Error</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
 
         <!-- PANEL DE BÚSQUEDA GLOBAL MULTICRITERIO -->
@@ -176,6 +191,11 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="salidas-tab" data-bs-toggle="tab" data-bs-target="#salidas" type="button" role="tab">
+                    <i class="bi bi-box-arrow-right me-1"></i> Documentos de Salida
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link px-4" id="finalizados-tab" data-bs-toggle="tab" data-bs-target="#finalizados-pane" type="button" role="tab">
                     <i class="bi bi-check-circle-fill me-2 text-success"></i>Historial de Finalizados
                 </button>
@@ -214,8 +234,8 @@
                                     <tr th:each="doc : ${documentosResultados}">
                                         <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</td>
                                         <td><span class="badge bg-light text-dark border" th:text="${doc.numeroDocumentoOrigen != null ? doc.numeroDocumentoOrigen : 'S/N'}">S/N</span></td>
-                                        <td><span class="badge bg-secondary" th:text="${doc.tipoDocumento.nombre}">Nota</span></td>
-                                        <td th:text="${doc.dependenciaOrigen.nombre}">Origen</td>
+                                        <td><span class="badge bg-secondary" th:text="${doc.tipoDocumento?.nombre}">Nota</span></td>
+                                        <td th:text="${doc.dependenciaOrigen?.nombre}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
                                         <td th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</td>
@@ -223,7 +243,7 @@
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                 <i class="bi bi-clock-history"></i> Historial
                                             </button>
-                                            <button type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
+                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
                                                 <i class="bi bi-shield-check"></i> Auditoría
                                             </button>
                                         </td>
@@ -261,13 +281,13 @@
                                     <tr th:each="doc : ${documentos}">
                                         <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</td>
                                         <td><span class="badge bg-light text-dark border" th:text="${doc.numeroDocumentoOrigen != null ? doc.numeroDocumentoOrigen : 'S/N'}">S/N</span></td>
-                                        <td><span class="badge bg-secondary" th:text="${doc.tipoDocumento.nombre}">Nota</span></td>
+                                        <td><span class="badge bg-secondary" th:text="${doc.tipoDocumento?.nombre}">Nota</span></td>
                                         <td>
-                                            <span th:if="${doc.prioridad.name() == 'URGENTE'}" class="badge bg-danger">URGENTE</span>
-                                            <span th:if="${doc.prioridad.name() == 'IMPORTANTE'}" class="badge bg-warning text-dark">IMPORTANTE</span>
-                                            <span th:if="${doc.prioridad.name() == 'NORMAL'}" class="badge bg-info text-white">NORMAL</span>
+                                            <span th:if="${doc.prioridad?.name() == 'URGENTE'}" class="badge bg-danger">URGENTE</span>
+                                            <span th:if="${doc.prioridad?.name() == 'IMPORTANTE'}" class="badge bg-warning text-dark">IMPORTANTE</span>
+                                            <span th:if="${doc.prioridad?.name() == 'NORMAL'}" class="badge bg-info text-white">NORMAL</span>
                                         </td>
-                                        <td th:text="${doc.dependenciaOrigen.nombre}">Origen</td>
+                                        <td th:text="${doc.dependenciaOrigen?.nombre}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
                                         <td th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</td>
@@ -279,17 +299,26 @@
                                                 <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                     <i class="bi bi-clock-history"></i> Historial
                                                 </button>
-                                                <button type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría inmutable">
+                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría inmutable">
                                                     <i class="bi bi-shield-check"></i> Auditoría
                                                 </button>
 
+                                                <!-- BOTÓN DEVOLVER -->
+                                                <button type="button" 
+                                                        th:if="${doc.estadoActual.name() != 'FINALIZADO' and doc.estadoActual.name() != 'PENDIENTE_SALIDA'}"
+                                                        class="btn btn-sm btn-outline-warning rounded-pill px-2 me-1 fw-bold" 
+                                                        th:onclick="'prepararDevolucion(' + ${doc.id} + ')'"
+                                                        title="Devolver expediente a la dependencia emisora">
+                                                    <i class="bi bi-arrow-return-left"></i> Devolver
+                                                </button>
+
                                                 <!-- BOTÓN DERIVAR RESTAURADO -->
-                                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
+                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR', 'JEFE_DEPTO')" type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                     <i class="bi bi-arrow-right-short"></i> Derivar
                                                 </button>
 
                                                 <!-- BOTÓN SALIDA -->
-                                                <button type="button" 
+                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button"
                                                         th:class="${doc.fechaHoraSalida != null ? 'btn btn-sm btn-success rounded-pill px-2 me-1' : 'btn btn-sm btn-outline-success rounded-pill px-2 me-1'}" 
                                                         data-bs-toggle="modal" 
                                                         data-bs-target="#modalSalida" 
@@ -299,7 +328,7 @@
                                                 </button>
 
                                                 <!-- BOTÓN CONFIRMAR ACUSE -->
-                                                <button type="button" 
+                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button"
                                                         th:if="${doc.estadoActual.name() == 'PENDIENTE_SALIDA'}"
                                                         th:disabled="${doc.fechaHoraSalida == null}"
                                                         th:class="${doc.fechaHoraSalida != null ? 'btn btn-sm btn-warning rounded-pill px-3 me-1 fw-bold text-dark' : 'btn btn-sm btn-secondary rounded-pill px-3 me-1 disabled opacity-50'}"
@@ -325,7 +354,51 @@
                 </div>
             </div>
 
-            <!-- PESTAÑA 2: EXPEDIENTES FINALIZADOS / HISTORIAL -->
+            <!-- PESTAÑA 2: SALIDA DOCUMENTOS -->
+            <div class="tab-pane fade" id="salidas" role="tabpanel">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <h5 class="card-title fw-bold text-primary mb-3">Documentos Emitidos y Salidas al Exterior</h5>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>CUTI</th>
+                                        <th>N° Nota Salida</th>
+                                        <th>Asunto</th>
+                                        <th>Destino</th>
+                                        <th>Estado</th>
+                                        <th>Fecha Salida</th>
+                                        <th class="text-center">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr th:each="doc : ${documentosSalida}">
+                                        <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">CUTI</td>
+                                        <td><span class="badge bg-dark" th:text="${doc.nroNotaSalida != null ? doc.nroNotaSalida : 'S/N'}">N°</span></td>
+                                        <td th:text="${doc.asunto}">Asunto</td>
+                                        <td th:text="${doc.dependenciaDestinoSalida != null ? doc.dependenciaDestinoSalida.nombre : 'Externo'}">Destino</td>
+                                        <td><span class="badge bg-info text-dark" th:text="${doc.estadoActual}">ESTADO</span></td>
+                                        <td th:text="${doc.fechaHoraSalida != null ? #temporals.format(doc.fechaHoraSalida, 'dd/MM/yyyy HH:mm') : '-'}">-</td>
+                                        <td class="text-center">
+                                            <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Historial">
+                                                <i class="bi bi-clock-history"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr th:if="${#lists.isEmpty(documentosSalida)}">
+                                        <td colspan="7" class="text-center py-4 text-muted">
+                                            <i class="bi bi-folder2-open fs-2 d-block mb-2"></i> No hay documentos de salida registrados por su dependencia.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PESTAÑA 3: EXPEDIENTES FINALIZADOS / HISTORIAL -->
             <div class="tab-pane fade" id="finalizados-pane" role="tabpanel">
                 <div class="card border-0 shadow-sm rounded-3">
                     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
@@ -362,7 +435,7 @@
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                 <i class="bi bi-clock-history"></i> Historial
                                             </button>
-                                            <button type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
+                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
                                                 <i class="bi bi-shield-check"></i> Auditoría
                                             </button>
                                             <a th:href="@{/documentos/descargar-acuse/{id}(id=${doc.id})}" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
@@ -427,7 +500,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/actuaciones/guardar}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <input type="hidden" id="actuacionDocId" name="documentoId" />
 
@@ -497,11 +569,88 @@
         </div>
     </div>
 
+    <!-- MODAL NUEVO DOCUMENTO DE SALIDA (DIRECTA) -->
+    <div class="modal fade" id="modalNuevoDocSalida" tabindex="-1" aria-labelledby="modalNuevoDocSalidaLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <form th:action="@{/documentos/salida-directa}" method="post" enctype="multipart/form-data">
+                
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title fw-bold" id="modalNuevoDocSalidaLabel">
+                            <i class="bi bi-box-arrow-right me-2"></i>Registrar Nuevo Documento de Salida
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    
+                    <div class="modal-body">
+                        <p class="small text-muted">Cree y despache un documento nativo originado en su dependencia hacia el exterior.</p>
+                        
+                        <div class="row g-3">
+                            <!-- Número de Nota de Salida -->
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">N° de Nota / Salida:</label>
+                                <input type="text" name="nroNotaSalida" class="form-control" required placeholder="Ej: Nota N° 123/2026">
+                            </div>
+
+                            <!-- Dependencia Destino Externa -->
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Dependencia / Destino Externo:</label>
+                                <select name="dependenciaDestinoId" class="form-select" required>
+                                    <option value="" selected disabled>Seleccione dependencia destino...</option>
+                                    <!-- Iterar sobre las dependencias disponibles en tu modelo -->
+                                    <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
+                                </select>
+                            </div>
+
+                            <!-- Tipo de Documento -->
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Tipo de Documento:</label>
+                                <select name="tipoDocumentoId" class="form-select" required>
+                                    <option value="" selected disabled>Seleccione tipo...</option>
+                                    <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}" th:text="${tipo.nombre}"></option>
+                                </select>
+                            </div>
+
+                            <!-- Asunto -->
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Asunto:</label>
+                                <textarea name="asunto" class="form-control" rows="2" required placeholder="Describa el asunto del documento..."></textarea>
+                            </div>
+
+                            <!-- Persona que retira -->
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Persona que retira (Físico):</label>
+                                <input type="text" name="personaRetira" class="form-control" placeholder="Nombre de quien retira el oficio">
+                            </div>
+
+                            <!-- Funcionario que entrega -->
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Funcionario que entrega:</label>
+                                <input type="text" name="funcionarioEntrega" class="form-control" placeholder="Funcionario responsable de la entrega">
+                            </div>
+
+                            <!-- Archivo PDF de Acuse / Documento Firmado -->
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Archivo PDF (Acuse / Copia Firmada):</label>
+                                <input type="file" name="archivoAcuse" class="form-control" accept="application/pdf">
+                                <div class="form-text">Adjunte el respaldo en PDF si lo posee.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm fw-bold">Registrar y Despachar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- MODAL DEVOLUCIÓN RÁPIDA -->
     <div class="modal fade" id="modalDevolver" tabindex="-1">
         <div class="modal-dialog">
             <form th:action="@{/documentos/devolver}" method="post">
-                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                 <input type="hidden" name="id" id="devolverDocId" />
                 <div class="modal-content">
                     <div class="modal-header bg-warning">
@@ -531,7 +680,6 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/actuaciones/confirmar-pase}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <input type="hidden" id="confirmarPaseActuacionId" name="actuacionId" />
                         <p class="small text-muted mb-3">
@@ -560,7 +708,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/derivar}" method="post" id="formDerivar">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <input type="hidden" id="derivarDocId" name="documentoId" />
 
                     <div class="modal-body">
@@ -623,7 +770,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/salida}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <input type="hidden" id="salidaDocId" name="documentoId" />
                         <div class="row g-3">
@@ -688,7 +834,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/confirmar-acuse}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <input type="hidden" id="acuseDocId" name="documentoId" />
                         <p class="small text-muted mb-3">
@@ -717,12 +862,11 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/guardar}" th:object="${nuevoDoc}" method="post">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Tipo de Documento</label>
-                                <select class="form-select form-select-sm" th:field="*{tipoDocumento.id}" required>
+                                <select class="form-select form-select-sm" th:field="*{tipoDocumentoId}" required>
                                     <option value="" disabled selected>Seleccione...</option>
                                     <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}" th:text="${tipo.nombre}"></option>
                                 </select>
@@ -741,7 +885,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Dependencia de Origen</label>
-                                <select class="form-select form-select-sm" th:field="*{dependenciaOrigen.id}" required>
+                                <select class="form-select form-select-sm" th:field="*{dependenciaOrigenId}" required>
                                     <option value="" disabled selected>Seleccione área...</option>
                                     <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
                                 </select>
@@ -776,21 +920,32 @@
     <!-- Scripts Bootstrap y Control Global -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Escapa texto antes de insertarlo con innerHTML (evita inyección de HTML/JS)
+        function esc(valor) {
+            if (valor === null || valor === undefined) return "";
+            return String(valor)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
         // Función para alternar entre Derivación Única y Múltiple
         function alternarModo(modo) {
             const unico = document.getElementById('contenedorUnico');
             const multiple = document.getElementById('contenedorMultiple');
             const selectUnico = document.getElementById('selectDestinoUnico');
+            const checks = multiple.querySelectorAll('.check-dependencia');
+            const esMultiple = modo === 'MULTIPLE';
 
-            if (modo === 'MULTIPLE') {
-                unico.classList.add('d-none');
-                multiple.classList.remove('d-none');
-                selectUnico.removeAttribute('required');
-            } else {
-                unico.classList.remove('d-none');
-                multiple.classList.add('d-none');
-                selectUnico.setAttribute('required', 'required');
-            }
+            unico.classList.toggle('d-none', esMultiple);
+            multiple.classList.toggle('d-none', !esMultiple);
+
+            // Los campos deshabilitados no se envían: así solo viaja el modo elegido
+            selectUnico.disabled = esMultiple;
+            selectUnico.required = !esMultiple;
+            checks.forEach(c => c.disabled = !esMultiple);
         }
 
         // Alternar visualización y comportamiento según modalidad en Modal de Salida
@@ -864,6 +1019,9 @@
             } else if (nodo.tipoActuacion === 'MEMO') {
                 badgeColor = 'bg-secondary';
                 estadoTexto = '✉️ MEMO INTERNO';
+            } else if (nodo.tipoActuacion === 'DEVOLUCION') {
+                badgeColor = 'bg-warning text-dark';
+                estadoTexto = '↩️ DEVOLUCIÓN';
             }
 
             let html = `
@@ -871,27 +1029,21 @@
                     <div class="tree-card p-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <div>
-                                <span class="badge ${badgeColor} me-2">${estadoTexto} ${nodo.numeroActuacion && nodo.numeroActuacion !== 'S/N' ? 'N° ' + nodo.numeroActuacion : ''}</span>
-                                <strong class="text-dark">${nodo.dependencia}</strong>
+                                <span class="badge ${badgeColor} me-2">${esc(estadoTexto)} ${nodo.numeroActuacion && nodo.numeroActuacion !== 'S/N' ? 'N° ' + esc(nodo.numeroActuacion) : ''}</span>
+                                <strong class="text-dark">${esc(nodo.dependencia)}</strong>
                             </div>
-                            <small class="text-muted"><i class="bi bi-clock me-1"></i>${nodo.fecha}</small>
+                            <small class="text-muted"><i class="bi bi-clock me-1"></i>${esc(nodo.fecha)}</small>
                         </div>
-                        <p class="small text-secondary mb-2 mt-1">${nodo.descripcion}</p>
+                        <p class="small text-secondary mb-2 mt-1">${esc(nodo.descripcion)}</p>
                         <div class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
-                            <small class="text-muted"><i class="bi bi-journal-bookmark me-1"></i>Bibliorato: <strong>${nodo.bibliorato}</strong></small>
+                            <small class="text-muted"><i class="bi bi-journal-bookmark me-1"></i>Bibliorato: <strong>${esc(nodo.bibliorato)}</strong></small>
                             
                             <div class="btn-group">
                                 ${nodo.pdf 
-                                    ? `<a href="/documentos/descargar-acuse/${docId}" target="_blank" class="btn btn-xs btn-outline-danger btn-sm py-0"><i class="bi bi-file-pdf me-1"></i>Ver PDF</a>` 
+                                    ? `<a href="/documentos/actuaciones/${nodo.id}/pdf" target="_blank" class="btn btn-xs btn-outline-danger btn-sm py-0"><i class="bi bi-file-pdf me-1"></i>Ver PDF</a>` 
                                     : (esPendiente 
                                         ? `<button type="button" class="btn btn-xs btn-warning btn-sm py-0 fw-bold" onclick="abrirModalConfirmarPase(${nodo.id})"><i class="bi bi-upload me-1"></i>Subir Acuse</button>` 
                                         : '<span class="badge bg-light text-muted border">Sin PDF</span>')
-                                }
-
-                                <!-- BOTÓN DEVOLVER -->
-                                ${(esPaseInterno && !esPendiente) 
-                                    ? `<button type="button" class="btn btn-xs btn-outline-warning btn-sm py-0 ms-1" onclick="prepararDevolucion(${docId})"><i class="bi bi-arrow-return-left"></i> Devolver</button>` 
-                                    : ''
                                 }
                             </div>
                         </div>
@@ -981,6 +1133,12 @@
                     if (button) {
                         modalDerivar.querySelector('#derivarDocId').value = button.getAttribute('data-doc-id');
                         modalDerivar.querySelector('#labelCuti').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+
+                        // Cada apertura empieza en modo único y sin selecciones previas
+                        document.getElementById('selectModoDerivacion').value = 'UNICO';
+                        document.getElementById('selectDestinoUnico').selectedIndex = 0;
+                        modalDerivar.querySelectorAll('.check-dependencia').forEach(c => c.checked = false);
+                        alternarModo('UNICO');
                     }
                 });
             }
@@ -1026,12 +1184,12 @@
                                                    name="informeActuacionId" 
                                                    value="${inf.id}" 
                                                    id="inf_${inf.id}" 
-                                                   data-ref="${refTexto}"
+                                                   data-ref="${esc(refTexto)}"
                                                    onchange="actualizarTextoReferenciaSalida()"
                                                    checked>
                                             <label class="form-check-label small" for="inf_${inf.id}">
-                                                <strong>${refTexto}</strong> - ${inf.dependencia}
-                                                <span class="d-block text-secondary text-truncate" style="max-width: 500px;">${inf.resumen}</span>
+                                                <strong>${esc(refTexto)}</strong> - ${esc(inf.dependencia)}
+                                                <span class="d-block text-secondary text-truncate" style="max-width: 500px;">${esc(inf.resumen)}</span>
                                             </label>
                                         </div>
                                     `;
@@ -1070,29 +1228,33 @@
                     modalHistorialBs.show();
 
                     fetch(`/api/documentos/${docId}/actuaciones`)
-                        .then(res => res.json())
+                        .then(res => {
+                            if (!res.ok) throw new Error(res.status === 403 ? 'Sin acceso a este expediente.' : 'Error ' + res.status);
+                            return res.json();
+                        })
                         .then(data => {
                             if (!data || data.length === 0) {
                                 contenedor.innerHTML = '<div class="alert alert-light text-center border">No hay actuaciones ni derivaciones registradas aún para este expediente.</div>';
                                 return;
                             }
 
+                            // Árbol genealógico: cada actuación cuelga del último pase (o devolución)
+                            // que recibió la dependencia que la emitió. Llegan ordenadas por fecha.
                             let raices = [];
-                            let mapaPases = {};
+                            let ultimoRecibidoPorDependencia = {};
 
                             data.forEach(act => {
                                 act.hijos = act.hijos || [];
-                                const esPase = act.tipoActuacion === 'PASE_INTERNO' || act.tipoActuacion === 'PASE_PENDIENTE_ACUSE' || act.tipoActuacion === 'PASE_CONFIRMADO';
+                                const padre = act.dependenciaEmisoraId != null ? ultimoRecibidoPorDependencia[act.dependenciaEmisoraId] : null;
 
-                                if (esPase) {
-                                    mapaPases[act.dependencia] = act;
+                                if (padre) {
+                                    padre.hijos.push(act);
+                                } else {
                                     raices.push(act);
-                                } 
-                                else if (mapaPases[act.dependencia]) {
-                                    mapaPases[act.dependencia].hijos.push(act);
-                                } 
-                                else {
-                                    raices.push(act);
+                                }
+
+                                if (act.dependenciaReceptoraId != null) {
+                                    ultimoRecibidoPorDependencia[act.dependenciaReceptoraId] = act;
                                 }
                             });
 
@@ -1104,7 +1266,7 @@
                             contenedor.innerHTML = html;
                         })
                         .catch(err => {
-                            contenedor.innerHTML = '<div class="alert alert-danger">Error al cargar el árbol de trazabilidad.</div>';
+                            contenedor.innerHTML = `<div class="alert alert-danger">Error al cargar el árbol de trazabilidad. ${esc(err.message)}</div>`;
                         });
                 });
             });
@@ -1133,14 +1295,14 @@
                             data.forEach(aud => {
                                 html += `
                                     <tr>
-                                        <td class="fw-bold text-nowrap"><i class="bi bi-clock me-1 text-muted"></i>${aud.fechaHora}</td>
-                                        <td><span class="badge bg-dark">${aud.evento}</span></td>
-                                        <td><span class="badge bg-light text-dark border">${aud.estadoAnterior}</span></td>
-                                        <td><span class="badge bg-primary">${aud.estadoNuevo}</span></td>
-                                        <td class="fw-semibold">${aud.usuario}</td>
-                                        <td class="small">${aud.dependencia}</td>
-                                        <td class="small text-secondary">${aud.descripcion}</td>
-                                        <td><code class="text-muted">${aud.ip}</code></td>
+                                        <td class="fw-bold text-nowrap"><i class="bi bi-clock me-1 text-muted"></i>${esc(aud.fechaHora)}</td>
+                                        <td><span class="badge bg-dark">${esc(aud.evento)}</span></td>
+                                        <td><span class="badge bg-light text-dark border">${esc(aud.estadoAnterior)}</span></td>
+                                        <td><span class="badge bg-primary">${esc(aud.estadoNuevo)}</span></td>
+                                        <td class="fw-semibold">${esc(aud.usuario)}</td>
+                                        <td class="small">${esc(aud.dependencia)}</td>
+                                        <td class="small text-secondary">${esc(aud.descripcion)}</td>
+                                        <td><code class="text-muted">${esc(aud.ip)}</code></td>
                                     </tr>
                                 `;
                             });
@@ -1153,6 +1315,29 @@
             });
 
         });
+
+        document.addEventListener("DOMContentLoaded", function () {
+        // Recuperar la última pestaña activa desde localStorage
+        let activeTab = localStorage.getItem("activeTab");
+        if (activeTab) {
+            let triggerEl = document.querySelector(`[data-bs-target="${activeTab}"]`);
+            if (triggerEl) {
+                let tab = new bootstrap.Tab(triggerEl);
+                tab.show();
+            }
+        }
+
+        // Guardar la pestaña activa cuando el usuario hace clic en alguna
+        const triggerTabList = document.querySelectorAll('#docTabs button');
+        triggerTabList.forEach(triggerEl => {
+            let tabInstance = new bootstrap.Tab(triggerEl);
+            triggerEl.addEventListener('click', function (event) {
+                let target = triggerEl.getAttribute('data-bs-target');
+                localStorage.setItem("activeTab", target);
+                tabInstance.show();
+            });
+        });
+    });
     </script>
 </body>
 </html>

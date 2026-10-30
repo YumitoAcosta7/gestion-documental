@@ -95,6 +95,7 @@ public class Documento {
 
     // --- ARCHIVAMIENTO FÍSICO ---
     @Column(name = "archivado")
+    @Builder.Default
     private Boolean archivado = false;
 
     @Column(name = "ubicacion_bibliorato", length = 255)

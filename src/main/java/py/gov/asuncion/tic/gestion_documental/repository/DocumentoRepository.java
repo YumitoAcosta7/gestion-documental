@@ -19,22 +19,40 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
 
     long countByPrioridadAndEstadoActualNot(Prioridad prioridad, EstadoDocumento estadoFinalizado);
 
+    // Método para obtener los documentos emitidos/creados por tu propia dependencia
+    List<Documento> findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
+
     List<Documento> findByEstadoActualNotOrderByFechaHoraIngresoDesc(EstadoDocumento estado);
 
     boolean existsByCodigoCuti(String codigoCuti);
 
     long countByAnio(Integer anio);
 
+    // 🔢 CORRELATIVO DEL CUTI
+    // Bloqueo transaccional de PostgreSQL: dos ingresos simultáneos no pueden calcular el mismo número.
+    // Se libera solo al terminar la transacción (no requiere crear objetos en la BD).
+    @Query(value = "SELECT 1 FROM (SELECT pg_advisory_xact_lock(:clave)) AS bloqueo", nativeQuery = true)
+    Integer bloquearCorrelativoCuti(@Param("clave") long clave);
+
+    // Último número usado en el año (toma el sufijo numérico del CUTI, no la cantidad de filas)
+    @Query(value = "SELECT COALESCE(MAX(CAST(SUBSTRING(codigo_cuti FROM '[0-9]+$') AS INTEGER)), 0) "
+                 + "FROM documentos WHERE codigo_cuti LIKE :prefijo", nativeQuery = true)
+    Integer obtenerUltimoCorrelativoCuti(@Param("prefijo") String prefijo);
+
     List<Documento> findByEstadoActualOrderByFechaHoraSalidaDesc(EstadoDocumento estado);
 
-    // 🛡️ FILTRO DE TRÁMITES ACTIVOS POR DEPENDENCIA (Requerido por DocumentoService L:554)
+    // 🛡️ FILTRO DE TRÁMITES ACTIVOS POR DEPENDENCIA
+    // Se usa la dependencia receptora del pase; la descripción "➔ <dependencia>:" solo
+    // se consulta para pases antiguos que no tienen dependencia receptora cargada.
     @Query("""
-        SELECT DISTINCT d FROM Documento d 
-        LEFT JOIN ActuacionDocumento a ON a.documento.id = d.id 
-        WHERE d.estadoActual <> 'FINALIZADO' 
+        SELECT DISTINCT d FROM Documento d
+        LEFT JOIN ActuacionDocumento a ON a.documento.id = d.id
+        LEFT JOIN a.dependenciaReceptoraPase r
+        WHERE d.estadoActual <> 'FINALIZADO'
           AND (
-               a.dependenciaEmisora.id = :dependenciaId 
-               OR LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), '%'))
+               a.dependenciaEmisora.id = :dependenciaId
+               OR r.id = :dependenciaId
+               OR (r IS NULL AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
         ORDER BY d.fechaHoraIngreso DESC
     """)
@@ -43,11 +61,13 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     // 🛡️ FILTRO DE TRÁMITES FINALIZADOS POR DEPENDENCIA
     @Query("""
         SELECT DISTINCT d FROM Documento d 
-        LEFT JOIN ActuacionDocumento a ON a.documento.id = d.id 
-        WHERE d.estadoActual = 'FINALIZADO' 
+        LEFT JOIN ActuacionDocumento a ON a.documento.id = d.id
+        LEFT JOIN a.dependenciaReceptoraPase r
+        WHERE d.estadoActual = 'FINALIZADO'
           AND (
-               a.dependenciaEmisora.id = :dependenciaId 
-               OR LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), '%'))
+               a.dependenciaEmisora.id = :dependenciaId
+               OR r.id = :dependenciaId
+               OR (r IS NULL AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
         ORDER BY d.fechaHoraSalida DESC
     """)

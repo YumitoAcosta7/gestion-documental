@@ -3,7 +3,9 @@ package py.gov.asuncion.tic.gestion_documental.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -12,10 +14,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -24,12 +28,16 @@ import py.gov.asuncion.tic.gestion_documental.domain.AdjuntoDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.Documento;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
+import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.AdjuntoDocumentoRepository;
+import py.gov.asuncion.tic.gestion_documental.repository.DocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.security.Principal;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,12 +59,17 @@ public class HomeController {
     @Autowired
     private AuditoriaService auditoriaService;
 
+    @Autowired
+    private DocumentoRepository documentoRepository;
+    
+
     /**
      * 🏠 PANTALLA PRINCIPAL (DASHBOARD)
      */
+
     @GetMapping("/")
     public String index(Model model) {
-        model.addAttribute("nuevoDoc", new Documento());
+        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
 
         if (documentoService != null) {
             Usuario usuarioLogueado = getUsuarioAutenticado();
@@ -65,6 +78,18 @@ public class HomeController {
             model.addAttribute("documentos", documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado));
             model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
             
+            // ==========================================
+            // NUEVO: Cargar los documentos de salida propios
+            // ==========================================
+            if (usuarioLogueado != null && usuarioLogueado.getDependencia() != null) {
+                model.addAttribute("documentosSalida", 
+                    documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuarioLogueado.getDependencia().getId())
+                );
+            } else {
+                model.addAttribute("documentosSalida", new ArrayList<>());
+            }
+            // ==========================================
+
             if (usuarioLogueado != null) {
                 model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuarioLogueado));
             } else {
@@ -78,6 +103,7 @@ public class HomeController {
         } else {
             model.addAttribute("documentos", new ArrayList<>());
             model.addAttribute("documentosFinalizados", new ArrayList<>());
+            model.addAttribute("documentosSalida", new ArrayList<>()); // <- Añadido para el bloque else
             Map<String, Long> metricasVacias = new HashMap<>();
             metricasVacias.put("ingresados", 0L);
             metricasVacias.put("enEsperaInforme", 0L);
@@ -93,29 +119,37 @@ public class HomeController {
     }
 
     /**
-     * ↩️ ENDPOINT DE DEVOLUCIÓN DE EXPEDIENTE
+     * ↩️ DEVOLUCIÓN RÁPIDA DEL EXPEDIENTE AL EMISOR DEL ÚLTIMO PASE RECIBIDO
      */
-    @PostMapping("/documento/devolver")
-    public String devolver(@RequestParam Long id, 
-                           @RequestParam String observacion, 
-                           RedirectAttributes redirectAttributes) {
+    @PostMapping("/documentos/devolver")
+    public String procesarDevolucion(@RequestParam("id") Long id,
+                                    @RequestParam("observacion") String observacion,
+                                    Principal principal,
+                                    RedirectAttributes redirectAttributes) {
         try {
-            documentoService.devolverDocumento(id, observacion, getUsuarioAutenticado());
-            redirectAttributes.addFlashAttribute("mensajeExito", "Documento devuelto correctamente.");
+            Usuario usuarioActual = usuarioRepository.findByUsernameAndActivoTrue(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("Usuario no autenticado"));
+                    
+            documentoService.devolverDocumento(id, observacion, usuarioActual);
+            redirectAttributes.addFlashAttribute("mensajeExito", "Expediente devuelto correctamente.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("mensajeError", "Error al devolver: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", e.getMessage());
         }
-        return "redirect:/";
-    }
+        return "redirect:/"; // Redirige a la bandeja principal
+    }   
+
     
     /**
      * 📥 GUARDAR NUEVO DOCUMENTO
      */
     @PostMapping("/documentos/guardar")
-    public String guardarDocumento(@ModelAttribute("nuevoDoc") Documento documento) {
-        if (documentoService != null) {
-            Usuario usuarioCarga = getUsuarioAutenticado();
-            documentoService.guardarNuevoDocumento(documento, usuarioCarga);
+    public String guardarDocumento(@ModelAttribute("nuevoDoc") NuevoDocumentoDTO documento,
+                                   RedirectAttributes redirectAttributes) {
+        try {
+            Documento docGuardado = documentoService.guardarNuevoDocumento(documento, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Documento registrado con CUTI " + docGuardado.getCodigoCuti() + ".");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al registrar el documento: " + e.getMessage());
         }
         return "redirect:/";
     }
@@ -127,13 +161,14 @@ public class HomeController {
     public String derivarDocumento(@RequestParam("documentoId") Long documentoId,
                                    @RequestParam("dependenciaDestinoId") List<Integer> dependenciasDestinoIds,
                                    @RequestParam("observacion") String observacion,
-                                   @RequestParam(value = "requiereInforme", defaultValue = "false") Boolean requiereInforme) {
-
-        if (documentoService != null) {
-            Usuario usuarioSesion = getUsuarioAutenticado();
-            documentoService.derivarDocumento(documentoId, dependenciasDestinoIds, observacion, requiereInforme, usuarioSesion);
+                                   @RequestParam(value = "requiereInforme", defaultValue = "false") Boolean requiereInforme,
+                                   RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.derivarDocumento(documentoId, dependenciasDestinoIds, observacion, requiereInforme, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Expediente derivado correctamente.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al derivar: " + e.getMessage());
         }
-
         return "redirect:/";
     }
 
@@ -146,14 +181,15 @@ public class HomeController {
                                   @RequestParam(value = "dependenciaDestinoId", required = false) Integer dependenciaDestinoId,
                                   @RequestParam("personaRetira") String personaRetira,
                                   @RequestParam("funcionarioEntrega") String funcionarioEntrega,
-                                  @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse) {
-
-        if (documentoService != null) {
-            Usuario usuarioCarga = getUsuarioAutenticado();
-            documentoService.registrarSalidaDocumento(documentoId, nroNotaSalida, dependenciaDestinoId, 
-                                                   personaRetira, funcionarioEntrega, archivoAcuse, usuarioCarga);
+                                  @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse,
+                                  RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.registrarSalidaDocumento(documentoId, nroNotaSalida, dependenciaDestinoId,
+                                                   personaRetira, funcionarioEntrega, archivoAcuse, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Salida exterior registrada correctamente.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al registrar la salida: " + e.getMessage());
         }
-
         return "redirect:/";
     }
 
@@ -162,12 +198,37 @@ public class HomeController {
      */
     @PostMapping("/documentos/confirmar-acuse")
     public String confirmarAcuse(@RequestParam("documentoId") Long documentoId,
-                                  @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse) {
-        if (documentoService != null) {
-            Usuario usuarioCarga = getUsuarioAutenticado();
-            documentoService.confirmarEntregaYAcuse(documentoId, archivoAcuse, usuarioCarga);
+                                  @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse,
+                                  RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.confirmarEntregaYAcuse(documentoId, archivoAcuse, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Acuse confirmado. El expediente quedó FINALIZADO.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al confirmar el acuse: " + e.getMessage());
         }
         return "redirect:/";
+    }
+
+    /**
+     * 📄 VER PDF DE UNA ACTUACIÓN (copia sellada o acuse de pase interno)
+     */
+    @GetMapping("/documentos/actuaciones/{actuacionId}/pdf")
+    public ResponseEntity<Resource> verPdfActuacion(@PathVariable Long actuacionId) {
+        java.nio.file.Path ruta;
+        try {
+            ruta = documentoService.resolverPdfActuacion(actuacionId, getUsuarioAutenticado());
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        if (ruta == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(ruta.getFileName().toString(), StandardCharsets.UTF_8).build().toString())
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(new FileSystemResource(ruta));
     }
 
     /**
@@ -175,6 +236,10 @@ public class HomeController {
      */
     @GetMapping("/documentos/descargar-acuse/{documentoId}")
     public ResponseEntity<Resource> descargarAcuse(@PathVariable Long documentoId) {
+        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), documentoId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         List<AdjuntoDocumento> adjuntos = adjuntoDocumentoRepository.findByDocumentoId(documentoId);
 
         if (adjuntos.isEmpty()) {
@@ -191,7 +256,9 @@ public class HomeController {
         Resource recurso = new FileSystemResource(archivoFisico);
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + adjunto.getNombreArchivo() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(adjunto.getNombreArchivo() != null ? adjunto.getNombreArchivo() : "acuse.pdf", StandardCharsets.UTF_8)
+                        .build().toString())
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(recurso);
     }
@@ -208,11 +275,19 @@ public class HomeController {
                                    @RequestParam(value = "fechaHasta", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate fechaHasta,
                                    Model model) {
 
-        model.addAttribute("nuevoDoc", new Documento());
+        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
 
         if (documentoService != null) {
+            Usuario usuarioLogueado = getUsuarioAutenticado();
             List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(
                     texto, dependenciaId, tipoDocId, estado, fechaDesde, fechaHasta);
+
+            // 🛡️ Departamentos y unidades solo ven en la búsqueda los expedientes de su bandeja
+            if (!documentoService.esRolAdministrativo(usuarioLogueado)) {
+                resultados = resultados.stream()
+                        .filter(d -> documentoService.puedeAccederDocumento(usuarioLogueado, d.getId()))
+                        .toList();
+            }
 
             model.addAttribute("documentosResultados", resultados);
             model.addAttribute("esBusqueda", true);
@@ -223,9 +298,15 @@ public class HomeController {
             model.addAttribute("paramFechaDesde", fechaDesde);
             model.addAttribute("paramFechaHasta", fechaHasta);
 
-            Usuario usuarioLogueado = getUsuarioAutenticado();
+            model.addAttribute("usuarioLogueado", usuarioLogueado);
             model.addAttribute("documentos", documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado));
-            model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizados());
+            model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
+            model.addAttribute("documentosSalida", usuarioLogueado != null && usuarioLogueado.getDependencia() != null
+                    ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuarioLogueado.getDependencia().getId())
+                    : new ArrayList<>());
+            model.addAttribute("dependenciasHijas", usuarioLogueado != null
+                    ? documentoService.obtenerDependenciasHijas(usuarioLogueado)
+                    : new ArrayList<>());
             model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
             model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
             model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
@@ -244,22 +325,23 @@ public class HomeController {
                                    @RequestParam("numeroActuacion") String numeroActuacion,
                                    @RequestParam("descripcionResumen") String descripcionResumen,
                                    @RequestParam(value = "ubicacionBibliorato", required = false) String ubicacionBibliorato,
-                                   @RequestParam(value = "archivoCopiaSellada", required = false) MultipartFile archivoCopiaSellada) {
+                                   @RequestParam(value = "archivoCopiaSellada", required = false) MultipartFile archivoCopiaSellada,
+                                   RedirectAttributes redirectAttributes) {
+        try {
+            Usuario usuarioCarga = getUsuarioAutenticadoObligatorio();
 
-        if (documentoService != null) {
-            Usuario usuarioCarga = getUsuarioAutenticado();
-            
-            if (usuarioCarga != null && usuarioCarga.getDependencia() != null) {
-                Integer dependenciaEmisoraId = usuarioCarga.getDependencia().getId();
-                
-                documentoService.registrarActuacion(documentoId, dependenciaEmisoraId, tipoActuacion, 
-                           numeroActuacion, descripcionResumen, ubicacionBibliorato, 
-                           archivoCopiaSellada, usuarioCarga);
-            } else {
+            if (usuarioCarga.getDependencia() == null) {
                 throw new IllegalStateException("El usuario actual no tiene una dependencia asignada para registrar actuaciones.");
             }
-        }
+            Integer dependenciaEmisoraId = usuarioCarga.getDependencia().getId();
 
+            documentoService.registrarActuacion(documentoId, dependenciaEmisoraId, tipoActuacion,
+                       numeroActuacion, descripcionResumen, ubicacionBibliorato,
+                       archivoCopiaSellada, usuarioCarga);
+            redirectAttributes.addFlashAttribute("mensajeExito", "Actuación registrada correctamente.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al registrar la actuación: " + e.getMessage());
+        }
         return "redirect:/";
     }
 
@@ -268,12 +350,14 @@ public class HomeController {
      */
     @PostMapping("/documentos/actuaciones/confirmar-pase")
     public String confirmarPaseInterno(@RequestParam("actuacionId") Long actuacionId,
-                                       @RequestParam("archivoAcusePdf") MultipartFile archivoAcusePdf) {
-
-        if (documentoService != null) {
-            documentoService.confirmarRecepcionPaseInterno(actuacionId, archivoAcusePdf);
+                                       @RequestParam("archivoAcusePdf") MultipartFile archivoAcusePdf,
+                                       RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.confirmarRecepcionPaseInterno(actuacionId, archivoAcusePdf, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Recepción del pase confirmada.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al confirmar el pase: " + e.getMessage());
         }
-
         return "redirect:/";
     }
 
@@ -282,7 +366,10 @@ public class HomeController {
      */
     @GetMapping("/api/documentos/{id}/actuaciones")
     @ResponseBody
-    public List<Map<String, Object>> obtenerActuacionesJson(@PathVariable("id") Long id) {
+    public ResponseEntity<List<Map<String, Object>>> obtenerActuacionesJson(@PathVariable("id") Long id) {
+        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         List<Map<String, Object>> listaJson = new ArrayList<>();
         if (documentoService != null) {
             List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
@@ -294,15 +381,19 @@ public class HomeController {
                 map.put("tipoActuacion", act.getTipoActuacion() != null ? act.getTipoActuacion() : "PASE_INTERNO");
                 map.put("numeroActuacion", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
                 map.put("dependencia", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getNombre() : "Sin Dependencia");
+                map.put("dependenciaEmisoraId", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getId() : null);
+                map.put("dependenciaReceptoraId", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getId() : null);
+                map.put("dependenciaReceptora", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getNombre() : null);
                 map.put("descripcion", act.getDescripcionResumen());
                 map.put("bibliorato", act.getUbicacionBibliorato() != null ? act.getUbicacionBibliorato() : "No especificado");
                 map.put("pdf", act.getRutaCopiaSelladaPdf());
                 map.put("paseConfirmado", act.getPaseConfirmado() != null ? act.getPaseConfirmado() : true);
-                map.put("fecha", act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+                map.put("fecha", act.getFechaHoraActuacion() != null
+                        ? act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "-");
                 listaJson.add(map);
             }
         }
-        return listaJson;
+        return ResponseEntity.ok(listaJson);
     }
 
     /**
@@ -310,7 +401,10 @@ public class HomeController {
      */
     @GetMapping("/api/documentos/{id}/informes-disponibles")
     @ResponseBody
-    public List<Map<String, Object>> obtenerInformesDisponiblesJson(@PathVariable("id") Long id) {
+    public ResponseEntity<List<Map<String, Object>>> obtenerInformesDisponiblesJson(@PathVariable("id") Long id) {
+        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         List<Map<String, Object>> listaJson = new ArrayList<>();
         if (documentoService != null) {
             List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
@@ -330,7 +424,33 @@ public class HomeController {
                 }
             }
         }
-        return listaJson;
+        return ResponseEntity.ok(listaJson);
+    }
+
+    @PostMapping("/documentos/salida-directa")
+    public String registrarSalidaDirecta(@RequestParam("nroNotaSalida") String nroNotaSalida,
+                                    @RequestParam(value = "tipoDocumentoId", required = false) Integer tipoDocumentoId,
+                                    @RequestParam("asunto") String asunto,
+                                    @RequestParam(value = "dependenciaDestinoId", required = false) Integer dependenciaDestinoId,
+                                    @RequestParam(value = "personaRetira", required = false) String personaRetira,
+                                    @RequestParam(value = "funcionarioEntrega", required = false) String funcionarioEntrega,
+                                    @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse,
+                                    Principal principal,
+                                    RedirectAttributes redirectAttributes) {
+        try {
+            Usuario usuarioSesion = usuarioRepository.findByUsernameAndActivoTrue(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("Usuario no autenticado o inactivo"));
+
+            documentoService.crearYRegistrarSalidaDirecta(
+                nroNotaSalida, tipoDocumentoId, asunto, dependenciaDestinoId, 
+                personaRetira, funcionarioEntrega, archivoAcuse, usuarioSesion
+            );
+
+            redirectAttributes.addFlashAttribute("mensajeExito", "Documento propio generado y salida registrada correctamente.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al registrar salida directa: " + e.getMessage());
+        }
+        return "redirect:/";
     }
 
     /**
@@ -369,6 +489,14 @@ public class HomeController {
             String username = auth.getName();
             return usuarioRepository.findByUsernameAndActivoTrue(username).orElse(null);
         }
-        return usuarioRepository.findById(1).orElse(null);
+        return null;
+    }
+
+    private Usuario getUsuarioAutenticadoObligatorio() {
+        Usuario usuario = getUsuarioAutenticado();
+        if (usuario == null) {
+            throw new IllegalStateException("No se pudo identificar al usuario de la sesión.");
+        }
+        return usuario;
     }
 }
