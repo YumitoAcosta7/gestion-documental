@@ -22,9 +22,12 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
           AND (
                a.dependenciaEmisora.id = :dependenciaId
                OR r.id = :dependenciaId
-               OR LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), '%'))
+               OR (r IS NULL AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
     """)
     boolean existeParticipacionDependencia(@Param("documentoId") Long documentoId,
                                            @Param("dependenciaId") Integer dependenciaId);
+
+    ActuacionDocumento findTopByDocumentoIdAndDependenciaEmisoraIdAndTipoActuacionOrderByFechaHoraActuacionDesc(
+            Long documentoId, Integer dependenciaEmisoraId, String tipoActuacion);
 }

@@ -9,9 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.persistence.EntityNotFoundException;
 import py.gov.asuncion.tic.gestion_documental.domain.*;
-import py.gov.asuncion.tic.gestion_documental.dto.DevolucionRequestDTO;
 import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
-import py.gov.asuncion.tic.gestion_documental.dto.SalidaDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.*;
 
 import java.io.File;
@@ -154,6 +152,24 @@ public class DocumentoService {
         return metricas;
     }
 
+    // Clave base del bloqueo de PostgreSQL para el correlativo del CUTI (se le suma el año)
+    private static final long CLAVE_BLOQUEO_CUTI = 7_384_000_000L;
+
+    // Debe llamarse dentro de una transacción: el bloqueo dura hasta el commit,
+    // así dos registros simultáneos no obtienen el mismo número.
+    private String generarCodigoCuti(int anio) {
+        documentoRepository.bloquearCorrelativoCuti(CLAVE_BLOQUEO_CUTI + anio);
+        String prefijo = String.format("TIC-%d-", anio);
+        int ultimo = documentoRepository.obtenerUltimoCorrelativoCuti(prefijo + "%");
+        return String.format("%s%06d", prefijo, ultimo + 1);
+    }
+
+    private void validarNoFinalizado(Documento doc, String accion) {
+        if (doc.getEstadoActual() == EstadoDocumento.FINALIZADO) {
+            throw new IllegalStateException("No se puede " + accion + " un expediente FINALIZADO.");
+        }
+    }
+
     public static final String REGEX_NUMERO_DOC = "^(S/N|\\d+/\\d{4})$";
 
     private void validarFormatoNumeroDocumento(String numeroDoc) {
@@ -213,8 +229,7 @@ public class DocumentoService {
         documento.setAnio(anioActual);
 
         if (documento.getCodigoCuti() == null || documento.getCodigoCuti().isBlank()) {
-            long correlativoAnual = documentoRepository.countByAnio(anioActual) + 1;
-            documento.setCodigoCuti(String.format("TIC-%d-%06d", anioActual, correlativoAnual));
+            documento.setCodigoCuti(generarCodigoCuti(anioActual));
         }
 
         documento.setFechaHoraCargaIngreso(ahora);
@@ -258,43 +273,6 @@ public class DocumentoService {
         return derivarDocumento(documentoId, List.of(dependenciaDestinoId), observacion, false, usuario);
     }
 
-/*
-    @Transactional
-    public Documento devolverDocumento(Long documentoId, String motivo, Usuario usuario) {
-        Documento doc = documentoRepository.findById(documentoId)
-                .orElseThrow(() -> new RuntimeException("Documento no encontrado"));
-
-        // Buscamos el último pase interno que recibió nuestra dependencia
-        ActuacionDocumento ultimoPase = actuacionDocumentoRepository
-                .findTopByDocumentoIdAndDependenciaReceptoraPaseIdOrderByFechaHoraActuacionDesc(
-                    documentoId, usuario.getDependencia().getId());
-
-        if (ultimoPase == null) {
-            throw new IllegalStateException("No se encontró un pase previo para devolver.");
-        }
-
-        // Creamos la actuación de devolución
-        ActuacionDocumento devolucion = ActuacionDocumento.builder()
-                .documento(doc)
-                .dependenciaEmisora(usuario.getDependencia())
-                .dependenciaReceptoraPase(ultimoPase.getDependenciaEmisora()) // Retorna a quien nos envió
-                .tipoActuacion("DEVOLUCION")
-                .numeroActuacion("S/N")
-                .descripcionResumen("DEVOLUCIÓN A " + ultimoPase.getDependenciaEmisora().getNombre() + ": " + motivo)
-                .fechaHoraActuacion(LocalDateTime.now())
-                .usuario(usuario)
-                .paseConfirmado(true) // Se asume confirmada al ser una devolución inmediata
-                .build();
-
-        actuacionDocumentoRepository.save(devolucion);
-        
-        // El documento vuelve a estado EN_REVISION para que el emisor original lo vea en su bandeja
-        doc.setEstadoActual(EstadoDocumento.EN_REVISION);
-        
-        return documentoRepository.save(doc);
-    }
-
-*/
 
     @Transactional
     public void devolverDocumento(Long documentoId, String observacion, Usuario usuarioActual) {
@@ -328,6 +306,16 @@ public class DocumentoService {
         Dependencia depDestino = ultimoPase.getDependenciaEmisora();
         if (depDestino.getId().equals(depActual.getId())) {
             throw new IllegalStateException("El último pase recibido fue emitido por su propia dependencia, no se puede devolver.");
+        }
+
+        // Evita devolver dos veces el mismo pase
+        ActuacionDocumento ultimaDevolucion = actuacionDocumentoRepository
+                .findTopByDocumentoIdAndDependenciaEmisoraIdAndTipoActuacionOrderByFechaHoraActuacionDesc(
+                        documentoId, depActual.getId(), "DEVOLUCION");
+        if (ultimaDevolucion != null && ultimaDevolucion.getFechaHoraActuacion() != null
+                && ultimoPase.getFechaHoraActuacion() != null
+                && !ultimaDevolucion.getFechaHoraActuacion().isBefore(ultimoPase.getFechaHoraActuacion())) {
+            throw new IllegalStateException("Su dependencia ya devolvió este expediente a " + depDestino.getNombre() + ".");
         }
 
         EstadoDocumento estadoAnterior = documento.getEstadoActual();
@@ -394,6 +382,7 @@ public class DocumentoService {
 
         Documento doc = documentoRepository.findById(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
+        validarNoFinalizado(doc, "derivar");
 
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
         boolean esInformeRequerido = (requiereInforme != null && requiereInforme);
@@ -476,10 +465,9 @@ public class DocumentoService {
         // 1. Crear el documento nativo de la dependencia
         Documento doc = new Documento();
 
-        // Generación oficial del CUTI (el año debe quedar grabado para que el correlativo no se repita)
+        // Generación oficial del CUTI
         doc.setAnio(anioActual);
-        long correlativoAnual = documentoRepository.countByAnio(anioActual) + 1;
-        doc.setCodigoCuti(String.format("TIC-%d-%06d", anioActual, correlativoAnual));
+        doc.setCodigoCuti(generarCodigoCuti(anioActual));
 
         doc.setAsunto(asunto.trim());
         doc.setTipoDocumento(tipoDoc);
@@ -564,6 +552,10 @@ public class DocumentoService {
                                                Usuario usuarioSesion) {
         Documento doc = documentoRepository.findById(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
+        validarNoFinalizado(doc, "registrar la salida de");
+        if (nroNotaSalida == null || nroNotaSalida.isBlank()) {
+            throw new IllegalArgumentException("Debe ingresar el N° de nota o remisión de salida.");
+        }
 
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
         LocalDateTime ahora = LocalDateTime.now();
@@ -633,6 +625,13 @@ public class DocumentoService {
     public Documento confirmarEntregaYAcuse(Long documentoId, MultipartFile archivoAcuse, Usuario usuarioSesion) {
         Documento doc = documentoRepository.findById(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
+
+        if (doc.getEstadoActual() != EstadoDocumento.PENDIENTE_SALIDA || doc.getFechaHoraSalida() == null) {
+            throw new IllegalStateException("Solo se puede confirmar el acuse de un expediente en PENDIENTE_SALIDA con la salida física ya registrada.");
+        }
+        if (archivoAcuse == null || archivoAcuse.isEmpty()) {
+            throw new IllegalArgumentException("Es obligatorio adjuntar el PDF del acuse firmado para finalizar el expediente.");
+        }
 
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
         LocalDateTime ahora = LocalDateTime.now();
@@ -722,6 +721,7 @@ public class DocumentoService {
 
         Documento doc = documentoRepository.findById(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
+        validarNoFinalizado(doc, "registrar actuaciones en");
 
         String nroLimpio = (numeroActuacion == null || numeroActuacion.isBlank()) 
                 ? "S/N" : numeroActuacion.trim().toUpperCase();
@@ -736,7 +736,7 @@ public class DocumentoService {
             try {
                 String extension = ".pdf";
                 nombreArchivoPdf = "ACTUACION_" + doc.getCodigoCuti() + "_" + System.currentTimeMillis() + extension;
-                Path rutaDirectorio = Paths.get("uploads/acuses");
+                Path rutaDirectorio = Paths.get(uploadDir);
                 if (!Files.exists(rutaDirectorio)) {
                     Files.createDirectories(rutaDirectorio);
                 }
@@ -827,7 +827,7 @@ public class DocumentoService {
                 ? receptora.getId().equals(depUsuario.getId())
                 // Pases antiguos sin receptora: se identifica por la descripción "➔ <dependencia>"
                 : actuacion.getDescripcionResumen() != null
-                    && actuacion.getDescripcionResumen().contains("➔ " + depUsuario.getNombre()));
+                    && actuacion.getDescripcionResumen().contains("➔ " + depUsuario.getNombre() + ":"));
         if (!esReceptora && !esRolAdministrativo(usuarioSesion)) {
             throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción.");
         }
@@ -835,7 +835,7 @@ public class DocumentoService {
         try {
             String extension = ".pdf";
             String nombreArchivoPdf = "ACUSE_PASE_" + actuacion.getDocumento().getCodigoCuti() + "_" + System.currentTimeMillis() + extension;
-            Path rutaDirectorio = Paths.get("uploads/acuses");
+            Path rutaDirectorio = Paths.get(uploadDir);
             if (!Files.exists(rutaDirectorio)) {
                 Files.createDirectories(rutaDirectorio);
             }

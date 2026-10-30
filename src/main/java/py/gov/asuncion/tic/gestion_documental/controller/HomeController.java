@@ -28,7 +28,6 @@ import py.gov.asuncion.tic.gestion_documental.domain.AdjuntoDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.Documento;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
-import py.gov.asuncion.tic.gestion_documental.dto.DevolucionRequestDTO;
 import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.AdjuntoDocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.DocumentoRepository;
@@ -119,67 +118,9 @@ public class HomeController {
         return "index";
     }
 
-  /*
-
-   @GetMapping("/")
-    public String index(Model model) {
-        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
-
-        if (documentoService != null) {
-            Usuario usuarioLogueado = getUsuarioAutenticado();
-            model.addAttribute("usuarioLogueado", usuarioLogueado);
-
-            model.addAttribute("documentos", documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado));
-            model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
-            
-            if (usuarioLogueado != null) {
-                model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuarioLogueado));
-            } else {
-                model.addAttribute("dependenciasHijas", new ArrayList<>());
-            }
-
-            model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
-            model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
-            model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
-            model.addAttribute("dependenciasInternas", documentoService.obtenerDependenciasInternasTic());
-        } else {
-            model.addAttribute("documentos", new ArrayList<>());
-            model.addAttribute("documentosFinalizados", new ArrayList<>());
-            Map<String, Long> metricasVacias = new HashMap<>();
-            metricasVacias.put("ingresados", 0L);
-            metricasVacias.put("enEsperaInforme", 0L);
-            metricasVacias.put("pendienteSalida", 0L);
-            metricasVacias.put("urgentes", 0L);
-            model.addAttribute("metricas", metricasVacias);
-            model.addAttribute("dependencias", new ArrayList<>());
-            model.addAttribute("dependenciasInternas", new ArrayList<>());
-            model.addAttribute("tiposDoc", new ArrayList<>());
-        }
-
-        return "index";
-    }
-  
-  */  
-   
-
     /**
-     * ↩️ ENDPOINT DE DEVOLUCIÓN DE EXPEDIENTE
-     *     @PostMapping("/documento/devolver")
-            public String devolver(@RequestParam Long id, 
-                           @RequestParam String observacion, 
-                           RedirectAttributes redirectAttributes) {
-            try {
-                documentoService.devolverDocumento(id, observacion, getUsuarioAutenticado());
-                redirectAttributes.addFlashAttribute("mensajeExito", "Documento devuelto correctamente.");
-            } catch (Exception e) {
-                redirectAttributes.addFlashAttribute("mensajeError", "Error al devolver: " + e.getMessage());
-            }
-            return "redirect:/";
-            }
-     * 
-     * 
+     * ↩️ DEVOLUCIÓN RÁPIDA DEL EXPEDIENTE AL EMISOR DEL ÚLTIMO PASE RECIBIDO
      */
-
     @PostMapping("/documentos/devolver")
     public String procesarDevolucion(@RequestParam("id") Long id,
                                     @RequestParam("observacion") String observacion,
@@ -440,6 +381,9 @@ public class HomeController {
                 map.put("tipoActuacion", act.getTipoActuacion() != null ? act.getTipoActuacion() : "PASE_INTERNO");
                 map.put("numeroActuacion", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
                 map.put("dependencia", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getNombre() : "Sin Dependencia");
+                map.put("dependenciaEmisoraId", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getId() : null);
+                map.put("dependenciaReceptoraId", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getId() : null);
+                map.put("dependenciaReceptora", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getNombre() : null);
                 map.put("descripcion", act.getDescripcionResumen());
                 map.put("bibliorato", act.getUbicacionBibliorato() != null ? act.getUbicacionBibliorato() : "No especificado");
                 map.put("pdf", act.getRutaCopiaSelladaPdf());

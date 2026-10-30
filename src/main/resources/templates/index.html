@@ -500,7 +500,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/actuaciones/guardar}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <input type="hidden" id="actuacionDocId" name="documentoId" />
 
@@ -574,8 +573,6 @@
     <div class="modal fade" id="modalNuevoDocSalida" tabindex="-1" aria-labelledby="modalNuevoDocSalidaLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <form th:action="@{/documentos/salida-directa}" method="post" enctype="multipart/form-data">
-                <!-- Token CSRF obligatorio para peticiones POST en Spring Security -->
-                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                 
                 <div class="modal-content">
                     <div class="modal-header bg-primary text-white">
@@ -654,7 +651,6 @@
     <div class="modal fade" id="modalDevolver" tabindex="-1">
         <div class="modal-dialog">
             <form th:action="@{/documentos/devolver}" method="post">
-                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                 <input type="hidden" name="id" id="devolverDocId" />
                 <div class="modal-content">
                     <div class="modal-header bg-warning">
@@ -684,7 +680,6 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/actuaciones/confirmar-pase}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <input type="hidden" id="confirmarPaseActuacionId" name="actuacionId" />
                         <p class="small text-muted mb-3">
@@ -713,7 +708,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/derivar}" method="post" id="formDerivar">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <input type="hidden" id="derivarDocId" name="documentoId" />
 
                     <div class="modal-body">
@@ -776,7 +770,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/salida}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <input type="hidden" id="salidaDocId" name="documentoId" />
                         <div class="row g-3">
@@ -841,7 +834,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/confirmar-acuse}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <input type="hidden" id="acuseDocId" name="documentoId" />
                         <p class="small text-muted mb-3">
@@ -870,7 +862,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/guardar}" th:object="${nuevoDoc}" method="post">
-                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
                     <div class="modal-body">
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -945,16 +936,16 @@
             const unico = document.getElementById('contenedorUnico');
             const multiple = document.getElementById('contenedorMultiple');
             const selectUnico = document.getElementById('selectDestinoUnico');
+            const checks = multiple.querySelectorAll('.check-dependencia');
+            const esMultiple = modo === 'MULTIPLE';
 
-            if (modo === 'MULTIPLE') {
-                unico.classList.add('d-none');
-                multiple.classList.remove('d-none');
-                selectUnico.removeAttribute('required');
-            } else {
-                unico.classList.remove('d-none');
-                multiple.classList.add('d-none');
-                selectUnico.setAttribute('required', 'required');
-            }
+            unico.classList.toggle('d-none', esMultiple);
+            multiple.classList.toggle('d-none', !esMultiple);
+
+            // Los campos deshabilitados no se envían: así solo viaja el modo elegido
+            selectUnico.disabled = esMultiple;
+            selectUnico.required = !esMultiple;
+            checks.forEach(c => c.disabled = !esMultiple);
         }
 
         // Alternar visualización y comportamiento según modalidad en Modal de Salida
@@ -1028,6 +1019,9 @@
             } else if (nodo.tipoActuacion === 'MEMO') {
                 badgeColor = 'bg-secondary';
                 estadoTexto = '✉️ MEMO INTERNO';
+            } else if (nodo.tipoActuacion === 'DEVOLUCION') {
+                badgeColor = 'bg-warning text-dark';
+                estadoTexto = '↩️ DEVOLUCIÓN';
             }
 
             let html = `
@@ -1139,6 +1133,12 @@
                     if (button) {
                         modalDerivar.querySelector('#derivarDocId').value = button.getAttribute('data-doc-id');
                         modalDerivar.querySelector('#labelCuti').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+
+                        // Cada apertura empieza en modo único y sin selecciones previas
+                        document.getElementById('selectModoDerivacion').value = 'UNICO';
+                        document.getElementById('selectDestinoUnico').selectedIndex = 0;
+                        modalDerivar.querySelectorAll('.check-dependencia').forEach(c => c.checked = false);
+                        alternarModo('UNICO');
                     }
                 });
             }
@@ -1228,29 +1228,33 @@
                     modalHistorialBs.show();
 
                     fetch(`/api/documentos/${docId}/actuaciones`)
-                        .then(res => res.json())
+                        .then(res => {
+                            if (!res.ok) throw new Error(res.status === 403 ? 'Sin acceso a este expediente.' : 'Error ' + res.status);
+                            return res.json();
+                        })
                         .then(data => {
                             if (!data || data.length === 0) {
                                 contenedor.innerHTML = '<div class="alert alert-light text-center border">No hay actuaciones ni derivaciones registradas aún para este expediente.</div>';
                                 return;
                             }
 
+                            // Árbol genealógico: cada actuación cuelga del último pase (o devolución)
+                            // que recibió la dependencia que la emitió. Llegan ordenadas por fecha.
                             let raices = [];
-                            let mapaPases = {};
+                            let ultimoRecibidoPorDependencia = {};
 
                             data.forEach(act => {
                                 act.hijos = act.hijos || [];
-                                const esPase = act.tipoActuacion === 'PASE_INTERNO' || act.tipoActuacion === 'PASE_PENDIENTE_ACUSE' || act.tipoActuacion === 'PASE_CONFIRMADO';
+                                const padre = act.dependenciaEmisoraId != null ? ultimoRecibidoPorDependencia[act.dependenciaEmisoraId] : null;
 
-                                if (esPase) {
-                                    mapaPases[act.dependencia] = act;
+                                if (padre) {
+                                    padre.hijos.push(act);
+                                } else {
                                     raices.push(act);
-                                } 
-                                else if (mapaPases[act.dependencia]) {
-                                    mapaPases[act.dependencia].hijos.push(act);
-                                } 
-                                else {
-                                    raices.push(act);
+                                }
+
+                                if (act.dependenciaReceptoraId != null) {
+                                    ultimoRecibidoPorDependencia[act.dependenciaReceptoraId] = act;
                                 }
                             });
 
@@ -1262,7 +1266,7 @@
                             contenedor.innerHTML = html;
                         })
                         .catch(err => {
-                            contenedor.innerHTML = '<div class="alert alert-danger">Error al cargar el árbol de trazabilidad.</div>';
+                            contenedor.innerHTML = `<div class="alert alert-danger">Error al cargar el árbol de trazabilidad. ${esc(err.message)}</div>`;
                         });
                 });
             });
@@ -1324,7 +1328,7 @@
         }
 
         // Guardar la pestaña activa cuando el usuario hace clic en alguna
-        const triggerTabList = document.querySelectorAll('#myTab button');
+        const triggerTabList = document.querySelectorAll('#docTabs button');
         triggerTabList.forEach(triggerEl => {
             let tabInstance = new bootstrap.Tab(triggerEl);
             triggerEl.addEventListener('click', function (event) {

@@ -7,6 +7,6 @@ public class DevolucionRequestDTO {
     // Getters y Setters
     public Long getDocumentoId() { return documentoId;}
     public void setDocumentoId(Long documentoId) { this.documentoId = documentoId; }
-    public String getOservacion() { return observacion; }
+    public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
 }

@@ -13,8 +13,6 @@ public interface DependenciaRepository extends JpaRepository<Dependencia, Intege
     
     List<Dependencia> findByEsInternaTicTrueAndActivoTrueOrderByNombreAsc();
 
-    // Obtener solo las dependencias internas pertencientes a la Dirección de TIC
-    List<Dependencia> findByEsInternaTicTrueAndActivoTrueOrderByNombre();
 
     // Buscar solo las dependencias que dependen jerarquicamente
     List<Dependencia> findByDependenciaPadreIdAndActivoTrueOrderByNombreAsc(Integer padreId);
