@@ -3,6 +3,8 @@ package py.gov.asuncion.tic.gestion_documental.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -139,7 +141,7 @@ public class HomeController {
             documentoService.devolverDocumento(id, observacion, usuarioActual);
             redirectAttributes.addFlashAttribute("mensajeExito", "Expediente devuelto correctamente.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
+            redirectAttributes.addFlashAttribute("error", mensajeError(e));
         }
         return "redirect:/"; // Redirige a la bandeja principal
     }   
@@ -155,7 +157,7 @@ public class HomeController {
             Documento docGuardado = documentoService.guardarNuevoDocumento(documento, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Documento registrado con CUTI " + docGuardado.getCodigoCuti() + ".");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "Error al registrar el documento: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Error al registrar el documento: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -173,7 +175,7 @@ public class HomeController {
             documentoService.derivarDocumento(documentoId, dependenciasDestinoIds, observacion, requiereInforme, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Expediente derivado correctamente.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "Error al derivar: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Error al derivar: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -194,7 +196,7 @@ public class HomeController {
                                                    personaRetira, funcionarioEntrega, archivoAcuse, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Salida exterior registrada correctamente.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "Error al registrar la salida: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Error al registrar la salida: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -210,7 +212,7 @@ public class HomeController {
             documentoService.confirmarEntregaYAcuse(documentoId, archivoAcuse, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Acuse confirmado. El expediente quedó FINALIZADO.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "Error al confirmar el acuse: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Error al confirmar el acuse: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -293,7 +295,7 @@ public class HomeController {
             redirectAttributes.addFlashAttribute("mensajeExito",
                     "RECHAZAR".equals(accion) ? "Recepción del pase rechazada." : "Pase retirado correctamente.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "No se pudo anular el pase: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "No se pudo anular el pase: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -310,7 +312,7 @@ public class HomeController {
             redirectAttributes.addFlashAttribute("mensajeExito",
                     "Cierre excepcional registrado. " + doc.getCodigoCuti() + " pasó a PENDIENTE_SALIDA.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "No se pudo forzar el cierre: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "No se pudo forzar el cierre: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -327,7 +329,7 @@ public class HomeController {
             documentoService.reemplazarPdfActuacion(actuacionId, archivo, motivo, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "PDF reemplazado. La versión anterior quedó en el historial.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "No se pudo reemplazar el PDF: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "No se pudo reemplazar el PDF: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -344,7 +346,7 @@ public class HomeController {
             documentoService.reemplazarAdjuntoDocumento(documentoId, archivo, motivo, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Acuse reemplazado. La versión anterior quedó en el historial.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "No se pudo reemplazar el acuse: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "No se pudo reemplazar el acuse: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -465,7 +467,7 @@ public class HomeController {
                        archivoCopiaSellada, usuarioCarga);
             redirectAttributes.addFlashAttribute("mensajeExito", "Actuación registrada correctamente.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "Error al registrar la actuación: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Error al registrar la actuación: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -481,7 +483,7 @@ public class HomeController {
             documentoService.confirmarRecepcionPaseInterno(actuacionId, archivoAcusePdf, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Recepción del pase confirmada.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "Error al confirmar el pase: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Error al confirmar el pase: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -596,7 +598,7 @@ public class HomeController {
 
             redirectAttributes.addFlashAttribute("mensajeExito", "Documento propio generado y salida registrada correctamente.");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "Error al registrar salida directa: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("error", "Error al registrar salida directa: " + mensajeError(e));
         }
         return "redirect:/";
     }
@@ -638,6 +640,24 @@ public class HomeController {
             return usuarioRepository.findByUsernameAndActivoTrue(username).orElse(null);
         }
         return null;
+    }
+
+    // Traduce errores técnicos (restricciones de la BD, bloqueos) a mensajes para el usuario
+    private String mensajeError(Exception e) {
+        if (e instanceof DataIntegrityViolationException integridad) {
+            String detalle = String.valueOf(integridad.getMostSpecificCause().getMessage());
+            if (detalle.contains("uq_pase_pendiente_por_receptora")) {
+                return "Ya existe un pase pendiente de acuse para esa dependencia. Espere la confirmación o retire el pase anterior.";
+            }
+            if (detalle.contains("chk_")) {
+                return "El dato no está dentro de los valores permitidos por el sistema.";
+            }
+            return "La operación viola una regla de integridad de la base de datos y no se guardó.";
+        }
+        if (e instanceof PessimisticLockingFailureException) {
+            return "El expediente está siendo modificado por otro usuario. Intente nuevamente en unos segundos.";
+        }
+        return e.getMessage();
     }
 
     private Usuario getUsuarioAutenticadoObligatorio() {

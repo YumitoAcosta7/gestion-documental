@@ -293,7 +293,7 @@ public class DocumentoService {
     @Transactional
     public void devolverDocumento(Long documentoId, String observacion, Usuario usuarioActual) {
         // 1. Buscar el documento
-        Documento documento = documentoRepository.findById(documentoId)
+        Documento documento = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new EntityNotFoundException("Documento no encontrado"));
 
         // 2. Validar estado operativo con getEstadoActual()
@@ -386,24 +386,44 @@ public class DocumentoService {
 
         verificarAccesoDocumento(usuario, documentoId);
 
+        // Un mismo destino repetido en la petición genera un solo pase
+        List<Integer> destinos = new ArrayList<>(new java.util.LinkedHashSet<>(dependenciasDestinoIds));
+        destinos.remove(null);
+
         // Solo se puede derivar a las dependencias que el usuario tiene habilitadas
         java.util.Set<Integer> destinosPermitidos = obtenerDependenciasHijas(usuario).stream()
                 .map(Dependencia::getId)
                 .collect(java.util.stream.Collectors.toSet());
-        for (Integer depId : dependenciasDestinoIds) {
+        for (Integer depId : destinos) {
             if (!destinosPermitidos.contains(depId)) {
                 throw new AccessDeniedException("No está habilitado para derivar a la dependencia seleccionada (ID " + depId + ").");
             }
         }
 
-        Documento doc = documentoRepository.findById(documentoId)
+        // Bloquea el expediente: dos derivaciones simultáneas se ejecutan una después de la otra
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "derivar");
 
+        // No se duplica un pase que todavía espera el acuse de la misma dependencia
+        List<String> conPasePendiente = new ArrayList<>();
+        for (Integer depId : destinos) {
+            if (actuacionDocumentoRepository.existePasePendiente(documentoId, depId)) {
+                conPasePendiente.add(dependenciaRepository.findById(depId).map(Dependencia::getNombre).orElse("ID " + depId));
+            }
+        }
+        if (!conPasePendiente.isEmpty()) {
+            throw new IllegalStateException("Ya existe un pase pendiente de acuse para: " + String.join(", ", conPasePendiente)
+                    + ". Espere la confirmación o retire ese pase antes de volver a derivar.");
+        }
+
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
         boolean esInformeRequerido = (requiereInforme != null && requiereInforme);
-        
+
         if (esInformeRequerido) {
+            doc.setEstadoActual(EstadoDocumento.EN_ESPERA_INFORME);
+        } else if (estadoAnterior == EstadoDocumento.EN_ESPERA_INFORME && quedanPasesParaInformeVigentes(documentoId)) {
+            // Una derivación de conocimiento no interrumpe los informes que siguen pendientes
             doc.setEstadoActual(EstadoDocumento.EN_ESPERA_INFORME);
         } else {
             doc.setEstadoActual(EstadoDocumento.EN_REVISION);
@@ -418,7 +438,7 @@ public class DocumentoService {
                 ? usuario.getDependencia() 
                 : null;
 
-       for (Integer depId : dependenciasDestinoIds) {
+        for (Integer depId : destinos) {
             Dependencia destino = dependenciaRepository.findById(depId)
                     .orElseThrow(() -> new RuntimeException("Dependencia no encontrada: " + depId));
 
@@ -432,6 +452,7 @@ public class DocumentoService {
                     .ubicacionBibliorato(doc.getUbicacionBibliorato())
                     .fechaHoraActuacion(LocalDateTime.now())
                     .paseConfirmado(false)
+                    .requiereInforme(esInformeRequerido)
                     .usuario(usuario)
                     .build();
 
@@ -439,11 +460,11 @@ public class DocumentoService {
         }
         // 🛡️ REGISTRO DE AUDITORÍA
         auditoriaService.registrarEvento(
-            doc, 
-            "DERIVACION_MULTIPLE", 
-            estadoAnterior, 
-            doc.getEstadoActual(), 
-            "Derivado a " + dependenciasDestinoIds.size() + " áreas: " + observacion, 
+            doc,
+            "DERIVACION_MULTIPLE",
+            estadoAnterior,
+            doc.getEstadoActual(),
+            "Derivado a " + destinos.size() + " áreas" + (esInformeRequerido ? " para informe" : " para conocimiento") + ": " + observacion,
             usuario, 
             null
         );
@@ -541,7 +562,7 @@ public class DocumentoService {
                                                String funcionarioEntrega, 
                                                MultipartFile archivoAcuse, 
                                                Usuario usuarioSesion) {
-        Documento doc = documentoRepository.findById(documentoId)
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "registrar la salida de");
         if (nroNotaSalida == null || nroNotaSalida.isBlank()) {
@@ -586,7 +607,7 @@ public class DocumentoService {
 
     @Transactional
     public Documento confirmarEntregaYAcuse(Long documentoId, MultipartFile archivoAcuse, Usuario usuarioSesion) {
-        Documento doc = documentoRepository.findById(documentoId)
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
 
         if (doc.getEstadoActual() != EstadoDocumento.PENDIENTE_SALIDA || doc.getFechaHoraSalida() == null) {
@@ -651,7 +672,7 @@ public class DocumentoService {
                                                 Usuario usuarioSesion) {
         verificarAccesoDocumento(usuarioSesion, documentoId);
 
-        Documento doc = documentoRepository.findById(documentoId)
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "registrar actuaciones en");
 
@@ -731,8 +752,9 @@ public class DocumentoService {
             throw new IllegalArgumentException("Es OBLIGATORIO subir el PDF de la copia sellada y firmada para confirmar la recepción del pase.");
         }
 
-        ActuacionDocumento actuacion = actuacionDocumentoRepository.findById(actuacionId)
+        ActuacionDocumento actuacion = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
                 .orElseThrow(() -> new RuntimeException("Actuación no encontrada: " + actuacionId));
+        documentoRepository.findByIdParaActualizar(actuacion.getDocumento().getId()); // serializa con derivar/anular
 
         if (!"PASE_INTERNO".equals(actuacion.getTipoActuacion()) || Boolean.TRUE.equals(actuacion.getPaseConfirmado())
                 || Boolean.TRUE.equals(actuacion.getAnulada())) {
@@ -790,7 +812,7 @@ public class DocumentoService {
         // Al confirmar la recepción, un PASE_INTERNO pasa a PASE_CONFIRMADO: ambos cuentan como pase emitido
         List<ActuacionDocumento> pasesInforme = actuaciones.stream()
                 .filter(a -> ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
-                        && a.getDescripcionResumen() != null && a.getDescripcionResumen().contains("PARA INFORME"))
+                        && Boolean.TRUE.equals(a.getRequiereInforme()))
                 .toList();
 
         List<ActuacionDocumento> respuestas = actuaciones.stream()
@@ -898,9 +920,9 @@ public class DocumentoService {
     // Reemplaza el PDF de una actuación: la versión anterior queda como "reemplazada" con su motivo
     @Transactional
     public AdjuntoDocumento reemplazarPdfActuacion(Long actuacionId, MultipartFile archivo, String motivo, Usuario usuario) {
-        ActuacionDocumento act = actuacionDocumentoRepository.findById(actuacionId)
+        ActuacionDocumento act = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
                 .orElseThrow(() -> new IllegalArgumentException("Actuación no encontrada: " + actuacionId));
-        Documento doc = act.getDocumento();
+        Documento doc = documentoRepository.findByIdParaActualizar(act.getDocumento().getId()).orElseThrow();
         verificarAccesoDocumento(usuario, doc.getId());
         validarMotivo(motivo, 10, "el motivo del reemplazo");
 
@@ -936,7 +958,7 @@ public class DocumentoService {
             throw new AccessDeniedException("Solo Dirección o Secretaría pueden reemplazar el acuse del expediente.");
         }
         validarMotivo(motivo, 10, "el motivo del reemplazo");
-        Documento doc = documentoRepository.findById(documentoId)
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
 
         AdjuntoDocumento previo = obtenerAdjuntoVigenteDocumento(documentoId);
@@ -1045,9 +1067,9 @@ public class DocumentoService {
 
     @Transactional
     public ActuacionDocumento anularPase(Long actuacionId, String accion, String motivo, Usuario usuario) {
-        ActuacionDocumento pase = actuacionDocumentoRepository.findById(actuacionId)
+        ActuacionDocumento pase = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
                 .orElseThrow(() -> new IllegalArgumentException("Pase no encontrado: " + actuacionId));
-        Documento doc = pase.getDocumento();
+        Documento doc = documentoRepository.findByIdParaActualizar(pase.getDocumento().getId()).orElseThrow();
         validarNoFinalizado(doc, "modificar pases de");
         validarMotivo(motivo, 10, "el motivo");
 
@@ -1101,7 +1123,7 @@ public class DocumentoService {
         return actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
                 .anyMatch(a -> !Boolean.TRUE.equals(a.getAnulada())
                         && ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
-                        && a.getDescripcionResumen() != null && a.getDescripcionResumen().contains("PARA INFORME"));
+                        && Boolean.TRUE.equals(a.getRequiereInforme()));
     }
 
     // =====================================================================
@@ -1115,7 +1137,7 @@ public class DocumentoService {
         }
         validarMotivo(justificacion, 20, "la justificación");
 
-        Documento doc = documentoRepository.findById(documentoId)
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
         if (estadoAnterior == EstadoDocumento.PENDIENTE_SALIDA || estadoAnterior == EstadoDocumento.FINALIZADO) {
@@ -1132,7 +1154,7 @@ public class DocumentoService {
                 .collect(java.util.stream.Collectors.toSet());
         List<String> sinRespuesta = vigentes.stream()
                 .filter(a -> ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
-                        && a.getDescripcionResumen() != null && a.getDescripcionResumen().contains("PARA INFORME")
+                        && Boolean.TRUE.equals(a.getRequiereInforme())
                         && a.getDependenciaReceptoraPase() != null
                         && !respondieron.contains(a.getDependenciaReceptoraPase().getId()))
                 .map(a -> a.getDependenciaReceptoraPase().getNombre())

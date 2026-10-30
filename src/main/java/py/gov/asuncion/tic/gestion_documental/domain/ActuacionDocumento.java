@@ -53,9 +53,14 @@ public class ActuacionDocumento {
     @JoinColumn(name = "usuario_id", nullable = false)
     private Usuario usuario;
 
-    @Column(name = "pase_confirmado")
+    @Column(name = "pase_confirmado", nullable = false)
     @Builder.Default
     private Boolean paseConfirmado = false;
+
+    // Pase que pide informe técnico o respuesta formal a la dependencia receptora
+    @Column(name = "requiere_informe", nullable = false)
+    @Builder.Default
+    private Boolean requiereInforme = false;
 
     // Relación para la vista en árbol (Jerarquía de Actuaciones)
     @ManyToOne(fetch = FetchType.LAZY)

@@ -43,6 +43,8 @@ Los PDF antiguos que quedaron en `./uploads/acuses` se siguen encontrando; los n
 | Script | Contenido |
 |---|---|
 | `V2__mejoras_operativas.sql` | Anulación lógica de actuaciones y versionado de adjuntos |
+| `V3__verificacion_previa.sql` | Consultas de solo lectura a ejecutar **antes** de V3 (todas deben devolver 0 filas) |
+| `V3__integridad_y_derivaciones.sql` | Historial no borrable (`RESTRICT`), `CHECK` de dominios, `requiere_informe`, unicidad de pases pendientes, tipos de clave corregidos |
 
 Ejecutar:
 

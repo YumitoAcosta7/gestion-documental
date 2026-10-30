@@ -1,12 +1,15 @@
 package py.gov.asuncion.tic.gestion_documental.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import py.gov.asuncion.tic.gestion_documental.domain.ActuacionDocumento;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDocumento, Long> {
@@ -30,6 +33,19 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
 
     ActuacionDocumento findTopByDocumentoIdAndDependenciaEmisoraIdAndTipoActuacionOrderByFechaHoraActuacionDesc(
             Long documentoId, Integer dependenciaEmisoraId, String tipoActuacion);
+
+    // 🔒 Lee la actuación bloqueando su fila (SELECT ... FOR UPDATE): su estado no cambia hasta el commit
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM ActuacionDocumento a WHERE a.id = :id")
+    Optional<ActuacionDocumento> findByIdParaActualizar(@Param("id") Long id);
+
+    // ¿La dependencia ya tiene un pase pendiente (sin acuse, no anulado) de este documento?
+    @Query("""
+        SELECT COUNT(a) > 0 FROM ActuacionDocumento a
+        WHERE a.documento.id = :documentoId AND a.dependenciaReceptoraPase.id = :dependenciaId
+          AND a.tipoActuacion = 'PASE_INTERNO' AND a.anulada = false AND a.paseConfirmado = false
+    """)
+    boolean existePasePendiente(@Param("documentoId") Long documentoId, @Param("dependenciaId") Integer dependenciaId);
 
     // Último pase vigente (no anulado) recibido por la dependencia: base de la devolución
     ActuacionDocumento findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(
