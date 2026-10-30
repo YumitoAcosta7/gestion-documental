@@ -26,7 +26,6 @@ public class CustomUserDetailsService implements UserDetailsService {
                 });
 
         System.out.println("✅ [DIAGNÓSTICO LOGIN] Usuario encontrado en BD: " + usuario.getUsername());
-        System.out.println("🔑 [DIAGNÓSTICO LOGIN] Hash grabado en BD: " + usuario.getPasswordHash());
         System.out.println("👤 [DIAGNÓSTICO LOGIN] Rol asignado: " + usuario.getRol());
 
         String rolTexto = (usuario.getRol() != null) ? usuario.getRol().toString() : "ENCARGADO_UNIDAD";

@@ -6,7 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.persistence.EntityNotFoundException;
 import py.gov.asuncion.tic.gestion_documental.domain.*;
+import py.gov.asuncion.tic.gestion_documental.dto.DevolucionRequestDTO;
+import py.gov.asuncion.tic.gestion_documental.dto.SalidaDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.*;
 
 import java.io.File;
@@ -186,17 +189,11 @@ public class DocumentoService {
     }
 
     @Transactional
-    public Documento derivarDocumento(Long documentoId, Integer dependenciaDestinoId, String observacion) {
-        Usuario usuarioDefault = usuarioRepository.findById(1)
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
-        return derivarDocumento(documentoId, List.of(dependenciaDestinoId), observacion, false, usuarioDefault);
-    }
-
-    @Transactional
     public Documento derivarDocumento(Long documentoId, Integer dependenciaDestinoId, String observacion, Usuario usuario) {
         return derivarDocumento(documentoId, List.of(dependenciaDestinoId), observacion, false, usuario);
     }
 
+/*
     @Transactional
     public Documento devolverDocumento(Long documentoId, String motivo, Usuario usuario) {
         Documento doc = documentoRepository.findById(documentoId)
@@ -231,6 +228,77 @@ public class DocumentoService {
         
         return documentoRepository.save(doc);
     }
+
+*/
+
+    @Transactional
+    public void devolverDocumento(Long documentoId, String observacion, Usuario usuarioActual) {
+        // 1. Buscar el documento
+        Documento documento = documentoRepository.findById(documentoId)
+                .orElseThrow(() -> new EntityNotFoundException("Documento no encontrado"));
+
+        // 2. Validar estado operativo con getEstadoActual()
+        if (documento.getEstadoActual() == EstadoDocumento.FINALIZADO || 
+            documento.getEstadoActual() == EstadoDocumento.PENDIENTE_SALIDA) {
+            throw new IllegalStateException("No se puede devolver un documento que ya se encuentra finalizado o pendiente de salida.");
+        }
+
+        if (usuarioActual == null || usuarioActual.getDependencia() == null) {
+            throw new IllegalStateException("El usuario actual no tiene una dependencia asignada para devolver expedientes.");
+        }
+
+        if (observacion == null || observacion.trim().length() < 5) {
+            throw new IllegalArgumentException("Debe ingresar el motivo de la devolución (mínimo 5 caracteres).");
+        }
+
+        // 3. Localizar el último pase recibido por la dependencia del usuario
+        Dependencia depActual = usuarioActual.getDependencia();
+        ActuacionDocumento ultimoPase = actuacionDocumentoRepository
+                .findTopByDocumentoIdAndDependenciaReceptoraPaseIdOrderByFechaHoraActuacionDesc(documentoId, depActual.getId());
+
+        if (ultimoPase == null || ultimoPase.getDependenciaEmisora() == null) {
+            throw new IllegalStateException("Su dependencia no recibió ningún pase de este expediente, no hay a quién devolverlo.");
+        }
+
+        Dependencia depDestino = ultimoPase.getDependenciaEmisora();
+        if (depDestino.getId().equals(depActual.getId())) {
+            throw new IllegalStateException("El último pase recibido fue emitido por su propia dependencia, no se puede devolver.");
+        }
+
+        EstadoDocumento estadoAnterior = documento.getEstadoActual();
+
+        // 4. Actualizar estado del documento con setEstadoActual()
+        documento.setEstadoActual(EstadoDocumento.EN_REVISION);
+        documentoRepository.save(documento);
+
+        // 5. Registrar la nueva actuación de devolución (retorna a quien nos envió)
+        ActuacionDocumento devolucion = ActuacionDocumento.builder()
+                .documento(documento)
+                .dependenciaEmisora(depActual)
+                .dependenciaReceptoraPase(depDestino)
+                .tipoActuacion("DEVOLUCION")
+                .numeroActuacion("S/N")
+                .descripcionResumen("DEVOLUCIÓN ➔ " + depDestino.getNombre() + ": " + observacion.trim())
+                .ubicacionBibliorato(documento.getUbicacionBibliorato())
+                .fechaHoraActuacion(LocalDateTime.now())
+                .paseConfirmado(true) // Se asume confirmada al ser una devolución inmediata
+                .usuario(usuarioActual)
+                .build();
+
+        actuacionDocumentoRepository.save(devolucion);
+
+        // 6. Auditoría inmutable automática usando registrarEvento(...)
+        auditoriaService.registrarEvento(
+            documento,
+            "DEVOLUCION",
+            estadoAnterior,
+            documento.getEstadoActual(),
+            "Expediente devuelto por " + depActual.getNombre() + " a " + depDestino.getNombre() + ": " + observacion.trim(),
+            usuarioActual,
+            "127.0.0.1"
+        );
+    }
+    
 
     @Transactional
     public Documento derivarDocumento(Long documentoId, 
@@ -300,6 +368,114 @@ public class DocumentoService {
 
         return doc;
     }
+
+ @Transactional
+    public Documento crearYRegistrarSalidaDirecta(String nroNotaSalida, 
+                                                  Integer tipoDocumentoId,
+                                                  String asunto,
+                                                  Integer dependenciaDestinoId, 
+                                                  String personaRetira, 
+                                                  String funcionarioEntrega, 
+                                                  MultipartFile archivoAcuse, 
+                                                  Usuario usuarioSesion) {
+        LocalDateTime ahora = LocalDateTime.now();
+        int anioActual = ahora.getYear();
+
+        if (usuarioSesion == null || usuarioSesion.getDependencia() == null) {
+            throw new IllegalStateException("El usuario actual no tiene una dependencia asignada para emitir documentos.");
+        }
+        if (asunto == null || asunto.isBlank()) {
+            throw new IllegalArgumentException("Debe ingresar el asunto del documento de salida.");
+        }
+        if (nroNotaSalida == null || nroNotaSalida.isBlank()) {
+            throw new IllegalArgumentException("Debe ingresar el N° de nota de salida.");
+        }
+        if (tipoDocumentoId == null) {
+            throw new IllegalArgumentException("Debe seleccionar el tipo de documento de salida.");
+        }
+        TipoDocumento tipoDoc = tipoDocumentoRepository.findById(tipoDocumentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + tipoDocumentoId));
+
+        // 1. Crear el documento nativo de la dependencia
+        Documento doc = new Documento();
+
+        // Generación oficial del CUTI (el año debe quedar grabado para que el correlativo no se repita)
+        doc.setAnio(anioActual);
+        long correlativoAnual = documentoRepository.countByAnio(anioActual) + 1;
+        doc.setCodigoCuti(String.format("TIC-%d-%06d", anioActual, correlativoAnual));
+
+        doc.setAsunto(asunto.trim());
+        doc.setTipoDocumento(tipoDoc);
+        doc.setPrioridad(Prioridad.NORMAL);
+        doc.setNumeroDocumentoOrigen("S/N");
+        doc.setDependenciaOrigen(usuarioSesion.getDependencia());
+        doc.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
+        doc.setFechaHoraIngreso(ahora);
+        doc.setUsuarioCargaIngreso(usuarioSesion);
+        doc.setUsuarioRecepcion(usuarioSesion); // Columna NOT NULL en la BD
+        doc.setFechaHoraCargaIngreso(ahora);
+        doc.setFuncionarioRecibeFisico(usuarioSesion.getNombreCompleto());
+
+        // 2. Setear los datos de salida inmediata
+        doc.setNroNotaSalida(nroNotaSalida);
+        doc.setFechaHoraSalida(ahora);
+        doc.setPersonaRetiraSalida(personaRetira);
+        doc.setFuncionarioEntregaFisico(funcionarioEntrega);
+        doc.setUsuarioCargaSalida(usuarioSesion);
+        doc.setFechaHoraCargaSalida(ahora);
+
+        if (dependenciaDestinoId != null) {
+            Dependencia destino = dependenciaRepository.findById(dependenciaDestinoId).orElse(null);
+            doc.setDependenciaDestinoSalida(destino);
+        }
+
+        Documento docGuardado = documentoRepository.save(doc);
+
+        // 3. Manejo del archivo PDF de acuse
+        if (archivoAcuse != null && !archivoAcuse.isEmpty()) {
+            try {
+                File carpeta = new File(uploadDir);
+                if (!carpeta.exists()) carpeta.mkdirs();
+
+                String nombreOriginal = archivoAcuse.getOriginalFilename();
+                String extension = nombreOriginal != null && nombreOriginal.contains(".") 
+                        ? nombreOriginal.substring(nombreOriginal.lastIndexOf(".")) : ".pdf";
+                String nombreServidor = doc.getCodigoCuti() + "_SALIDA_" + System.currentTimeMillis() + extension;
+
+                Path rutaFinal = Paths.get(uploadDir, nombreServidor);
+                Files.copy(archivoAcuse.getInputStream(), rutaFinal, StandardCopyOption.REPLACE_EXISTING);
+
+                AdjuntoDocumento adjunto = AdjuntoDocumento.builder()
+                        .documento(docGuardado)
+                        .nombreArchivo(nombreOriginal)
+                        .rutaAlmacenamiento(rutaFinal.toString())
+                        .tipoAdjunto("ACUSE_SALIDA")
+                        .tamanioBytes(archivoAcuse.getSize())
+                        .fechaHoraSubida(ahora)
+                        .usuarioSubida(usuarioSesion)
+                        .build();
+
+                adjuntoDocumentoRepository.save(adjunto);
+            } catch (IOException e) {
+                throw new RuntimeException("Error al guardar el archivo PDF: " + e.getMessage(), e);
+            }
+        }
+
+        // 4. Auditoría
+        auditoriaService.registrarEvento(
+            docGuardado, 
+            "CREACION_Y_SALIDA_DIRECTA", 
+            null, 
+            docGuardado.getEstadoActual(), 
+            "Documento generado y despachado directamente con N° Remisión " + nroNotaSalida, 
+            usuarioSesion, 
+            "127.0.0.1"
+        );
+
+        return docGuardado;
+    }
+
+
 
     @Transactional
     public Documento registrarSalidaDocumento(Long documentoId, 
@@ -527,6 +703,24 @@ public class DocumentoService {
         return actuacionGuardada;
     }
 
+    // Ubica el PDF de una actuación (copia sellada o acuse de pase). Se busca en la carpeta
+    // relativa histórica "uploads/acuses" y en app.upload.dir.
+    public Path resolverPdfActuacion(Long actuacionId) {
+        ActuacionDocumento actuacion = actuacionDocumentoRepository.findById(actuacionId).orElse(null);
+        if (actuacion == null || actuacion.getRutaCopiaSelladaPdf() == null || actuacion.getRutaCopiaSelladaPdf().isBlank()) {
+            return null;
+        }
+
+        // Solo el nombre del archivo, para evitar rutas manipuladas
+        Path nombre = Paths.get(actuacion.getRutaCopiaSelladaPdf()).getFileName();
+        for (Path candidato : List.of(Paths.get("uploads/acuses").resolve(nombre), Paths.get(uploadDir).resolve(nombre))) {
+            if (Files.isRegularFile(candidato)) {
+                return candidato;
+            }
+        }
+        return null;
+    }
+
     public List<ActuacionDocumento> obtenerActuacionesPorDocumento(Long documentoId) {
         return actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId);
     }
@@ -584,15 +778,39 @@ public class DocumentoService {
 
         List<ActuacionDocumento> actuaciones = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId);
 
-        long pasesParaInforme = actuaciones.stream()
-                .filter(a -> "PASE_INTERNO".equals(a.getTipoActuacion()) && a.getDescripcionResumen() != null && a.getDescripcionResumen().contains("PARA INFORME"))
-                .count();
+        // Al confirmar la recepción, un PASE_INTERNO pasa a PASE_CONFIRMADO: ambos cuentan como pase emitido
+        List<ActuacionDocumento> pasesInforme = actuaciones.stream()
+                .filter(a -> ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
+                        && a.getDescripcionResumen() != null && a.getDescripcionResumen().contains("PARA INFORME"))
+                .toList();
 
-        long respuestasRecibidas = actuaciones.stream()
+        List<ActuacionDocumento> respuestas = actuaciones.stream()
                 .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
-                .count();
+                .toList();
 
-        if (pasesParaInforme > 0 && respuestasRecibidas >= pasesParaInforme && doc.getEstadoActual() == EstadoDocumento.EN_ESPERA_INFORME) {
+        long pasesParaInforme = pasesInforme.size();
+        long respuestasRecibidas = respuestas.size();
+
+        boolean todasRespondieron;
+        boolean pasesConReceptora = pasesInforme.stream().allMatch(a -> a.getDependenciaReceptoraPase() != null);
+        if (pasesConReceptora) {
+            // Cada dependencia a la que se pidió informe debe haber emitido al menos una respuesta
+            java.util.Set<Integer> dependenciasPendientes = pasesInforme.stream()
+                    .map(a -> a.getDependenciaReceptoraPase().getId())
+                    .collect(java.util.stream.Collectors.toSet());
+            java.util.Set<Integer> dependenciasQueRespondieron = respuestas.stream()
+                    .filter(a -> a.getDependenciaEmisora() != null)
+                    .map(a -> a.getDependenciaEmisora().getId())
+                    .collect(java.util.stream.Collectors.toSet());
+            todasRespondieron = dependenciasQueRespondieron.containsAll(dependenciasPendientes);
+            pasesParaInforme = dependenciasPendientes.size();
+            respuestasRecibidas = dependenciasPendientes.stream().filter(dependenciasQueRespondieron::contains).count();
+        } else {
+            // Pases antiguos sin dependencia receptora: se mantiene el conteo simple
+            todasRespondieron = respuestasRecibidas >= pasesParaInforme;
+        }
+
+        if (pasesParaInforme > 0 && todasRespondieron && doc.getEstadoActual() == EstadoDocumento.EN_ESPERA_INFORME) {
             EstadoDocumento estadoAnterior = doc.getEstadoActual();
             doc.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
             Documento docActualizado = documentoRepository.save(doc);

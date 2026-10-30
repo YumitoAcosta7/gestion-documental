@@ -19,6 +19,9 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
 
     long countByPrioridadAndEstadoActualNot(Prioridad prioridad, EstadoDocumento estadoFinalizado);
 
+    // Método para obtener los documentos emitidos/creados por tu propia dependencia
+    List<Documento> findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
+
     List<Documento> findByEstadoActualNotOrderByFechaHoraIngresoDesc(EstadoDocumento estado);
 
     boolean existsByCodigoCuti(String codigoCuti);
