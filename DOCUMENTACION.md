@@ -53,6 +53,7 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V10__asignaciones_director.sql` | Quien tenía el rol `DIRECTOR` recibe además `MESA_ENTRADA` en su ámbito, para conservar las acciones que tenía |
 | `V11__custodia_y_canal.sql` | Etapa 2.2. Agrega dependencia de registro y de custodia a cada expediente, `tipo_pase` (`TRAMITE`, `INFORME`, `CONOCIMIENTO`) y las tablas `series_cuti` y `reglas_derivacion`. Completa los datos de los expedientes existentes |
 | `V12__usuario_administrador_sistema.sql` | Crea el primer administrador (`juan.acosta`, Jefe de la Unidad de Data Center), con `RESPONSABLE` de su unidad y `ADMIN_SISTEMA` sobre toda la municipalidad. Se crea **sin contraseña utilizable**: la define el propio usuario con `db/herramientas/DefinirContrasena.java` |
+| `V13__administracion_usuarios.sql` | Etapa 2.3. Agrega `usuarios.debe_cambiar_contrasena`, deja opcional `usuarios.rol` (los permisos salen de las asignaciones) y crea `auditoria_sistema`, inmutable por trigger |
 
 **Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`.
 
@@ -155,6 +156,20 @@ Las acciones las decide un único componente, `PoliticaAcceso`, a partir de las 
 | (sin asignaciones vigentes) | Como `OPERADOR` de su propia dependencia |
 
 Un usuario con varias asignaciones suma sus acciones. `usuarios.rol` ya no se usa para autorizar; se conserva hasta retirarlo.
+
+**Administración** (`/admin/usuarios`, solo `ADMINISTRAR_SISTEMA`; `AdministracionService`, diseño §6.1):
+- **Usuarios:** alta, modificación (nombre, correo, dependencia), baja lógica con motivo y reactivación.
+  - Nadie puede darse de baja a sí mismo, ni dar de baja al último administrador.
+- **Contraseñas:**
+  - El alta y el reseteo generan una **contraseña temporal** que se muestra **una sola vez** al administrador.
+  - El usuario queda obligado a cambiarla al entrar (`CambioContrasenaInterceptor` lo lleva a `/cuenta/contrasena`).
+  - Cualquier usuario puede cambiar la suya en `/cuenta/contrasena`.
+  - Regla (`ReglasContrasena`): al menos 10 caracteres, con letras y números.
+- **Asignaciones y suplencias:** rol × ámbito (con o sin subordinadas) × vigencia, con acto administrativo obligatorio.
+  - Una suplencia necesita titular y fecha de fin, y deja de regir sola ese día.
+  - Quitar una asignación la da de baja con motivo, sin borrarla.
+  - No se puede quitar la última asignación de administrador.
+- **Auditoría del sistema** (`auditoria_sistema`): cada alta, modificación, baja, reseteo, cambio de contraseña y asignación queda registrado con quién y cuándo. Un trigger impide modificarla o borrarla.
 
 **Acceso por ámbito** (`DocumentoService.puedeAccederDocumento`): cada usuario accede a los expedientes de su ámbito, es decir, de las dependencias que abarcan sus asignaciones vigentes hoy (con sus subordinadas, por la `ruta` del organigrama). Un expediente está en el ámbito si una de esas dependencias lo envió, lo registró, lo derivó o lo recibió. Sin asignaciones vigentes, el ámbito es solo la propia dependencia. Además, como antes, se accede a los expedientes en los que la propia dependencia emitió o recibió una actuación. Se aplica a bandejas, árbol, informes, PDF, acuses (HTTP 403), buscador, archivo físico, registrar actuación y derivar. Las asignaciones iniciales (V8): Director → `RESPONSABLE` de la Dirección de TIC; Secretaría → `MESA_ENTRADA` de la Dirección de TIC; jefes → `RESPONSABLE` de su dependencia.
 

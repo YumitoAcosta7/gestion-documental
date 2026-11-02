@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security" lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración - Gestión Documental</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+</head>
+<body class="bg-light">
+<div class="container-fluid py-3 px-4">
+
+    <!-- Encabezado -->
+    <div class="d-flex justify-content-between align-items-center mb-3 bg-white px-3 py-2 rounded-3 shadow-sm border">
+        <div>
+            <h4 class="fw-bold m-0"><i class="bi bi-people-fill text-primary me-2"></i>Administración</h4>
+            <div class="small text-muted">Usuarios, asignaciones y suplencias</div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="small fw-semibold" th:text="${admin.username}">admin</span>
+            <a th:href="@{/}" class="btn btn-outline-secondary btn-sm rounded-pill px-3"><i class="bi bi-house me-1"></i>Expedientes</a>
+            <form th:action="@{/logout}" method="post" class="m-0">
+                <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3"><i class="bi bi-box-arrow-right"></i></button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Mensajes -->
+    <div th:if="${error}" class="alert alert-danger py-2" th:text="${error}">Error</div>
+    <div th:if="${mensajeExito}" class="alert alert-success py-2" th:text="${mensajeExito}">Éxito</div>
+    <div th:if="${contrasenaTemporal}" class="alert alert-warning">
+        <div class="fw-bold mb-1"><i class="bi bi-key-fill me-1"></i>Contraseña temporal de <span th:text="${usuarioTemporal}">usuario</span></div>
+        <code class="fs-5 user-select-all" th:text="${contrasenaTemporal}">xxxx</code>
+        <div class="small mt-1">Se muestra <strong>una sola vez</strong>. Entréguela al usuario: al entrar deberá cambiarla por una propia.</div>
+    </div>
+
+    <div class="row g-3">
+        <!-- ===================== Listado de usuarios ===================== -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">Usuarios</span>
+                    <button class="btn btn-primary btn-sm rounded-pill" data-bs-toggle="collapse" data-bs-target="#nuevoUsuario">
+                        <i class="bi bi-person-plus me-1"></i>Nuevo usuario
+                    </button>
+                </div>
+
+                <!-- Alta -->
+                <div class="collapse border-bottom" id="nuevoUsuario">
+                    <form th:action="@{/admin/usuarios}" method="post" class="p-3 bg-light">
+                        <div class="row g-2">
+                            <div class="col-md-5">
+                                <label class="form-label small fw-bold">Usuario</label>
+                                <input name="username" class="form-control form-control-sm" required pattern="^[a-z][a-z0-9._\-]{2,49}$" placeholder="juan.perez">
+                            </div>
+                            <div class="col-md-7">
+                                <label class="form-label small fw-bold">Nombre completo</label>
+                                <input name="nombreCompleto" class="form-control form-control-sm" required minlength="5" maxlength="150">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Correo institucional (opcional)</label>
+                                <input name="email" type="email" class="form-control form-control-sm" placeholder="usuario@…">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Dependencia</label>
+                                <select name="dependenciaId" class="form-select form-select-sm" required>
+                                    <option value="" selected disabled>Seleccione…</option>
+                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-2">Se genera una contraseña temporal que se muestra una sola vez.</div>
+                        <button type="submit" class="btn btn-primary btn-sm mt-2">Crear usuario</button>
+                    </form>
+                </div>
+
+                <div class="card-body p-2">
+                    <form th:action="@{/admin/usuarios}" method="get" class="d-flex gap-2 mb-2">
+                        <input name="texto" th:value="${texto}" class="form-control form-control-sm" placeholder="Buscar por usuario, nombre o dependencia">
+                        <button class="btn btn-outline-secondary btn-sm"><i class="bi bi-search"></i></button>
+                    </form>
+                    <div class="list-group list-group-flush" style="max-height: 65vh; overflow-y: auto;">
+                        <a th:each="u : ${usuarios}"
+                           th:href="@{/admin/usuarios(usuarioId=${u.id},texto=${texto})}"
+                           th:class="${'list-group-item list-group-item-action py-2 ' + (seleccionado != null && seleccionado.id == u.id ? 'active' : '')}">
+                            <div class="d-flex justify-content-between">
+                                <span class="fw-semibold small" th:text="${u.nombreCompleto}">Nombre</span>
+                                <span th:unless="${u.activo}" class="badge bg-secondary">Baja</span>
+                                <span th:if="${u.activo && u.debeCambiarContrasena}" class="badge bg-warning text-dark">Clave temporal</span>
+                            </div>
+                            <div class="small opacity-75" th:text="${u.username + ' · ' + u.dependencia.nombreVisible}">usuario · dependencia</div>
+                        </a>
+                        <div th:if="${#lists.isEmpty(usuarios)}" class="text-muted small p-3">No hay usuarios que coincidan.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== Detalle del usuario ===================== -->
+        <div class="col-lg-7">
+            <div th:if="${seleccionado == null}" class="card border-0 shadow-sm">
+                <div class="card-body text-muted text-center py-5">
+                    <i class="bi bi-person-lines-fill fs-1 d-block mb-2"></i>Seleccione un usuario para ver sus datos y asignaciones.
+                </div>
+            </div>
+
+            <div th:if="${seleccionado != null}" class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <span>
+                        <span class="fw-bold" th:text="${seleccionado.nombreCompleto}">Nombre</span>
+                        <span class="text-muted small" th:text="${'(' + seleccionado.username + ')'}">(usuario)</span>
+                        <span th:unless="${seleccionado.activo}" class="badge bg-secondary ms-1">Dado de baja</span>
+                    </span>
+                    <form th:if="${seleccionado.activo}" th:action="@{/admin/usuarios/{id}/contrasena(id=${seleccionado.id})}" method="post" class="m-0"
+                          onsubmit="return confirm('Se generará una contraseña temporal nueva y la actual dejará de servir. ¿Continuar?');">
+                        <button class="btn btn-outline-warning btn-sm"><i class="bi bi-key me-1"></i>Restablecer contraseña</button>
+                    </form>
+                </div>
+                <div class="card-body">
+                    <!-- Datos -->
+                    <form th:action="@{/admin/usuarios/{id}(id=${seleccionado.id})}" method="post" class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Nombre completo</label>
+                            <input name="nombreCompleto" th:value="${seleccionado.nombreCompleto}" class="form-control form-control-sm" required minlength="5" maxlength="150">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Correo institucional</label>
+                            <input name="email" type="email" th:value="${seleccionado.email}" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-9">
+                            <label class="form-label small fw-bold">Dependencia</label>
+                            <select name="dependenciaId" class="form-select form-select-sm" required>
+                                <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}" th:selected="${op.id == seleccionado.dependencia.id}"></option></optgroup>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-primary btn-sm w-100">Guardar datos</button>
+                        </div>
+                    </form>
+
+                    <!-- Baja / reactivación -->
+                    <div class="border-top mt-3 pt-3">
+                        <form th:if="${seleccionado.activo && seleccionado.id != admin.id}" th:action="@{/admin/usuarios/{id}/estado(id=${seleccionado.id})}" method="post" class="d-flex gap-2">
+                            <input type="hidden" name="activo" value="false">
+                            <input name="motivo" class="form-control form-control-sm" required minlength="5" placeholder="Motivo de la baja (ej.: fin de contrato, traslado)">
+                            <button class="btn btn-outline-danger btn-sm text-nowrap" onclick="return confirm('El usuario no podrá ingresar. Su historial se conserva. ¿Dar de baja?');">Dar de baja</button>
+                        </form>
+                        <form th:unless="${seleccionado.activo}" th:action="@{/admin/usuarios/{id}/estado(id=${seleccionado.id})}" method="post">
+                            <input type="hidden" name="activo" value="true">
+                            <button class="btn btn-outline-success btn-sm">Reactivar usuario</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Asignaciones -->
+            <div th:if="${seleccionado != null}" class="card border-0 shadow-sm">
+                <div class="card-header bg-white fw-bold">Asignaciones y suplencias</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm align-middle mb-0 small">
+                        <thead class="table-light">
+                        <tr><th>Rol</th><th>Ámbito</th><th>Vigencia</th><th>Estado</th><th>Acto</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="a : ${asignaciones}" th:class="${a.activa ? '' : 'text-muted'}">
+                            <td>
+                                <span class="fw-semibold" th:text="${a.rol}">ROL</span>
+                                <div th:if="${a.esSuplencia}" class="text-muted" th:text="${'Suplencia de ' + a.titular.username}">Suplencia</div>
+                            </td>
+                            <td>
+                                <span th:text="${a.dependenciaAmbito.nombreVisible}">Ámbito</span>
+                                <span th:if="${a.incluyeSubordinadas}" class="text-muted">y subordinadas</span>
+                            </td>
+                            <td class="text-nowrap" th:text="${a.vigenteDesde + ' → ' + (a.vigenteHasta != null ? a.vigenteHasta : 'sin fin')}">fechas</td>
+                            <td>
+                                <span th:if="${!a.activa}" class="badge bg-secondary">Dada de baja</span>
+                                <span th:if="${a.activa && a.vigenteDesde.isAfter(hoy)}" class="badge bg-info">Futura</span>
+                                <span th:if="${a.activa && a.vigenteHasta != null && a.vigenteHasta.isBefore(hoy)}" class="badge bg-light text-dark border">Vencida</span>
+                                <span th:if="${a.activa && !a.vigenteDesde.isAfter(hoy) && (a.vigenteHasta == null || !a.vigenteHasta.isBefore(hoy))}" class="badge bg-success">Vigente</span>
+                            </td>
+                            <td th:text="${a.actoAdministrativo}">Acto</td>
+                            <td>
+                                <form th:if="${a.activa}" th:action="@{/admin/asignaciones/{id}/baja(id=${a.id})}" method="post" class="d-flex gap-1">
+                                    <input type="hidden" name="usuarioId" th:value="${seleccionado.id}">
+                                    <input name="motivo" class="form-control form-control-sm" style="width: 9rem" required minlength="5" placeholder="Motivo">
+                                    <button class="btn btn-outline-danger btn-sm" title="Quitar asignación"><i class="bi bi-x-lg"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        <tr th:if="${#lists.isEmpty(asignaciones)}">
+                            <td colspan="6" class="text-muted p-3">Sin asignaciones: trabaja como operador de su propia dependencia.</td>
+                        </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Nueva asignación -->
+                    <form th:if="${seleccionado.activo}" th:action="@{/admin/usuarios/{id}/asignaciones(id=${seleccionado.id})}" method="post" class="p-3 border-top bg-light">
+                        <div class="fw-semibold small mb-2">Nueva asignación</div>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold">Rol</label>
+                                <select name="rol" class="form-select form-select-sm" required>
+                                    <option value="MESA_ENTRADA">Mesa de entrada</option>
+                                    <option value="RESPONSABLE">Responsable</option>
+                                    <option value="OPERADOR" selected>Operador</option>
+                                    <option value="CONSULTA">Consulta</option>
+                                    <option value="ADMIN_SISTEMA">Administrador del sistema</option>
+                                </select>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label small fw-bold">Ámbito</label>
+                                <select name="ambitoId" class="form-select form-select-sm" required>
+                                    <option value="" selected disabled>Seleccione dependencia…</option>
+                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
+                                </select>
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="checkbox" name="incluyeSubordinadas" value="true" id="chkSub" checked>
+                                    <label class="form-check-label small" for="chkSub">Incluye las dependencias subordinadas</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Desde</label>
+                                <input type="date" name="desde" th:value="${hoy}" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Hasta</label>
+                                <input type="date" name="hasta" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Acto administrativo</label>
+                                <input name="actoAdministrativo" class="form-control form-control-sm" required minlength="3" maxlength="100" placeholder="Res. N° 123/2026, Memo DTIC N° 45/2026…">
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="checkbox" name="esSuplencia" value="true" id="chkSuplencia"
+                                           onchange="document.getElementById('bloqueTitular').classList.toggle('d-none', !this.checked); document.getElementById('selTitular').required = this.checked;">
+                                    <label class="form-check-label small" for="chkSuplencia">Es una suplencia</label>
+                                </div>
+                            </div>
+                            <div class="col-md-8 d-none" id="bloqueTitular">
+                                <select name="titularId" id="selTitular" class="form-select form-select-sm">
+                                    <option value="" selected disabled>¿A quién suple?</option>
+                                    <option th:each="u : ${usuarios}" th:if="${u.activo && u.id != seleccionado.id}" th:value="${u.id}" th:text="${u.nombreCompleto + ' (' + u.username + ')'}"></option>
+                                </select>
+                                <div class="form-text">La suplencia necesita fecha "Hasta" y deja de regir sola ese día.</div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm mt-2">Agregar asignación</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== Auditoría ===================== -->
+    <div class="card border-0 shadow-sm mt-3">
+        <div class="card-header bg-white fw-bold"><i class="bi bi-shield-check me-1"></i>Auditoría de administración <span class="text-muted small fw-normal">(últimos 100 movimientos; no se puede modificar)</span></div>
+        <div class="card-body p-0" style="max-height: 40vh; overflow-y: auto;">
+            <table class="table table-sm mb-0 small">
+                <thead class="table-light"><tr><th>Fecha</th><th>Quién</th><th>Acción</th><th>Detalle</th></tr></thead>
+                <tbody>
+                <tr th:each="e : ${auditoria}">
+                    <td class="text-nowrap" th:text="${#temporals.format(e.fechaHora, 'dd/MM/yyyy HH:mm')}">fecha</td>
+                    <td th:text="${e.usuario.username}">usuario</td>
+                    <td><span class="badge bg-light text-dark border" th:text="${e.accion}">ACCION</span></td>
+                    <td th:text="${e.detalle}">detalle</td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(auditoria)}"><td colspan="4" class="text-muted p-3">Todavía no hay movimientos.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

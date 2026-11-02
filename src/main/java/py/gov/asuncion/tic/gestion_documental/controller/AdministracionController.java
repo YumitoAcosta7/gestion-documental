@@ -1,0 +1,148 @@
+package py.gov.asuncion.tic.gestion_documental.controller;
+
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import py.gov.asuncion.tic.gestion_documental.domain.RolAsignacion;
+import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
+import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
+import py.gov.asuncion.tic.gestion_documental.service.AdministracionService;
+import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
+
+import java.time.LocalDate;
+
+// 👥 Pantalla de administración (solo PERMISO_ADMINISTRAR_SISTEMA, ver SecurityConfig):
+// usuarios, sus asignaciones y suplencias, y la auditoría del sistema.
+@Controller
+@RequestMapping("/admin")
+public class AdministracionController {
+
+    private final AdministracionService administracionService;
+    private final DocumentoService documentoService;
+    private final UsuarioRepository usuarioRepository;
+
+    public AdministracionController(AdministracionService administracionService, DocumentoService documentoService,
+                                    UsuarioRepository usuarioRepository) {
+        this.administracionService = administracionService;
+        this.documentoService = documentoService;
+        this.usuarioRepository = usuarioRepository;
+    }
+
+    @GetMapping("/usuarios")
+    public String usuarios(@RequestParam(value = "texto", required = false) String texto,
+                           @RequestParam(value = "usuarioId", required = false) Integer usuarioId,
+                           Authentication auth, Model model) {
+        Usuario admin = actual(auth);
+        model.addAttribute("admin", admin);
+        model.addAttribute("texto", texto);
+        model.addAttribute("usuarios", administracionService.buscarUsuarios(texto, admin));
+        model.addAttribute("dependenciasAgrupadas", documentoService.obtenerDependenciasAgrupadas());
+        model.addAttribute("roles", RolAsignacion.values());
+        model.addAttribute("hoy", LocalDate.now());
+        if (usuarioId != null) {
+            model.addAttribute("seleccionado", administracionService.obtenerUsuario(usuarioId, admin));
+            model.addAttribute("asignaciones", administracionService.asignacionesDe(usuarioId, admin));
+        }
+        model.addAttribute("auditoria", administracionService.auditoriaReciente(admin));
+        return "admin";
+    }
+
+    @PostMapping("/usuarios")
+    public String crear(@RequestParam("username") String username, @RequestParam("nombreCompleto") String nombreCompleto,
+                        @RequestParam(value = "email", required = false) String email,
+                        @RequestParam("dependenciaId") Integer dependenciaId,
+                        Authentication auth, RedirectAttributes ra) {
+        try {
+            var r = administracionService.crearUsuario(username, nombreCompleto, email, dependenciaId, actual(auth));
+            mostrarTemporal(ra, r, "Usuario " + r.usuario().getUsername() + " creado. Ahora asígnele sus roles.");
+            return "redirect:/admin/usuarios?usuarioId=" + r.usuario().getId();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+            return "redirect:/admin/usuarios";
+        }
+    }
+
+    @PostMapping("/usuarios/{id}")
+    public String actualizar(@PathVariable("id") Integer id, @RequestParam("nombreCompleto") String nombreCompleto,
+                             @RequestParam(value = "email", required = false) String email,
+                             @RequestParam("dependenciaId") Integer dependenciaId,
+                             Authentication auth, RedirectAttributes ra) {
+        try {
+            administracionService.actualizarUsuario(id, nombreCompleto, email, dependenciaId, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Datos del usuario actualizados.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios?usuarioId=" + id;
+    }
+
+    @PostMapping("/usuarios/{id}/estado")
+    public String estado(@PathVariable("id") Integer id, @RequestParam("activo") boolean activo,
+                         @RequestParam(value = "motivo", required = false) String motivo,
+                         Authentication auth, RedirectAttributes ra) {
+        try {
+            administracionService.cambiarEstado(id, activo, motivo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", activo ? "Usuario reactivado." : "Usuario dado de baja.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios?usuarioId=" + id;
+    }
+
+    @PostMapping("/usuarios/{id}/contrasena")
+    public String restablecer(@PathVariable("id") Integer id, Authentication auth, RedirectAttributes ra) {
+        try {
+            var r = administracionService.restablecerContrasena(id, actual(auth));
+            mostrarTemporal(ra, r, "Contraseña restablecida.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios?usuarioId=" + id;
+    }
+
+    @PostMapping("/usuarios/{id}/asignaciones")
+    public String asignar(@PathVariable("id") Integer id, @RequestParam("rol") RolAsignacion rol,
+                          @RequestParam("ambitoId") Integer ambitoId,
+                          @RequestParam(value = "incluyeSubordinadas", defaultValue = "false") boolean incluyeSubordinadas,
+                          @RequestParam(value = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+                          @RequestParam(value = "hasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+                          @RequestParam(value = "esSuplencia", defaultValue = "false") boolean esSuplencia,
+                          @RequestParam(value = "titularId", required = false) Integer titularId,
+                          @RequestParam("actoAdministrativo") String actoAdministrativo,
+                          Authentication auth, RedirectAttributes ra) {
+        try {
+            administracionService.crearAsignacion(id, rol, ambitoId, incluyeSubordinadas, desde, hasta, esSuplencia,
+                    titularId, actoAdministrativo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", esSuplencia ? "Suplencia registrada." : "Asignación registrada.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios?usuarioId=" + id;
+    }
+
+    @PostMapping("/asignaciones/{id}/baja")
+    public String quitarAsignacion(@PathVariable("id") Long id, @RequestParam("usuarioId") Integer usuarioId,
+                                   @RequestParam("motivo") String motivo, Authentication auth, RedirectAttributes ra) {
+        try {
+            administracionService.finalizarAsignacion(id, motivo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Asignación dada de baja.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios?usuarioId=" + usuarioId;
+    }
+
+    // La contraseña temporal se muestra una sola vez (flash): no queda en ningún registro
+    private static void mostrarTemporal(RedirectAttributes ra, AdministracionService.ContrasenaTemporal r, String mensaje) {
+        ra.addFlashAttribute("mensajeExito", mensaje);
+        ra.addFlashAttribute("usuarioTemporal", r.usuario().getUsername());
+        ra.addFlashAttribute("contrasenaTemporal", r.contrasena());
+    }
+
+    private Usuario actual(Authentication auth) {
+        return usuarioRepository.findByUsernameAndActivoTrue(auth.getName()).orElseThrow();
+    }
+}
