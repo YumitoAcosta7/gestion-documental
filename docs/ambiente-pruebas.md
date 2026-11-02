@@ -27,15 +27,15 @@ Pasos que sigue:
 
    Flyway arranca desde el esquema de la V6, que se creó a mano y no tiene script propio; por eso se copia la estructura. **No** se copian expedientes, actuaciones, adjuntos, usuarios ni asignaciones. Producción solo se lee.
 3. **Deja todos los objetos a nombre del rol de pruebas.**
-4. **Opcional: crea tres usuarios de prueba**, con una contraseña de prueba que se pide por teclado:
-   - `prueba_mesa_tic`, mesa de entrada de la DTIC;
-   - `prueba_mesa_dgaf`, mesa de entrada de la DGAF, paso obligado entre TIC y Hacienda;
-   - `prueba_resp_hacienda`, responsable de Hacienda, para comprobar que no ve los expedientes de TIC.
+4. **Opcional: crea dos usuarios de prueba**, con una contraseña de prueba que se pide por teclado: `prueba_mesa_tic` y `prueba_resp_hacienda`. El script de usuarios de abajo crea además `prueba_mesa_dgaf`.
 5. **Muestra un resumen** con la cantidad de dependencias, expedientes y usuarios, y la versión de Flyway.
 
 Si la base de pruebas ya existe, el script se detiene sin tocar nada.
 
-Los usuarios de prueba también se pueden crear después, sin rehacer la base. El script `db/pruebas/crear_usuarios_prueba.sh` no duplica los que ya existen:
+Los usuarios de prueba también se pueden crear después, sin rehacer la base, con `db/pruebas/crear_usuarios_prueba.sh`. Ese script no duplica los que ya existen y crea:
+- `prueba_mesa_tic`, mesa de entrada de la DTIC;
+- `prueba_mesa_dgaf`, mesa de entrada de la DGAF, paso obligado entre TIC y Hacienda;
+- `prueba_resp_hacienda`, responsable de Hacienda, para comprobar que no ve los expedientes de TIC.
 
 ```bash
 sudo -u postgres bash crear_usuarios_prueba.sh
