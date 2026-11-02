@@ -34,6 +34,12 @@ Pasos que sigue:
 
 Si la base de pruebas ya existe, el script se detiene sin tocar nada.
 
+Los usuarios de prueba también se pueden crear después, sin rehacer la base. El script `db/pruebas/crear_usuarios_prueba.sh` no duplica los que ya existen:
+
+```bash
+sudo -u postgres bash crear_usuarios_prueba.sh
+```
+
 ## 2. Permitir la conexión desde la máquina de la aplicación
 
 Si la aplicación corre en otra máquina, el rol de pruebas necesita una línea en `pg_hba.conf` como la del usuario de producción:

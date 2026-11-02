@@ -114,6 +114,7 @@ if [[ "$RESPUESTA" =~ ^[sS]$ ]]; then
     read -r -s -p "Contraseña de PRUEBA para ambos usuarios (no use una contraseña real): " CLAVE_USUARIOS; echo
     if [ ${#CLAVE_USUARIOS} -lt 8 ]; then
         echo "La contraseña debe tener al menos 8 caracteres. No se crearon usuarios." >&2
+        echo "Puede crearlos después, sin rehacer la base, con:  sudo -u postgres bash crear_usuarios_prueba.sh" >&2
     else
         # BCrypt con pgcrypto: Spring Security acepta los hashes con prefijo 2a
         psql_postgres -d "$BASE_PRUEBAS" -v clave="$CLAVE_USUARIOS" <<'SQL'
