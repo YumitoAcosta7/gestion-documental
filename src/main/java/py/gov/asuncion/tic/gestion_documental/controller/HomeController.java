@@ -40,6 +40,7 @@ import py.gov.asuncion.tic.gestion_documental.repository.DocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 import py.gov.asuncion.tic.gestion_documental.service.ArchivoService;
 import py.gov.asuncion.tic.gestion_documental.service.BandejaService;
+import py.gov.asuncion.tic.gestion_documental.service.CanalService;
 import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
 import py.gov.asuncion.tic.gestion_documental.service.BiblioratoService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
@@ -83,6 +84,9 @@ public class HomeController {
 
     @Autowired
     private BandejaService bandejaService;
+
+    @Autowired
+    private CanalService canalService;
     
 
     /**
@@ -103,6 +107,7 @@ public class HomeController {
         model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
         model.addAttribute("usuarioLogueado", usuario);
         model.addAttribute("rolesUsuario", politicaAcceso.descripcionRoles(usuario));
+        model.addAttribute("areaUsuario", usuario != null ? canalService.cabeceraDelUsuario(usuario) : null);
 
         // 📥 Bandejas: "Todos" es la lista completa de antes; el resto, paginadas por ámbito
         List<Documento> activos;
@@ -607,10 +612,10 @@ public class HomeController {
             map.put("documentoId", id);
             map.put("tipoActuacion", act.getTipoActuacion() != null ? act.getTipoActuacion() : "PASE_INTERNO");
             map.put("numeroActuacion", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
-            map.put("dependencia", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getNombre() : "Sin Dependencia");
+            map.put("dependencia", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getNombreVisible() : "Sin Dependencia");
             map.put("dependenciaEmisoraId", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getId() : null);
             map.put("dependenciaReceptoraId", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getId() : null);
-            map.put("dependenciaReceptora", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getNombre() : null);
+            map.put("dependenciaReceptora", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getNombreVisible() : null);
             map.put("descripcion", act.getDescripcionResumen());
             map.put("bibliorato", act.getUbicacionBibliorato() != null && !act.getUbicacionBibliorato().isBlank()
                     ? act.getUbicacionBibliorato() : "No especificado");
@@ -671,7 +676,7 @@ public class HomeController {
                 map.put("id", act.getId());
                 map.put("tipo", act.getTipoActuacion());
                 map.put("numero", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
-                map.put("dependencia", act.getDependenciaEmisora().getNombre());
+                map.put("dependencia", act.getDependenciaEmisora().getNombreVisible());
                 map.put("resumen", act.getDescripcionResumen());
                 listaJson.add(map);
             }
