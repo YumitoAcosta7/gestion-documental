@@ -2,6 +2,7 @@ package py.gov.asuncion.tic.gestion_documental.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
@@ -31,6 +32,8 @@ public class LimiteIntentosService {
     private final Duration bloqueo;
     private final Clock reloj;
 
+    // Con dos constructores, Spring necesita saber cuál usar: este (el otro es para las pruebas)
+    @Autowired
     public LimiteIntentosService(@Value("${app.login.intentos-maximos:5}") int maximoIntentos,
                                  @Value("${app.login.minutos-bloqueo:15}") int minutosBloqueo) {
         this(maximoIntentos, Duration.ofMinutes(minutosBloqueo), Clock.systemUTC());

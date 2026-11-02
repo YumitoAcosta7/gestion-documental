@@ -50,6 +50,21 @@ class LimiteIntentosServiceTest {
     }
 
     @Test
+    void springPuedeCrearloComoEnLaAplicacion() {
+        // Tiene dos constructores: sin @Autowired en el público, la aplicación no arrancaba
+        try (var ctx = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            ctx.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("prueba",
+                    java.util.Map.of("app.login.intentos-maximos", "2", "app.login.minutos-bloqueo", "1")));
+            ctx.register(LimiteIntentosService.class);
+            ctx.refresh();
+            LimiteIntentosService desdeSpring = ctx.getBean(LimiteIntentosService.class);
+            desdeSpring.registrarFallo("ana");
+            desdeSpring.registrarFallo("ana");
+            assertTrue(desdeSpring.estaBloqueado("ana"), "toma la configuración app.login.*");
+        }
+    }
+
+    @Test
     void tambienSeBloqueanUsuariosInexistentes() {
         // Así el mensaje "bloqueado" no revela qué nombres de usuario existen
         for (int i = 0; i < 5; i++) {
