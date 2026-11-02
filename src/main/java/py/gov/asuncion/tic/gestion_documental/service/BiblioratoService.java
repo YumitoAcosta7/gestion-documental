@@ -1,14 +1,13 @@
 package py.gov.asuncion.tic.gestion_documental.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import py.gov.asuncion.tic.gestion_documental.domain.Bibliorato;
 import py.gov.asuncion.tic.gestion_documental.domain.Dependencia;
 import py.gov.asuncion.tic.gestion_documental.domain.Documento;
-import py.gov.asuncion.tic.gestion_documental.domain.RolUsuario;
+import py.gov.asuncion.tic.gestion_documental.domain.Accion;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
 import py.gov.asuncion.tic.gestion_documental.repository.BiblioratoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.DependenciaRepository;
@@ -32,6 +31,9 @@ public class BiblioratoService {
 
     @Autowired
     private DocumentoRepository documentoRepository;
+
+    @Autowired
+    private PoliticaAcceso politicaAcceso;
 
     public List<Bibliorato> listarActivos() {
         return biblioratoRepository.findByActivoTrueOrderByAnioDescCodigoAsc();
@@ -141,8 +143,6 @@ public class BiblioratoService {
     }
 
     private void exigirAdministrativo(Usuario usuario) {
-        if (usuario == null || (usuario.getRol() != RolUsuario.DIRECTOR && usuario.getRol() != RolUsuario.SECRETARIA_ADMIN)) {
-            throw new AccessDeniedException("Solo Dirección o Secretaría administran el catálogo de biblioratos.");
-        }
+        politicaAcceso.exigir(usuario, Accion.GESTIONAR_ARCHIVO, "No está habilitado para administrar el catálogo de biblioratos.");
     }
 }

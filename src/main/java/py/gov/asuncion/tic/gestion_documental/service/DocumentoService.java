@@ -63,6 +63,9 @@ public class DocumentoService {
     @Autowired
     private AsignacionRepository asignacionRepository;
 
+    @Autowired
+    private PoliticaAcceso politicaAcceso;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
 
@@ -142,12 +145,6 @@ public class DocumentoService {
             grupos.add(new GrupoDependencias(etiqueta, opciones));
         });
         return grupos;
-    }
-
-    // 🛡️ CONTROL DE ACCESO POR DEPENDENCIA
-    public boolean esRolAdministrativo(Usuario usuario) {
-        return usuario != null
-                && (usuario.getRol() == RolUsuario.DIRECTOR || usuario.getRol() == RolUsuario.SECRETARIA_ADMIN);
     }
 
     // Cada usuario accede a los expedientes de su ámbito (asignaciones vigentes, por organigrama)
@@ -307,13 +304,11 @@ public class DocumentoService {
         return guardado;
     }
 
-    // 📚 Asigna o cambia la ubicación física (bibliorato + fojas) de un documento. Solo Dirección/Secretaría.
+    // 📚 Asigna o cambia la ubicación física (bibliorato + fojas) de un documento. Requiere GESTIONAR_ARCHIVO.
     @Transactional
     public Documento cambiarUbicacion(Long documentoId, Integer biblioratoId, Integer fojaDesde, Integer fojaHasta,
                                       String motivo, Usuario usuario) {
-        if (!esRolAdministrativo(usuario)) {
-            throw new AccessDeniedException("Solo Dirección o Secretaría registran la ubicación física de los documentos.");
-        }
+        politicaAcceso.exigir(usuario, Accion.GESTIONAR_ARCHIVO, "No está habilitado para registrar la ubicación física de los documentos.");
         if (biblioratoId == null) {
             throw new IllegalArgumentException("Debe seleccionar el bibliorato.");
         }
@@ -884,7 +879,7 @@ public class DocumentoService {
             throw new IllegalStateException("La actuación no es un pase interno pendiente de confirmación.");
         }
 
-        // Solo confirma la dependencia receptora (o Dirección/Secretaría)
+        // Solo confirma la dependencia receptora (o quien supervisa los pases del ámbito)
         Dependencia receptora = actuacion.getDependenciaReceptoraPase();
         Dependencia depUsuario = usuarioSesion != null ? usuarioSesion.getDependencia() : null;
         boolean esReceptora = depUsuario != null && (receptora != null
@@ -892,7 +887,7 @@ public class DocumentoService {
                 // Pases antiguos sin receptora: se identifica por la descripción "➔ <dependencia>"
                 : actuacion.getDescripcionResumen() != null
                     && actuacion.getDescripcionResumen().contains("➔ " + depUsuario.getNombre() + ":"));
-        if (!esReceptora && !esRolAdministrativo(usuarioSesion)) {
+        if (!esReceptora && !politicaAcceso.puede(usuarioSesion, Accion.SUPERVISAR_PASES)) {
             throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción.");
         }
 
@@ -1041,7 +1036,7 @@ public class DocumentoService {
         if (act == null || usuario == null || act.getRutaCopiaSelladaPdf() == null || Boolean.TRUE.equals(act.getAnulada())) {
             return false;
         }
-        if (esRolAdministrativo(usuario)) {
+        if (politicaAcceso.puede(usuario, Accion.SUPERVISAR_PASES)) {
             return true;
         }
         Integer responsable = dependenciaResponsablePdf(act);
@@ -1061,7 +1056,7 @@ public class DocumentoService {
             throw new IllegalStateException("La actuación no tiene un PDF cargado para reemplazar.");
         }
         if (!puedeReemplazarPdf(act, usuario)) {
-            throw new AccessDeniedException("Solo la dependencia que cargó el PDF (o Dirección/Secretaría) puede reemplazarlo.");
+            throw new AccessDeniedException("Solo la dependencia que cargó el PDF (o quien supervisa los pases del ámbito) puede reemplazarlo.");
         }
 
         AdjuntoDocumento previo = adjuntoDocumentoRepository.findByActuacionIdOrderByFechaHoraSubidaAsc(actuacionId).stream()
@@ -1082,12 +1077,10 @@ public class DocumentoService {
         return nuevo;
     }
 
-    // Reemplaza el acuse/adjunto principal del documento (salida o acuse final). Solo Dirección/Secretaría.
+    // Reemplaza el acuse/adjunto principal del documento (salida o acuse final). Requiere REGISTRAR_SALIDA.
     @Transactional
     public AdjuntoDocumento reemplazarAdjuntoDocumento(Long documentoId, MultipartFile archivo, String motivo, Usuario usuario) {
-        if (!esRolAdministrativo(usuario)) {
-            throw new AccessDeniedException("Solo Dirección o Secretaría pueden reemplazar el acuse del expediente.");
-        }
+        politicaAcceso.exigir(usuario, Accion.REGISTRAR_SALIDA, "No está habilitado para reemplazar el acuse del expediente.");
         validarMotivo(motivo, 10, "el motivo del reemplazo");
         Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
@@ -1198,12 +1191,12 @@ public class DocumentoService {
                 && !Boolean.TRUE.equals(act.getPaseConfirmado()) && !Boolean.TRUE.equals(act.getAnulada());
     }
 
-    // Retira el pase la dependencia que lo emitió (o Dirección/Secretaría)
+    // Retira el pase la dependencia que lo emitió (o quien supervisa los pases del ámbito)
     public boolean puedeRetirarPase(ActuacionDocumento act, Usuario usuario) {
         if (!esPasePendiente(act) || usuario == null) {
             return false;
         }
-        if (esRolAdministrativo(usuario)) {
+        if (politicaAcceso.puede(usuario, Accion.SUPERVISAR_PASES)) {
             return true;
         }
         return usuario.getDependencia() != null && act.getDependenciaEmisora() != null
@@ -1237,7 +1230,7 @@ public class DocumentoService {
         String tipoAnulacion;
         if ("RETIRAR".equals(accion)) {
             if (!puedeRetirarPase(pase, usuario)) {
-                throw new AccessDeniedException("Solo la dependencia que emitió el pase (o Dirección/Secretaría) puede retirarlo.");
+                throw new AccessDeniedException("Solo la dependencia que emitió el pase (o quien supervisa los pases del ámbito) puede retirarlo.");
             }
             tipoAnulacion = ANULACION_RETIRADO;
         } else if ("RECHAZAR".equals(accion)) {
@@ -1284,14 +1277,12 @@ public class DocumentoService {
     }
 
     // =====================================================================
-    // ⚠️ CIERRE FORZADO / SALIDA EXCEPCIONAL (solo Dirección y Secretaría)
+    // ⚠️ CIERRE FORZADO / SALIDA EXCEPCIONAL (requiere FORZAR_CIERRE)
     // =====================================================================
 
     @Transactional
     public Documento forzarCierreInformes(Long documentoId, String justificacion, Usuario usuario) {
-        if (!esRolAdministrativo(usuario)) {
-            throw new AccessDeniedException("Solo Dirección o Secretaría pueden forzar el cierre de informes.");
-        }
+        politicaAcceso.exigir(usuario, Accion.FORZAR_CIERRE, "No está habilitado para forzar el cierre de informes.");
         validarMotivo(justificacion, 20, "la justificación");
 
         Documento doc = documentoRepository.findByIdParaActualizar(documentoId)

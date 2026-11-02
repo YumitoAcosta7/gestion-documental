@@ -53,17 +53,17 @@
                 </div>
 
                 <!-- Botón Registrar Nuevo Documento (Visible para roles autorizados) -->
-                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" class="btn btn-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalNuevoDoc">
+                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_INGRESO')" class="btn btn-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalNuevoDoc">
                     <i class="bi bi-plus-lg me-1"></i>Nuevo Documento
                 </button>
 
                 <!-- Botón Registrar Nuevo Documento de Salida (Visible para roles autorizados) -->
-                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" class="btn btn-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalNuevoDocSalida">
+                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_SALIDA')" class="btn btn-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalNuevoDocSalida">
                     <i class="bi bi-plus-lg me-1"></i>Nueva Salida
                 </button>
 
                 <!-- Catálogo de biblioratos (Dirección / Secretaría) -->
-                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalBiblioratos">
+                <button sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalBiblioratos">
                     <i class="bi bi-archive me-1"></i>Biblioratos
                 </button>
 
@@ -267,7 +267,7 @@
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                 <i class="bi bi-clock-history"></i> Historial
                                             </button>
-                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
+                                            <button sec:authorize="hasAuthority('PERMISO_VER_AUDITORIA')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
                                                 <i class="bi bi-shield-check"></i> Auditoría
                                             </button>
                                         </td>
@@ -333,7 +333,7 @@
                                                 <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                     <i class="bi bi-clock-history"></i> Historial
                                                 </button>
-                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría inmutable">
+                                                <button sec:authorize="hasAuthority('PERMISO_VER_AUDITORIA')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría inmutable">
                                                     <i class="bi bi-shield-check"></i> Auditoría
                                                 </button>
 
@@ -347,12 +347,12 @@
                                                 </button>
 
                                                 <!-- BOTÓN DERIVAR RESTAURADO -->
-                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR', 'JEFE_DEPTO')" type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
+                                                <button sec:authorize="hasAuthority('PERMISO_DERIVAR')" type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                     <i class="bi bi-arrow-right-short"></i> Derivar
                                                 </button>
 
                                                 <!-- BOTÓN SALIDA -->
-                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button"
+                                                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_SALIDA')" type="button"
                                                         th:class="${doc.fechaHoraSalida != null ? 'btn btn-sm btn-success rounded-pill px-2 me-1' : 'btn btn-sm btn-outline-success rounded-pill px-2 me-1'}" 
                                                         data-bs-toggle="modal" 
                                                         data-bs-target="#modalSalida" 
@@ -362,7 +362,7 @@
                                                 </button>
 
                                                 <!-- BOTÓN CONFIRMAR ACUSE -->
-                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button"
+                                                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_SALIDA')" type="button"
                                                         th:if="${doc.estadoActual.name() == 'PENDIENTE_SALIDA'}"
                                                         th:disabled="${doc.fechaHoraSalida == null}"
                                                         th:class="${doc.fechaHoraSalida != null ? 'btn btn-sm btn-warning rounded-pill px-3 me-1 fw-bold text-dark' : 'btn btn-sm btn-secondary rounded-pill px-3 me-1 disabled opacity-50'}"
@@ -375,7 +375,7 @@
                                                 </button>
 
                                                 <!-- BOTÓN CIERRE EXCEPCIONAL (solo Dirección / Secretaría) -->
-                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button"
+                                                <button sec:authorize="hasAuthority('PERMISO_FORZAR_CIERRE')" type="button"
                                                         th:if="${doc.estadoActual.name() != 'PENDIENTE_SALIDA' and doc.estadoActual.name() != 'FINALIZADO'}"
                                                         class="btn btn-sm btn-outline-danger rounded-pill px-2 me-1"
                                                         data-bs-toggle="modal" data-bs-target="#modalForzarCierre"
@@ -483,7 +483,7 @@
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                 <i class="bi bi-clock-history"></i> Historial
                                             </button>
-                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
+                                            <button sec:authorize="hasAuthority('PERMISO_VER_AUDITORIA')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
                                                 <i class="bi bi-shield-check"></i> Auditoría
                                             </button>
                                             <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1 btn-ver-adjuntos"
@@ -550,13 +550,13 @@
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Historial">
                                                 <i class="bi bi-clock-history"></i>
                                             </button>
-                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1"
+                                            <button sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1"
                                                     data-bs-toggle="modal" data-bs-target="#modalUbicacion"
                                                     th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" th:data-tiene-ubicacion="${doc.ubicacionTexto != null}"
                                                     title="Registrar o cambiar ubicación física">
                                                 <i class="bi bi-geo-alt"></i>
                                             </button>
-                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR', 'JEFE_DEPTO')" type="button"
+                                            <button sec:authorize="hasAuthority('PERMISO_DERIVAR')" type="button"
                                                     th:if="${doc.estadoActual.name() == 'ARCHIVADO'}"
                                                     class="btn btn-sm btn-outline-primary rounded-pill px-2"
                                                     data-bs-toggle="modal" data-bs-target="#modalDerivar"
@@ -619,7 +619,7 @@
     </div>
 
     <!-- MODAL CATÁLOGO DE BIBLIORATOS (Dirección / Secretaría) -->
-    <div class="modal fade" id="modalBiblioratos" tabindex="-1" sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')">
+    <div class="modal fade" id="modalBiblioratos" tabindex="-1" sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
@@ -1143,7 +1143,7 @@
                 </div>
                 <div class="modal-body">
                     <div id="contenedorAdjuntos" class="mb-3"></div>
-                    <form sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')"
+                    <form sec:authorize="hasAuthority('PERMISO_REGISTRAR_SALIDA')"
                           th:action="@{/documentos/reemplazar-acuse}" method="post" enctype="multipart/form-data"
                           class="border rounded p-3 bg-light">
                         <input type="hidden" name="documentoId" id="adjuntosDocId" />
