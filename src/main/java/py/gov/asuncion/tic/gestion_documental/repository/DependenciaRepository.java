@@ -15,4 +15,6 @@ public interface DependenciaRepository extends JpaRepository<Dependencia, Intege
 
     // Buscar solo las dependencias que dependen jerarquicamente
     List<Dependencia> findByDependenciaPadreIdAndActivoTrueOrderByNombreAsc(Integer padreId);
+
+    List<Dependencia> findByDependenciaPadreIdInAndActivoTrueOrderByNombreAsc(java.util.Collection<Integer> padreIds);
 }

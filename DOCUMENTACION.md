@@ -49,6 +49,8 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V5__biblioratos_informativos.sql` | Categoría del tipo documental (trámite/informativo), catálogo `biblioratos`, ubicación de cada documento (bibliorato + fojas) |
 | `V6__integridad_adjuntos.sql` | Huella SHA-256 y tipo MIME de cada adjunto |
 | `V7__limpieza_esquema.sql` | Elimina tablas heredadas vacías (`solicitudes_informes`, `historial_estados`, `movimientos_documento`) y la columna sin uso `documentos.usuario_registra_salida_id`. Se cancela si alguna tiene datos |
+| `V8__organigrama_y_asignaciones.sql` | Fase 2: sigla, `ruta` materializada (con trigger que la recalcula y rechaza ciclos), mesa de entrada y `recibe_externos` en `dependencias`; tabla `asignaciones` cargada desde los roles actuales |
+| `V9__organigrama_RI887.sql` | Organigrama completo (Res. N° 887/08-07-2026, 580 dependencias). **Generado** por `db/organigrama/ImportarOrganigrama.java` desde `db/organigrama/organigrama_RI887_2026.txt`: se corrige el .txt y se regenera, no se edita a mano |
 
 **Integridad de archivos (V6):** cada PDF guarda su huella SHA-256 al subirse. El botón *Verificar* (historial del PDF y modal *Versiones*) la compara con el archivo en disco. Se rechazan los PDF incompletos (sin `%%EOF`). Si la operación falla, el archivo escrito se elimina.
 
@@ -85,6 +87,11 @@ Nombres de tablas y columnas tal como están mapeados en las entidades JPA.
 ### `dependencias` — estructura orgánica jerárquica
 - `id` (INT, PK), `nombre`, `nivel_jerarquico_id` (1: Intendencia, 3: Dirección General, 4: Dirección, 6: Departamento, 7: Unidad)
 - `dependencia_padre_id` (FK recursiva a `dependencias.id`), `es_interna_tic` (BOOLEAN), `activo` (BOOLEAN)
+- `sigla` (única: `DTIC`, `DGAF`, `DREC-D02`...), `ruta` (`/1/10/40/`, la mantiene un trigger), `es_mesa_entrada`, `recibe_externos`, `resolucion`
+
+### `asignaciones` — permiso = rol × ámbito × vigencia
+- `usuario_id`, `rol` (`ADMIN_SISTEMA`, `MESA_ENTRADA`, `RESPONSABLE`, `OPERADOR`, `CONSULTA`), `dependencia_ambito_id`, `incluye_subordinadas`
+- `vigente_desde`, `vigente_hasta` (NULL = indefinida), `es_suplencia`, `titular_usuario_id`, `acto_administrativo`, `activa`, `creada_por_id` (NULL = carga inicial V8)
 
 ### `niveles_jerarquicos`
 - `id` (INT, PK), `nombre` (único), `orden_nivel`
@@ -134,10 +141,11 @@ Nombres de tablas y columnas tal como están mapeados en las entidades JPA.
 | `JEFE_DEPTO` | Derivar a sus unidades hijas, registrar actuaciones, devolver, confirmar pases recibidos. |
 | `JEFE_UNIDAD` | Registrar actuaciones, devolver, confirmar pases recibidos. |
 
-**Acceso por dependencia** (`DocumentoService.puedeAccederDocumento`): Dirección y Secretaría acceden a todo; los demás solo a expedientes originados en su dependencia o en los que su dependencia emitió o recibió una actuación. Se aplica a árbol, informes, PDF, acuses (HTTP 403), buscador, registrar actuación y derivar.
+**Acceso por ámbito** (`DocumentoService.puedeAccederDocumento`): cada usuario accede a los expedientes de su ámbito, es decir, de las dependencias que abarcan sus asignaciones vigentes hoy (con sus subordinadas, por la `ruta` del organigrama). Un expediente está en el ámbito si una de esas dependencias lo envió, lo registró, lo derivó o lo recibió. Sin asignaciones vigentes, el ámbito es solo la propia dependencia. Además, como antes, se accede a los expedientes en los que la propia dependencia emitió o recibió una actuación. Se aplica a bandejas, árbol, informes, PDF, acuses (HTTP 403), buscador, archivo físico, registrar actuación y derivar. Las asignaciones iniciales (V8): Director → `RESPONSABLE` de la Dirección de TIC; Secretaría → `MESA_ENTRADA` de la Dirección de TIC; jefes → `RESPONSABLE` de su dependencia.
 
 Reglas adicionales:
-- Solo se deriva a las dependencias habilitadas para el usuario (hijas de su dependencia; Dirección/Secretaría: hijas de la Dirección de TIC).
+- Solo se deriva a las dependencias que cuelgan directamente de los ámbitos de gestión del usuario (`MESA_ENTRADA` o `RESPONSABLE`); sin ellos, a las hijas de su propia dependencia. No hay IDs de dependencia escritos en el código.
+- Los permisos sobre acciones (ingreso, salida, acuse final, ubicación física) siguen dependiendo de `usuarios.rol` mientras convivan ambos modelos.
 - Solo la dependencia receptora confirma un pase (o Dirección/Secretaría).
 - El ingreso usa `NuevoDocumentoDTO`: el navegador no puede fijar CUTI, estado ni usuarios.
 - Los botones de la interfaz se muestran según el rol.
@@ -146,8 +154,8 @@ Reglas adicionales:
 
 ## 5. 💼 LÓGICA DE NEGOCIO
 
-- **CUTI:** `TIC-AAAA-NNNNNN`. Se toma un bloqueo transaccional de PostgreSQL (`pg_advisory_xact_lock`) y se usa el último correlativo del año + 1, de modo que dos registros simultáneos no repiten número.
-- **Bandejas:** Dirección y Secretaría ven todo. Departamentos y unidades ven los expedientes en los que su dependencia es emisora o receptora de un pase. Para pases antiguos sin receptora se usa la descripción `➔ <dependencia>:`.
+- **CUTI:** `<prefijo>-AAAA-NNNNNN`, con prefijo configurable en `app.cuti.prefijo` (hoy `TIC`; `MCA` para la serie municipal única). Se toma un bloqueo transaccional de PostgreSQL (`pg_advisory_xact_lock`) y se usa el último correlativo del año + 1, de modo que dos registros simultáneos no repiten número.
+- **Bandejas:** cada usuario ve los expedientes de su ámbito (ver §4) y aquellos en los que su dependencia es emisora o receptora de un pase. Para pases antiguos sin receptora se usa la descripción `➔ <dependencia>:`.
 - **Derivación flexible:** a una dependencia (modo único) o a varias (modo copias), para conocimiento (`EN_REVISION`) o para informe (`EN_ESPERA_INFORME`). Cada destino genera un `PASE_INTERNO` pendiente de acuse.
 - **Confirmación de pase:** la dependencia receptora sube la copia sellada en PDF; el pase pasa a `PASE_CONFIRMADO`.
 - **Cierre automático de informes:** cuando **cada** dependencia a la que se pidió informe emitió un `INFORME_TECNICO` o `MEMO`, el expediente pasa solo de `EN_ESPERA_INFORME` a `PENDIENTE_SALIDA`.
@@ -223,9 +231,9 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 
 **Pendientes conocidos:**
 - Probar en uso real el acuse final y la confirmación de pases con la nueva carpeta de PDF.
-- `DocumentoService.obtenerDependenciasHijas` y `obtenerDireccionRaiz` usan IDs fijos (1, 10, 11); conviene pasarlos a configuración.
 - El modal de salida envía `tipoRemision` e `informeActuacionId` (legajo), pero todavía no se guardan.
 - Expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes (por ejemplo TIC-2026-000001) deben revisarse manualmente.
+- Fase 2, etapa 2.1 (`docs/diseno-fase2-multiarea.md` §10): hecho el organigrama completo, las asignaciones, la visibilidad por ámbito, la eliminación de los IDs fijos y el CUTI configurable. Falta: un único componente `PoliticaAcceso` para las acciones (hoy por `usuarios.rol`), Flyway y el ambiente de pruebas.
 - Pruebas automatizadas: 18 unitarias (`DiasHabilesTest`, `ValidacionFojasTest`, `ArchivoServiceTest`); faltan pruebas de integración con una base PostgreSQL propia (Testcontainers).
 - Feriados nacionales/municipales para el SLA (requiere una tabla de feriados).
 - Paginación de bandejas para grandes volúmenes (hoy se cargan todos los expedientes activos).

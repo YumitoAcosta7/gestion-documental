@@ -25,15 +25,11 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     // Método para obtener los documentos emitidos/creados por tu propia dependencia
     List<Documento> findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
 
-    List<Documento> findByEstadoActualNotInOrderByFechaHoraIngresoDesc(java.util.Collection<EstadoDocumento> estados);
-
-
     // 🔒 Bloquea la fila del expediente hasta el fin de la transacción (SELECT ... FOR UPDATE).
     // Serializa las operaciones simultáneas sobre un mismo expediente (derivar, anular, confirmar...).
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT d FROM Documento d WHERE d.id = :id")
     Optional<Documento> findByIdParaActualizar(@Param("id") Long id);
-
 
     // 🔢 CORRELATIVO DEL CUTI
     // Bloqueo transaccional de PostgreSQL: dos ingresos simultáneos no pueden calcular el mismo número.
@@ -46,7 +42,46 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
                  + "FROM documentos WHERE codigo_cuti LIKE :prefijo", nativeQuery = true)
     Integer obtenerUltimoCorrelativoCuti(@Param("prefijo") String prefijo);
 
-    List<Documento> findByEstadoActualOrderByFechaHoraSalidaDesc(EstadoDocumento estado);
+    // 🧭 ÁMBITO DEL USUARIO (docs/diseno-fase2-multiarea.md §3.2)
+    // Dependencias abarcadas por sus asignaciones vigentes hoy, por la ruta del organigrama.
+    // Sin asignaciones vigentes, el ámbito es solo su propia dependencia.
+    String CTE_AMBITO = """
+        WITH amb AS (
+            SELECT dep.ruta, a.incluye_subordinadas
+              FROM asignaciones a JOIN dependencias dep ON dep.id = a.dependencia_ambito_id
+             WHERE a.usuario_id = :usuarioId AND a.activa
+               AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)
+            UNION ALL
+            SELECT dep.ruta, FALSE
+              FROM usuarios u JOIN dependencias dep ON dep.id = u.dependencia_id
+             WHERE u.id = :usuarioId
+               AND NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa
+                                 AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE))
+        ), deps AS (
+            SELECT x.id FROM dependencias x JOIN amb ON x.ruta = amb.ruta OR (amb.incluye_subordinadas AND x.ruta LIKE amb.ruta || '%')
+        )
+        """;
+
+    // Un expediente está en el ámbito si lo envió, lo registró, lo derivó o lo recibió una dependencia del ámbito
+    String DOCUMENTO_EN_AMBITO = """
+        (d.dependencia_origen_id IN (SELECT id FROM deps)
+         OR EXISTS (SELECT 1 FROM usuarios uc WHERE uc.id = d.usuario_carga_ingreso_id AND uc.dependencia_id IN (SELECT id FROM deps))
+         OR EXISTS (SELECT 1 FROM actuaciones_documento a WHERE a.documento_id = d.id
+                      AND (a.dependencia_emisora_id IN (SELECT id FROM deps)
+                           OR (a.dependencia_receptora_pase_id IN (SELECT id FROM deps) AND NOT a.anulada))))
+        """;
+
+    @Query(value = CTE_AMBITO + "SELECT EXISTS (SELECT 1 FROM documentos d WHERE d.id = :documentoId AND " + DOCUMENTO_EN_AMBITO + ")",
+           nativeQuery = true)
+    boolean existeEnAmbito(@Param("usuarioId") Integer usuarioId, @Param("documentoId") Long documentoId);
+
+    @Query(value = CTE_AMBITO + "SELECT d.* FROM documentos d WHERE d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO') AND "
+                 + DOCUMENTO_EN_AMBITO + " ORDER BY d.fecha_hora_ingreso DESC", nativeQuery = true)
+    List<Documento> findActivosEnAmbito(@Param("usuarioId") Integer usuarioId);
+
+    @Query(value = CTE_AMBITO + "SELECT d.* FROM documentos d WHERE d.estado_actual = 'FINALIZADO' AND "
+                 + DOCUMENTO_EN_AMBITO + " ORDER BY d.fecha_hora_salida DESC NULLS LAST", nativeQuery = true)
+    List<Documento> findFinalizadosEnAmbito(@Param("usuarioId") Integer usuarioId);
 
     // 🛡️ FILTRO DE TRÁMITES ACTIVOS POR DEPENDENCIA
     // Se usa la dependencia receptora del pase; la descripción "➔ <dependencia>:" solo
