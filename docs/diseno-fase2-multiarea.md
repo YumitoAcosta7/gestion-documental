@@ -187,8 +187,28 @@ CREATE TABLE correlativos (
 - **Primer ingreso y reseteo:** contraseña temporal con **cambio obligatorio**.
 - **Política de contraseñas:** longitud mínima, sin reutilizar las anteriores. Bloqueo temporal después de 5 intentos fallidos (`intentos_fallidos`, `bloqueado_hasta`).
 
-### 6.2 Inicio de sesión institucional (si existe)
-Si la Municipalidad tiene **Active Directory/LDAP**, se integra con `spring-security-ldap`: la contraseña la valida el directorio y las asignaciones siguen en la herramienta. Así se evita mantener contraseñas propias.
+### 6.2 Inicio de sesión con el LDAP del correo institucional (Zextras Carbonio)
+
+La Municipalidad no tiene Active Directory, pero el servidor de correo **Zextras Carbonio (edición gratuita)** incluye un directorio **LDAP (OpenLDAP)** que ya se usa en otras herramientas. Se reutiliza así:
+
+- **Contraseña única:** el funcionario entra con su usuario y su contraseña del correo. La herramienta **no guarda esas contraseñas**: las valida contra el LDAP con `spring-security-ldap`, por *bind* del usuario.
+- **Autorización en la herramienta:** el LDAP solo responde "quién es". Qué puede hacer sale de las **asignaciones** (§3.2). Un usuario del correo sin asignaciones no puede operar.
+- **Alta de usuarios:** el administrador da de alta al funcionario **con el mismo usuario del correo** (`uid`) y le asigna rol y ámbito. Nombre y correo se completan desde el LDAP (`displayName`, `mail`). No se crean cuentas automáticamente por el solo hecho de tener correo.
+- **Bajas:** si la cuenta de correo está cerrada o bloqueada (en el esquema heredado de Zimbra, el atributo `zimbraAccountStatus`), el ingreso se rechaza aunque siga activo en la herramienta. *A confirmar en el servidor.*
+- **Cuentas locales de respaldo:** solo para el administrador de la herramienta y para casos sin correo, con la política de contraseñas del §6.1. El orden es: LDAP primero y, si el usuario está marcado como local, la contraseña propia.
+- **Seguridad de la conexión:**
+  - LDAPS (puerto 636) o StartTLS, nunca LDAP en texto plano.
+  - Una **cuenta de servicio de solo lectura** para buscar al usuario; no se usa la cuenta administrativa de Carbonio.
+  - Regla de firewall que permita al servidor de la herramienta consultar el LDAP.
+
+**Datos que TIC debe proveer:**
+- Host y puerto del LDAP, y si usa TLS.
+- *Base DN* de las cuentas (por ejemplo, `ou=people,dc=…`).
+- Atributo de inicio de sesión: `uid` o `mail`.
+- La cuenta de servicio de solo lectura.
+- Si hay más de un dominio de correo.
+
+**Correo para avisos:** se usa el **SMTP de Carbonio** con una cuenta remitente propia (por ejemplo `gestion.documental@…`), autenticada y por TLS.
 
 ### 6.3 Auditoría de sistema
 Tabla `auditoria_seguridad` con inicios de sesión correctos y fallidos, bloqueos, cambios de asignaciones y de organigrama, y cambios de parámetros. Complementa la auditoría por expediente que ya existe.
@@ -262,12 +282,41 @@ Estimación orientativa: **3,5 a 4 meses** con uno o dos desarrolladores para la
 
 | # | Pregunta | Recomendación |
 |---|---|---|
-| 1 | ¿La Municipalidad tiene Active Directory/LDAP? | Si existe, usarlo para el inicio de sesión |
+| 1 | ~~¿La Municipalidad tiene Active Directory/LDAP?~~ **Respondida (02/11):** no hay Active Directory; se usará el LDAP de Zextras Carbonio (§6.2) | Faltan los datos de conexión y la cuenta de servicio |
 | 2 | Entre direcciones, ¿siempre a través de la mesa de entrada o también directo? | A través de la mesa, con excepciones configurables |
 | 3 | ¿CUTI único municipal o con prefijo por dirección? | Único municipal (`MCA-AAAA-NNNNNN`); la sigla del área se ve aparte |
 | 4 | ¿Quién administra usuarios en cada dirección? | TIC centralizado al inicio; administración delegada después |
-| 5 | ¿Hay correo institucional (SMTP) para avisos? | Sí, con resumen diario |
+| 5 | ~~¿Hay correo institucional (SMTP) para avisos?~~ **Respondida (02/11):** sí, el de Zextras Carbonio | Crear la cuenta remitente `gestion.documental@…` |
 | 6 | ¿Volumen estimado de expedientes por día y por dirección? | Necesario para dimensionar el servidor |
 | 7 | ¿Existe una Mesa de Entrada General (Secretaría General)? | Cargarla como mesa con `recibe_externos` |
 | 8 | ¿Qué dirección acompaña a TIC en el piloto ampliado? | Hacienda |
-| 9 | ¿Quién valida el organigrama completo? | Organización y Métodos (está dentro de TIC) |
+| 9 | ¿Quién valida el organigrama completo? | Organización y Métodos (está dentro de TIC). **En curso (02/11):** TIC va a proveer la estructura completa (formato en §12) |
+
+Confirmado (02/11): la **Dirección de TIC depende directamente de la Intendencia**, la jerarquía más alta, tal como está cargada (id 10 bajo id 1).
+
+---
+
+## 12. Carga del organigrama completo
+
+La estructura se recibe como planilla (Excel o CSV) con **una fila por dependencia** y se carga con un script de importación que valida antes de grabar.
+
+| Columna | Obligatoria | Ejemplo | Notas |
+|---|---|---|---|
+| `codigo` | Sí | `DTIC` | Sigla única. Si no existe una oficial, se define una |
+| `nombre` | Sí | `Dirección de Tecnologías de la Información y Comunicación` | Nombre oficial completo |
+| `nivel` | Sí | `Dirección` | Intendencia, Dirección General, Dirección Ejecutiva, Dirección, Coordinación, Departamento o Unidad |
+| `codigo_superior` | Sí (salvo Intendencia) | `INT` | Sigla de la dependencia de la que depende |
+| `es_mesa_entrada` | No | `SI` | La secretaría que recibe y registra los documentos de esa dirección |
+| `responsable` | No | `Nombre Apellido` | Titular actual, para preparar las asignaciones |
+| `correo_responsable` | No | `usuario@…` | Debe coincidir con su cuenta de Carbonio |
+| `activa` | No | `SI` | `NO` para dependencias que ya no existen pero tienen historial |
+| `resolucion` | No | `Res. N° 123/2025` | Acto que crea o modifica la dependencia |
+
+**Controles del script de importación:**
+- Siglas únicas.
+- Cada superior existe y no hay ciclos.
+- Los niveles son coherentes: una Unidad no puede tener por debajo una Dirección.
+- Las 92 dependencias ya cargadas se **emparejan por nombre** para no duplicarlas ni perder su historial.
+- Los cambios de nivel o de superior se muestran en un informe previo para aprobar antes de grabar.
+
+**También sirve:** el organigrama oficial (PDF o resolución) aunque no esté en planilla. En ese caso se transcribe a este formato y se valida con Organización y Métodos.
