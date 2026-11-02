@@ -1052,6 +1052,29 @@ public class DocumentoService {
         return actuacionGuardada;
     }
 
+    // Área que recibe un pedido de informe: si llegó a la mesa de entrada de una dirección, la dirección
+    // completa (la mesa lo redistribuye); si no, la dependencia misma con sus subordinadas
+    static Dependencia areaReceptora(Dependencia receptora) {
+        if (Boolean.TRUE.equals(receptora.getEsMesaEntrada()) && receptora.getDependenciaPadre() != null) {
+            return receptora.getDependenciaPadre();
+        }
+        return receptora;
+    }
+
+    // Auditoría A4: un pedido de informe está respondido si el área que lo recibió emitió un informe o memo
+    // DESPUÉS del pedido. Antes bastaba cualquier respuesta de esa dependencia, aun de un pedido anterior.
+    static boolean informeRespondido(ActuacionDocumento pase, List<ActuacionDocumento> respuestas) {
+        Dependencia area = areaReceptora(pase.getDependenciaReceptoraPase());
+        return respuestas.stream().anyMatch(r -> {
+            Dependencia emisora = r.getDependenciaEmisora();
+            boolean delArea = emisora != null && (emisora.getId().equals(area.getId())
+                    || (emisora.getRuta() != null && area.getRuta() != null && emisora.getRuta().startsWith(area.getRuta())));
+            boolean posterior = r.getFechaHoraActuacion() != null && pase.getFechaHoraActuacion() != null
+                    && !r.getFechaHoraActuacion().isBefore(pase.getFechaHoraActuacion());
+            return delArea && posterior;
+        });
+    }
+
     @Transactional
     public void verificarYActualizarEstadoGlobal(Long documentoId) {
         Documento doc = documentoRepository.findById(documentoId)
@@ -1077,17 +1100,10 @@ public class DocumentoService {
         boolean todasRespondieron;
         boolean pasesConReceptora = pasesInforme.stream().allMatch(a -> a.getDependenciaReceptoraPase() != null);
         if (pasesConReceptora) {
-            // Cada dependencia a la que se pidió informe debe haber emitido al menos una respuesta
-            java.util.Set<Integer> dependenciasPendientes = pasesInforme.stream()
-                    .map(a -> a.getDependenciaReceptoraPase().getId())
-                    .collect(java.util.stream.Collectors.toSet());
-            java.util.Set<Integer> dependenciasQueRespondieron = respuestas.stream()
-                    .filter(a -> a.getDependenciaEmisora() != null)
-                    .map(a -> a.getDependenciaEmisora().getId())
-                    .collect(java.util.stream.Collectors.toSet());
-            todasRespondieron = dependenciasQueRespondieron.containsAll(dependenciasPendientes);
-            pasesParaInforme = dependenciasPendientes.size();
-            respuestasRecibidas = dependenciasPendientes.stream().filter(dependenciasQueRespondieron::contains).count();
+            // Cada pedido de informe necesita su propia respuesta: del área que lo recibió y posterior al pedido
+            pasesParaInforme = pasesInforme.size();
+            respuestasRecibidas = pasesInforme.stream().filter(p -> informeRespondido(p, respuestas)).count();
+            todasRespondieron = respuestasRecibidas == pasesParaInforme;
         } else {
             // Pases antiguos sin dependencia receptora: se mantiene el conteo simple
             todasRespondieron = respuestasRecibidas >= pasesParaInforme;
@@ -1318,6 +1334,7 @@ public class DocumentoService {
 
     public static final String ANULACION_RETIRADO = "RETIRADO";
     public static final String ANULACION_RECHAZADO = "RECHAZADO";
+    public static final String ANULACION_CIERRE_EXCEPCIONAL = "CIERRE_EXCEPCIONAL";
 
     private boolean esPasePendiente(ActuacionDocumento act) {
         return act != null && "PASE_INTERNO".equals(act.getTipoActuacion())
@@ -1426,18 +1443,32 @@ public class DocumentoService {
         // Dependencias a las que se pidió informe y todavía no respondieron (queda constancia)
         List<ActuacionDocumento> vigentes = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)
                 .stream().filter(a -> !Boolean.TRUE.equals(a.getAnulada())).toList();
-        java.util.Set<Integer> respondieron = vigentes.stream()
+        List<ActuacionDocumento> respuestas = vigentes.stream()
                 .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
-                .filter(a -> a.getDependenciaEmisora() != null)
-                .map(a -> a.getDependenciaEmisora().getId())
-                .collect(java.util.stream.Collectors.toSet());
-        List<String> sinRespuesta = vigentes.stream()
+                .toList();
+        List<ActuacionDocumento> pedidosSinRespuesta = vigentes.stream()
                 .filter(a -> ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
                         && Boolean.TRUE.equals(a.getRequiereInforme())
                         && a.getDependenciaReceptoraPase() != null
-                        && !respondieron.contains(a.getDependenciaReceptoraPase().getId()))
+                        && !informeRespondido(a, respuestas))
+                .toList();
+        List<String> sinRespuesta = pedidosSinRespuesta.stream()
                 .map(a -> a.getDependenciaReceptoraPase().getNombreVisible())
                 .distinct().toList();
+
+        // Auditoría A4: los pedidos que todavía esperan acuse se anulan; si no, seguirían en "Por recibir"
+        // de la receptora, que podría confirmarlos y contestar sobre un expediente ya cerrado
+        LocalDateTime ahora = LocalDateTime.now();
+        for (ActuacionDocumento pedido : pedidosSinRespuesta) {
+            if ("PASE_INTERNO".equals(pedido.getTipoActuacion()) && !Boolean.TRUE.equals(pedido.getPaseConfirmado())) {
+                pedido.setAnulada(true);
+                pedido.setTipoAnulacion(ANULACION_CIERRE_EXCEPCIONAL);
+                pedido.setMotivoAnulacion("Cierre excepcional de informes: " + justificacion.trim());
+                pedido.setFechaHoraAnulacion(ahora);
+                pedido.setUsuarioAnulacion(usuario);
+                actuacionDocumentoRepository.save(pedido);
+            }
+        }
 
         doc.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
         documentoRepository.save(doc);
@@ -1445,10 +1476,10 @@ public class DocumentoService {
         String detalle = "CIERRE EXCEPCIONAL DE INFORMES: " + justificacion.trim()
                 + (sinRespuesta.isEmpty() ? "" : " | Sin respuesta de: " + String.join(", ", sinRespuesta));
 
-        // Queda visible en el árbol de trazabilidad, no solo en la bitácora
+        // Queda visible en el árbol de trazabilidad, no solo en la bitácora. Lo emite quien tiene el original.
         actuacionDocumentoRepository.save(ActuacionDocumento.builder()
                 .documento(doc)
-                .dependenciaEmisora(usuario.getDependencia())
+                .dependenciaEmisora(custodiaDe(doc))
                 .tipoActuacion("CIERRE_EXCEPCIONAL")
                 .numeroActuacion("S/N")
                 .descripcionResumen(detalle)

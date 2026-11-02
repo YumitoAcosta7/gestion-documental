@@ -54,6 +54,7 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V11__custodia_y_canal.sql` | Etapa 2.2. Agrega dependencia de registro y de custodia a cada expediente, `tipo_pase` (`TRAMITE`, `INFORME`, `CONOCIMIENTO`) y las tablas `series_cuti` y `reglas_derivacion`. Completa los datos de los expedientes existentes |
 | `V12__usuario_administrador_sistema.sql` | Crea el primer administrador (`juan.acosta`, Jefe de la Unidad de Data Center), con `RESPONSABLE` de su unidad y `ADMIN_SISTEMA` sobre toda la municipalidad. Se crea **sin contraseña utilizable**: la define el propio usuario con `db/herramientas/DefinirContrasena.java` |
 | `V13__administracion_usuarios.sql` | Etapa 2.3. Agrega `usuarios.debe_cambiar_contrasena`, deja opcional `usuarios.rol` (los permisos salen de las asignaciones) y crea `auditoria_sistema`, inmutable por trigger |
+| `V14__bitacoras_inmutables.sql` | Auditoría A4 y A5. Agrega la anulación `CIERRE_EXCEPCIONAL` y protege las dos bitácoras contra modificación, borrado y `TRUNCATE`. El cambio de dueño lo hace un superusuario con `db/seguridad/proteger_bitacoras.sh` |
 
 **Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`.
 

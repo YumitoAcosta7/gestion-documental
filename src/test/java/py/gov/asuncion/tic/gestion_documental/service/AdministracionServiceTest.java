@@ -26,11 +26,14 @@ class AdministracionServiceTest {
     private final AuditoriaSistemaRepository auditoria = mock(AuditoriaSistemaRepository.class);
     private final PoliticaAcceso politica = mock(PoliticaAcceso.class);
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
+    private final org.springframework.security.core.session.SessionRegistry sesiones =
+            new org.springframework.security.core.session.SessionRegistryImpl();
     private final AdministracionService servicio =
-            new AdministracionService(usuarios, asignaciones, dependencias, auditoria, politica, encoder);
+            new AdministracionService(usuarios, asignaciones, dependencias, auditoria, politica, encoder, sesiones);
 
     private final Usuario admin = usuario(1, "admin.tic");
-    private final Dependencia dataCenter = Dependencia.builder().id(77).nombre("Unidad de Data Center").activo(true).build();
+    private final Dependencia baseDatos = Dependencia.builder().id(50).nombre("Departamento de Base de Datos").ruta("/1/10/50/").activo(true).build();
+    private final Dependencia dataCenter = Dependencia.builder().id(77).nombre("Unidad de Data Center").ruta("/1/10/50/77/").activo(true).build();
 
     private static Usuario usuario(int id, String username) {
         Usuario u = new Usuario();
@@ -121,10 +124,61 @@ class AdministracionServiceTest {
         assertThrows(IllegalArgumentException.class, () -> servicio.crearAsignacion(3, RolAsignacion.RESPONSABLE, 77, true,
                 hoy, hoy.plusDays(10), true, null, "Res. 1/2026", admin), "sin titular");
         when(usuarios.findById(1)).thenReturn(Optional.of(admin));
+        // El titular es RESPONSABLE del Departamento de Base de Datos, con sus subordinadas y sin fecha de fin
+        when(asignaciones.findHistorial(1)).thenReturn(List.of(Asignacion.builder().usuario(admin)
+                .rol(RolAsignacion.RESPONSABLE).dependenciaAmbito(baseDatos).incluyeSubordinadas(true)
+                .vigenteDesde(hoy.minusYears(1)).build()));
         Asignacion a = servicio.crearAsignacion(3, RolAsignacion.RESPONSABLE, 77, true, hoy, hoy.plusDays(10), true, 1, "Res. 1/2026", admin);
         assertTrue(a.getEsSuplencia());
         assertEquals(admin, a.getTitular());
         assertEquals(admin, a.getCreadaPor());
+    }
+
+    @Test
+    void laSuplenciaNoDaMasDeLoQueTieneElTitular() {
+        Usuario suplente = usuario(3, "suplente");
+        when(usuarios.findById(3)).thenReturn(Optional.of(suplente));
+        when(usuarios.findById(1)).thenReturn(Optional.of(admin));
+        when(dependencias.findById(50)).thenReturn(Optional.of(baseDatos));
+        LocalDate hoy = LocalDate.now();
+        // El titular solo es RESPONSABLE de la Unidad de Data Center, hasta dentro de 5 días
+        when(asignaciones.findHistorial(1)).thenReturn(List.of(Asignacion.builder().usuario(admin)
+                .rol(RolAsignacion.RESPONSABLE).dependenciaAmbito(dataCenter).incluyeSubordinadas(true)
+                .vigenteDesde(hoy.minusYears(1)).vigenteHasta(hoy.plusDays(5)).build()));
+
+        assertThrows(IllegalStateException.class, () -> servicio.crearAsignacion(3, RolAsignacion.MESA_ENTRADA, 77, true,
+                hoy, hoy.plusDays(3), true, 1, "Res. 1/2026", admin), "otro rol");
+        assertThrows(IllegalStateException.class, () -> servicio.crearAsignacion(3, RolAsignacion.RESPONSABLE, 50, true,
+                hoy, hoy.plusDays(3), true, 1, "Res. 1/2026", admin), "ámbito más amplio (el departamento)");
+        assertThrows(IllegalStateException.class, () -> servicio.crearAsignacion(3, RolAsignacion.RESPONSABLE, 77, true,
+                hoy, hoy.plusDays(10), true, 1, "Res. 1/2026", admin), "más allá de la vigencia del titular");
+        assertDoesNotThrow(() -> servicio.crearAsignacion(3, RolAsignacion.RESPONSABLE, 77, true,
+                hoy, hoy.plusDays(5), true, 1, "Res. 1/2026", admin));
+    }
+
+    @Test
+    void noSeDuplicanAsignacionesNiSeCarganRetroactivas() {
+        Usuario u = usuario(3, "operador");
+        when(usuarios.findById(3)).thenReturn(Optional.of(u));
+        LocalDate hoy = LocalDate.now();
+        when(asignaciones.findHistorial(3)).thenReturn(List.of(Asignacion.builder().usuario(u)
+                .rol(RolAsignacion.OPERADOR).dependenciaAmbito(dataCenter).vigenteDesde(hoy).vigenteHasta(hoy.plusDays(30)).build()));
+        assertThrows(IllegalStateException.class, () -> servicio.crearAsignacion(3, RolAsignacion.OPERADOR, 77, false,
+                hoy.plusDays(10), null, false, null, "Memo 2/2026", admin), "se superpone");
+        assertThrows(IllegalArgumentException.class, () -> servicio.crearAsignacion(3, RolAsignacion.CONSULTA, 77, false,
+                hoy.minusDays(1), null, false, null, "Memo 2/2026", admin), "retroactiva");
+        assertDoesNotThrow(() -> servicio.crearAsignacion(3, RolAsignacion.OPERADOR, 77, false,
+                hoy.plusDays(31), null, false, null, "Memo 3/2026", admin), "empieza cuando termina la anterior");
+    }
+
+    @Test
+    void resetearLaContrasenaCierraLasSesionesAbiertas() {
+        Usuario ana = usuario(6, "ana");
+        when(usuarios.findById(6)).thenReturn(Optional.of(ana));
+        var principal = org.springframework.security.core.userdetails.User.withUsername("ana").password("x").authorities(List.of()).build();
+        sesiones.registerNewSession("sesion-de-ana", principal);
+        servicio.restablecerContrasena(6, admin);
+        assertTrue(sesiones.getSessionInformation("sesion-de-ana").isExpired());
     }
 
     @Test

@@ -1,6 +1,8 @@
 package py.gov.asuncion.tic.gestion_documental.service;
 
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,16 +35,18 @@ public class AdministracionService {
     private final AuditoriaSistemaRepository auditoriaRepository;
     private final PoliticaAcceso politicaAcceso;
     private final PasswordEncoder passwordEncoder;
+    private final SessionRegistry sessionRegistry;
 
     public AdministracionService(UsuarioRepository usuarioRepository, AsignacionRepository asignacionRepository,
                                  DependenciaRepository dependenciaRepository, AuditoriaSistemaRepository auditoriaRepository,
-                                 PoliticaAcceso politicaAcceso, PasswordEncoder passwordEncoder) {
+                                 PoliticaAcceso politicaAcceso, PasswordEncoder passwordEncoder, SessionRegistry sessionRegistry) {
         this.usuarioRepository = usuarioRepository;
         this.asignacionRepository = asignacionRepository;
         this.dependenciaRepository = dependenciaRepository;
         this.auditoriaRepository = auditoriaRepository;
         this.politicaAcceso = politicaAcceso;
         this.passwordEncoder = passwordEncoder;
+        this.sessionRegistry = sessionRegistry;
     }
 
     // =====================================================================
@@ -151,6 +155,9 @@ public class AdministracionService {
         }
         u.setActivo(activo);
         Usuario guardado = usuarioRepository.save(u);
+        if (!activo) {
+            expirarSesiones(u.getUsername());
+        }
         auditar(admin, activo ? "REACTIVACION_USUARIO" : "BAJA_USUARIO", "USUARIO", id.longValue(),
                 u.getUsername() + (activo ? " reactivado" : " dado de baja. Motivo: " + motivo.trim()));
         return guardado;
@@ -167,6 +174,7 @@ public class AdministracionService {
         u.setPasswordHash(passwordEncoder.encode(temporal));
         u.setDebeCambiarContrasena(true);
         usuarioRepository.save(u);
+        expirarSesiones(u.getUsername()); // si alguien usaba la cuenta, queda afuera
         auditar(admin, "RESETEO_CONTRASENA", "USUARIO", id.longValue(),
                 "Contraseña temporal generada para " + u.getUsername() + " (debe cambiarla al entrar)");
         return new ContrasenaTemporal(u, temporal);
@@ -218,6 +226,19 @@ public class AdministracionService {
         if (hasta != null && hasta.isBefore(inicio)) {
             throw new IllegalArgumentException("La fecha de fin no puede ser anterior a la de inicio.");
         }
+        // El registro tiene que reflejar cuándo se dio el permiso: no se cargan asignaciones retroactivas
+        if (inicio.isBefore(LocalDate.now())) {
+            throw new IllegalArgumentException("La asignación no puede empezar antes de hoy.");
+        }
+        // Una asignación igual (mismo rol y ámbito) con fechas superpuestas sería un duplicado
+        for (Asignacion existente : asignacionRepository.findHistorial(u.getId())) {
+            if (Boolean.TRUE.equals(existente.getActiva()) && existente.getRol() == rol
+                    && existente.getDependenciaAmbito().getId().equals(ambito.getId())
+                    && seSuperponen(existente.getVigenteDesde(), existente.getVigenteHasta(), inicio, hasta)) {
+                throw new IllegalStateException("El usuario ya tiene " + rol + " en " + ambito.getNombreVisible()
+                        + " en esas fechas: quite esa asignación o ajuste el período.");
+            }
+        }
         Usuario titular = null;
         if (esSuplencia) {
             if (hasta == null) {
@@ -230,6 +251,12 @@ public class AdministracionService {
                     .orElseThrow(() -> new IllegalArgumentException("Titular no encontrado: " + titularId));
             if (titular.getId().equals(u.getId())) {
                 throw new IllegalArgumentException("Un usuario no puede suplirse a sí mismo.");
+            }
+            // Auditoría A3: la suplencia no da más de lo que tiene el titular (mismo rol, ámbito y período cubiertos)
+            if (!titularCubre(titular, rol, ambito, incluyeSubordinadas, inicio, hasta)) {
+                throw new IllegalStateException(titular.getUsername() + " no tiene " + rol + " en " + ambito.getNombreVisible()
+                        + (incluyeSubordinadas ? " (con sus subordinadas)" : "")
+                        + " durante todo el período: la suplencia no puede dar más de lo que tiene el titular.");
             }
         }
         String acto = actoAdministrativo == null ? "" : actoAdministrativo.trim();
@@ -283,6 +310,43 @@ public class AdministracionService {
     // =====================================================================
     // Auxiliares
     // =====================================================================
+
+    // ¿Alguna asignación activa del titular (no suplencia) cubre el rol, el ámbito y todo el período?
+    private boolean titularCubre(Usuario titular, RolAsignacion rol, Dependencia ambito, boolean incluyeSubordinadas,
+                                 LocalDate desde, LocalDate hasta) {
+        for (Asignacion t : asignacionRepository.findHistorial(titular.getId())) {
+            if (!Boolean.TRUE.equals(t.getActiva()) || t.getRol() != rol || Boolean.TRUE.equals(t.getEsSuplencia())) {
+                continue;
+            }
+            Dependencia suyo = t.getDependenciaAmbito();
+            boolean mismoAmbito = suyo.getId().equals(ambito.getId());
+            boolean dentroDelSuyo = Boolean.TRUE.equals(t.getIncluyeSubordinadas()) && suyo.getRuta() != null
+                    && ambito.getRuta() != null && ambito.getRuta().startsWith(suyo.getRuta());
+            boolean subordinadasCubiertas = !incluyeSubordinadas || Boolean.TRUE.equals(t.getIncluyeSubordinadas());
+            boolean periodoCubierto = !t.getVigenteDesde().isAfter(desde)
+                    && (t.getVigenteHasta() == null || (hasta != null && !t.getVigenteHasta().isBefore(hasta)));
+            if ((mismoAmbito || dentroDelSuyo) && subordinadasCubiertas && periodoCubierto) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Períodos [desde, hasta] con hasta = null como "sin fin"
+    static boolean seSuperponen(LocalDate desde1, LocalDate hasta1, LocalDate desde2, LocalDate hasta2) {
+        boolean primeroTerminaAntes = hasta1 != null && hasta1.isBefore(desde2);
+        boolean segundoTerminaAntes = hasta2 != null && hasta2.isBefore(desde1);
+        return !primeroTerminaAntes && !segundoTerminaAntes;
+    }
+
+    // Cierra todas las sesiones abiertas del usuario (auditoría A2): la siguiente petición vuelve al inicio de sesión
+    private void expirarSesiones(String username) {
+        for (Object principal : sessionRegistry.getAllPrincipals()) {
+            if (principal instanceof UserDetails detalle && detalle.getUsername().equals(username)) {
+                sessionRegistry.getAllSessions(principal, false).forEach(org.springframework.security.core.session.SessionInformation::expireNow);
+            }
+        }
+    }
 
     private void exigirAdministrador(Usuario admin) {
         politicaAcceso.exigir(admin, Accion.ADMINISTRAR_SISTEMA, "Solo un administrador del sistema puede hacer esta operación.");
