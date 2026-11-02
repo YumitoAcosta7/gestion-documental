@@ -2,9 +2,11 @@
 # =====================================================================
 # Gestión Documental - Usuarios de prueba en la base de PRUEBAS
 #
-# Crea (o deja como están, si ya existen) dos usuarios con sus asignaciones:
+# Crea (o deja como están, si ya existen) tres usuarios con sus asignaciones:
 #   - prueba_mesa_tic       Mesa de entrada de la DTIC
+#   - prueba_mesa_dgaf      Mesa de entrada de la DGAF (paso obligado entre TIC y Hacienda)
 #   - prueba_resp_hacienda  Responsable de la Dirección de Hacienda
+# La contraseña ingresada se usa solo para los usuarios que se crean ahora.
 #
 # Se ejecuta en el servidor 192.168.129.73, como postgres:
 #
@@ -49,6 +51,11 @@ SELECT 'Prueba Mesa de Entrada TIC', 'prueba_mesa_tic', crypt(:'clave', gen_salt
  WHERE d.sigla = 'DTIC-SA' AND NOT EXISTS (SELECT 1 FROM usuarios WHERE username = 'prueba_mesa_tic');
 
 INSERT INTO usuarios (nombre_completo, username, password_hash, email, dependencia_id, rol, activo)
+SELECT 'Prueba Mesa de Entrada DGAF', 'prueba_mesa_dgaf', crypt(:'clave', gen_salt('bf', 10)), NULL, d.id, 'SECRETARIA_ADMIN', TRUE
+  FROM dependencias d
+ WHERE d.sigla = 'DGAF-SA' AND NOT EXISTS (SELECT 1 FROM usuarios WHERE username = 'prueba_mesa_dgaf');
+
+INSERT INTO usuarios (nombre_completo, username, password_hash, email, dependencia_id, rol, activo)
 SELECT 'Prueba Responsable Hacienda', 'prueba_resp_hacienda', crypt(:'clave', gen_salt('bf', 10)), NULL, d.id, 'JEFE_DEPTO', TRUE
   FROM dependencias d
  WHERE d.sigla = 'DHAC' AND NOT EXISTS (SELECT 1 FROM usuarios WHERE username = 'prueba_resp_hacienda');
@@ -57,6 +64,12 @@ INSERT INTO asignaciones (usuario_id, rol, dependencia_ambito_id, incluye_subord
 SELECT u.id, 'MESA_ENTRADA', d.id, TRUE, 'Usuario de prueba'
   FROM usuarios u, dependencias d
  WHERE u.username = 'prueba_mesa_tic' AND d.sigla = 'DTIC'
+   AND NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = u.id);
+
+INSERT INTO asignaciones (usuario_id, rol, dependencia_ambito_id, incluye_subordinadas, acto_administrativo)
+SELECT u.id, 'MESA_ENTRADA', d.id, TRUE, 'Usuario de prueba'
+  FROM usuarios u, dependencias d
+ WHERE u.username = 'prueba_mesa_dgaf' AND d.sigla = 'DGAF'
    AND NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = u.id);
 
 INSERT INTO asignaciones (usuario_id, rol, dependencia_ambito_id, incluye_subordinadas, acto_administrativo)

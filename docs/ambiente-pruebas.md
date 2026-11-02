@@ -27,8 +27,9 @@ Pasos que sigue:
 
    Flyway arranca desde el esquema de la V6, que se creó a mano y no tiene script propio; por eso se copia la estructura. **No** se copian expedientes, actuaciones, adjuntos, usuarios ni asignaciones. Producción solo se lee.
 3. **Deja todos los objetos a nombre del rol de pruebas.**
-4. **Opcional: crea dos usuarios de prueba**, con una contraseña de prueba que se pide por teclado:
+4. **Opcional: crea tres usuarios de prueba**, con una contraseña de prueba que se pide por teclado:
    - `prueba_mesa_tic`, mesa de entrada de la DTIC;
+   - `prueba_mesa_dgaf`, mesa de entrada de la DGAF, paso obligado entre TIC y Hacienda;
    - `prueba_resp_hacienda`, responsable de Hacienda, para comprobar que no ve los expedientes de TIC.
 5. **Muestra un resumen** con la cantidad de dependencias, expedientes y usuarios, y la versión de Flyway.
 
