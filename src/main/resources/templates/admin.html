@@ -171,7 +171,7 @@
                                 <span th:text="${a.dependenciaAmbito.nombreVisible}">Ámbito</span>
                                 <span th:if="${a.incluyeSubordinadas}" class="text-muted">y subordinadas</span>
                             </td>
-                            <td class="text-nowrap" th:text="${a.vigenteDesde + ' → ' + (a.vigenteHasta != null ? a.vigenteHasta : 'sin fin')}">fechas</td>
+                            <td class="text-nowrap" th:text="${#temporals.format(a.vigenteDesde, 'dd/MM/yyyy') + ' → ' + (a.vigenteHasta != null ? #temporals.format(a.vigenteHasta, 'dd/MM/yyyy') : 'sin fin')}">fechas</td>
                             <td>
                                 <span th:if="${!a.activa}" class="badge bg-secondary">Dada de baja</span>
                                 <span th:if="${a.activa && a.vigenteDesde.isAfter(hoy)}" class="badge bg-info">Futura</span>

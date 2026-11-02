@@ -25,6 +25,7 @@ public class AdministracionService {
     private static final String ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
     private static final int LARGO_TEMPORAL = 12;
     private static final SecureRandom AZAR = new SecureRandom();
+    private static final java.time.format.DateTimeFormatter FECHA = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final UsuarioRepository usuarioRepository;
     private final AsignacionRepository asignacionRepository;
@@ -241,7 +242,7 @@ public class AdministracionService {
         auditar(admin, esSuplencia ? "ALTA_SUPLENCIA" : "ALTA_ASIGNACION", "ASIGNACION", a.getId(),
                 u.getUsername() + ": " + rol + " en " + ambito.getNombreVisible()
                         + (incluyeSubordinadas ? " y subordinadas" : "")
-                        + " desde " + inicio + (hasta != null ? " hasta " + hasta : " sin fecha de fin")
+                        + " desde " + inicio.format(FECHA) + (hasta != null ? " hasta " + hasta.format(FECHA) : " sin fecha de fin")
                         + (titular != null ? ", en suplencia de " + titular.getUsername() : "")
                         + ". Acto: " + acto);
         return a;
