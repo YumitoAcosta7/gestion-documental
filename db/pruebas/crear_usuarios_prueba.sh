@@ -30,7 +30,7 @@ if ! psql_postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '
     exit 1
 fi
 
-read -r -s -p "Contraseña de PRUEBA para ambos usuarios (mínimo 8 caracteres, no use una real): " CLAVE; echo
+read -r -s -p "Contraseña de PRUEBA para los usuarios que se creen ahora (mínimo 8 caracteres, no use una real): " CLAVE; echo
 read -r -s -p "Repita la contraseña: " CLAVE_2; echo
 if [ "$CLAVE" != "$CLAVE_2" ]; then
     echo "Las contraseñas no coinciden. No se creó nada." >&2
