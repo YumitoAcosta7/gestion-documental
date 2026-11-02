@@ -19,8 +19,16 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Autowired
     private PoliticaAcceso politicaAcceso;
 
+    @Autowired
+    private LimiteIntentosService limiteIntentos;
+
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        // Bloqueado por intentos fallidos: cuenta "bloqueada", exista o no el usuario (no se revela cuál existe).
+        // Spring rechaza las cuentas bloqueadas antes de comprobar la contraseña.
+        if (limiteIntentos.estaBloqueado(username)) {
+            return User.withUsername(username).password("!bloqueado").authorities(java.util.List.of()).accountLocked(true).build();
+        }
         Usuario usuario = usuarioRepository.findByUsernameAndActivoTrue(username)
                 .orElseThrow(() -> {
                     log.info("Intento de acceso con usuario inexistente o inactivo: {}", username);

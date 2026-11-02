@@ -1,7 +1,14 @@
 package py.gov.asuncion.tic.gestion_documental.config;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationEventPublisher;
+import org.springframework.security.authentication.DefaultAuthenticationEventPublisher;
+import org.springframework.security.authentication.LockedException;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.session.SessionRegistryImpl;
+import org.springframework.security.web.session.HttpSessionEventPublisher;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -22,10 +29,34 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    // Registro de sesiones abiertas: permite cerrar las de un usuario al resetear su contraseña o darlo de baja
+    @Bean
+    public SessionRegistry sessionRegistry() {
+        return new SessionRegistryImpl();
+    }
+
+    // Avisa al registro cuando una sesión termina (cierre o vencimiento)
+    @Bean
+    public HttpSessionEventPublisher httpSessionEventPublisher() {
+        return new HttpSessionEventPublisher();
+    }
+
+    // Publica los eventos de inicio de sesión (exitoso o fallido) que cuenta LimiteIntentosService
+    @Bean
+    public AuthenticationEventPublisher authenticationEventPublisher(ApplicationEventPublisher publicador) {
+        return new DefaultAuthenticationEventPublisher(publicador);
+    }
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, PoliticaAcceso politicaAcceso,
-                                           UsuarioRepository usuarioRepository) throws Exception {
+                                           UsuarioRepository usuarioRepository, SessionRegistry sessionRegistry) throws Exception {
         http
+            // 🔒 Sesiones registradas (sin límite de cantidad) para poder expirarlas desde la administración
+            .sessionManagement(sesiones -> sesiones
+                .maximumSessions(-1)
+                .sessionRegistry(sessionRegistry)
+                .expiredUrl("/login?expirada"))
+
             // 🔄 Permisos recalculados en cada petición desde las asignaciones vigentes
             .addFilterBefore(new ActualizacionPermisosFilter(politicaAcceso, usuarioRepository), AuthorizationFilter.class)
 
@@ -59,6 +90,9 @@ public class SecurityConfig {
             .formLogin(form -> form
                 .loginPage("/login")
                 .defaultSuccessUrl("/", true)
+                // Bloqueado por intentos fallidos (LimiteIntentosService): mensaje propio
+                .failureHandler((pedido, respuesta, error) -> respuesta.sendRedirect(pedido.getContextPath()
+                        + (error instanceof LockedException ? "/login?bloqueado" : "/login?error")))
                 .permitAll()
             )
             

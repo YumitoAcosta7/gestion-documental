@@ -92,7 +92,12 @@ Un `ADMIN_SISTEMA` puede asignarse a sí mismo `MESA_ENTRADA` sobre la Intendenc
 
 *Mitigación:* si el usuario no está activo, limpiar el contexto, invalidar la sesión y redirigir a `/login?baja`.
 
-**A2 — Sesiones y fuerza bruta.**
+**A2 — Sesiones y fuerza bruta.** ✅ **Corregido (02/11/2026).**
+- Bloqueo de 15 minutos tras 5 intentos fallidos (`LimiteIntentosService`), sin revelar si el usuario existe.
+- El reseteo y la baja cierran las sesiones abiertas (`SessionRegistry`).
+- La sesión vence tras 30 minutos sin actividad.
+- **Queda:** contar también por IP, y que al cambiar la propia contraseña se cierren las otras sesiones.
+- Pruebas: `LimiteIntentosServiceTest` y `AdministracionServiceTest`.
 - El reseteo o el cambio de contraseña no cierran las otras sesiones del usuario: no hay `SessionRegistry`.
 - No hay límite de intentos de inicio de sesión ni bloqueo temporal.
 - No hay registro de los inicios fallidos.
@@ -102,7 +107,10 @@ Un `ADMIN_SISTEMA` puede asignarse a sí mismo `MESA_ENTRADA` sobre la Intendenc
 - Contador de intentos por usuario y por IP, por ejemplo 5 intentos y 15 minutos de bloqueo.
 - Registrar los eventos de autenticación en `auditoria_sistema`.
 
-**A3 — Suplencias sin vínculo con el titular.**
+**A3 — Suplencias sin vínculo con el titular.** ✅ **Corregido (02/11/2026).**
+- La suplencia exige que el titular tenga ese rol, sobre un ámbito que abarque el de la suplencia, durante todo el período.
+- No se aceptan asignaciones iguales superpuestas ni que empiecen antes de hoy.
+- Prueba: `AdministracionServiceTest`.
 
 La suplencia guarda `titular`, pero:
 - no se valida que el titular **tenga** ese rol en ese ámbito durante el período: con la figura de "suplencia" se puede dar cualquier permiso;
@@ -120,7 +128,10 @@ SELECT 1 FROM asignaciones t JOIN dependencias dt ON dt.id = t.dependencia_ambit
 
 Además, rechazar una asignación activa idéntica (mismo usuario, rol y ámbito) cuyas fechas se solapen. Se puede resolver con una restricción `EXCLUDE USING gist` sobre `daterange(vigente_desde, vigente_hasta, '[]')` (requiere `btree_gist`).
 
-**A4 — Cierre de informes.**
+**A4 — Cierre de informes.** ✅ **Corregido (02/11/2026).**
+- Cada pedido se considera respondido solo con un informe o memo del área receptora posterior al pedido (`informeRespondido`). Si llegó a una mesa, cuenta la respuesta de su dirección o de una subordinada; antes, una respuesta así no contaba nunca.
+- El cierre forzado anula los pedidos pendientes (`CIERRE_EXCEPCIONAL`) y lo registra a nombre de quien tiene el original.
+- Prueba: `RespuestaInformeTest`.
 - `verificarYActualizarEstadoGlobal` cuenta las respuestas **por dependencia, sin mirar la fecha**. Un informe que una dependencia emitió en una ronda anterior "responde" a un pedido nuevo, y el expediente pasa a `PENDIENTE_SALIDA` antes de tiempo.
 - `forzarCierreInformes` no anula los pases `INFORME` pendientes. Siguen en "Por recibir" de la receptora, que puede confirmarlos y responder sobre un expediente ya cerrado.
 
@@ -128,7 +139,10 @@ Además, rechazar una asignación activa idéntica (mismo usuario, rol y ámbito
 - Vincular cada respuesta a su pase, con `actuacion_padre_id` o, como mínimo, con fecha posterior al pase y misma receptora.
 - En el cierre excepcional, anular los pases pendientes con `tipo_anulacion = 'CIERRE_EXCEPCIONAL'`.
 
-**A5 — La bitácora no es realmente inmutable.**
+**A5 — La bitácora no es realmente inmutable.** 🟡 **Corregido en la base de pruebas (02/11/2026); falta producción.**
+- V14 protege `auditorias_documento` contra UPDATE y DELETE, y las dos bitácoras contra `TRUNCATE`.
+- **Base de pruebas (hecho):** `proteger_bitacoras.sh` dejó las dos bitácoras a nombre de `gestion_documental_bitacora`; la aplicación solo lee y agrega, y sigue registrando eventos con normalidad.
+- **Producción (pendiente):** arrancar la aplicación real (aplica V13 y V14) y correr `sudo -u postgres bash proteger_bitacoras.sh gestion_documental gestion_documental`.
 
 El trigger de `auditoria_sistema` frena `UPDATE` y `DELETE`, pero:
 - **no frena `TRUNCATE`**;
@@ -244,7 +258,7 @@ CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id D
 | Prioridad | Hallazgos | Esfuerzo |
 |---|---|---|
 | Inmediata, antes de sumar otra dirección | C1, C2, A1 (✅ corregidos; falta el doble control de C2) | 1–2 días |
-| Antes del piloto con Hacienda | A2, A3, A4, A5, M1 | 3–4 días |
+| Antes del piloto con Hacienda | A2, A3, A4 (✅ corregidos), A5 (falta el script en el servidor), M1 | 3–4 días |
 | Antes del despliegue general | M2, M3, M4, M5, B1, B2 | 3–5 días |
 | Con el pase a HTTPS | B3 | 1 día |
 
@@ -289,9 +303,9 @@ Todas sobre la base de pruebas, con `@PruebaConBaseDePruebas` y `@Transactional`
 
 - [x] C1: todas las operaciones sobre un expediente verifican acceso y custodia en el servicio.
 - [ ] C2: el administrador no puede autoasignarse roles de trámite; las asignaciones sensibles tienen doble control.
-- [ ] A1–A2: un usuario dado de baja o reseteado pierde la sesión; hay límite de intentos de inicio de sesión.
-- [ ] A3: las suplencias quedan acotadas a lo que tiene el titular y no se solapan.
-- [ ] A4: las respuestas a informes se vinculan a su pase; el cierre forzado anula los pases pendientes.
+- [x] A1–A2: un usuario dado de baja o reseteado pierde la sesión; hay límite de intentos de inicio de sesión.
+- [x] A3: las suplencias quedan acotadas a lo que tiene el titular y no se solapan.
+- [x] A4: las respuestas a informes se vinculan a su pase; el cierre forzado anula los pases pendientes.
 - [ ] A5: la bitácora pertenece a otro rol y resiste `TRUNCATE`, `DISABLE TRIGGER` y `DROP` desde la aplicación.
 - [ ] M1–M5 resueltos o aceptados por escrito.
 - [ ] Índices de B2 creados y bandejas medidas con volumen real.
