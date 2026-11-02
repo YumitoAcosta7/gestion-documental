@@ -11,7 +11,6 @@ public interface DependenciaRepository extends JpaRepository<Dependencia, Intege
     
     List<Dependencia> findByActivoTrueOrderByNombreAsc();
     
-    List<Dependencia> findByEsInternaTicTrueAndActivoTrueOrderByNombreAsc();
 
 
     // Buscar solo las dependencias que dependen jerarquicamente

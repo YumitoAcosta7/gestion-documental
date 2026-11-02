@@ -33,10 +33,10 @@ Otras propiedades relevantes:
 | Propiedad | Uso |
 |---|---|
 | `spring.datasource.url` | `jdbc:postgresql://<servidor>:5432/gestion_documental` |
-| `app.upload.dir` | Carpeta donde se guardan todos los PDF nuevos (acuses, copias selladas). Por defecto `C:/gestion-documental-uploads/acuses` |
+| `app.upload.dir` | Carpeta única de todos los PDF (acuses, copias selladas, versiones). Debe incluirse en las copias de respaldo. Por defecto `C:/gestion-documental-uploads/acuses` |
 | `spring.jpa.open-in-view=true` | Necesario: las vistas Thymeleaf leen relaciones LAZY |
 
-Los PDF antiguos que quedaron en `./uploads/acuses` se siguen encontrando; los nuevos van a `app.upload.dir`. La carpeta `uploads/` no se versiona.
+Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archivos no se versionan en git.
 
 **Migraciones de base de datos.** Como Hibernate solo valida el esquema, cada cambio de modelo viene con un script en `db/migraciones/`. Hay que aplicarlo (pgAdmin, DBeaver o `psql`) **antes** de iniciar la versión que lo requiere; los scripts son idempotentes.
 
@@ -48,6 +48,7 @@ Los PDF antiguos que quedaron en `./uploads/acuses` se siguen encontrando; los n
 | `V4__roles_usuarios.sql` | Reasigna roles heredados (`JEFA_SECRETARIA`, `OPERADOR_MESA_ENTRADA`) a `SECRETARIA_ADMIN` y agrega el `CHECK` de rol |
 | `V5__biblioratos_informativos.sql` | Categoría del tipo documental (trámite/informativo), catálogo `biblioratos`, ubicación de cada documento (bibliorato + fojas) |
 | `V6__integridad_adjuntos.sql` | Huella SHA-256 y tipo MIME de cada adjunto |
+| `V7__limpieza_esquema.sql` | Elimina tablas heredadas vacías (`solicitudes_informes`, `historial_estados`, `movimientos_documento`) y la columna sin uso `documentos.usuario_registra_salida_id`. Se cancela si alguna tiene datos |
 
 **Integridad de archivos (V6):** cada PDF guarda su huella SHA-256 al subirse. El botón *Verificar* (historial del PDF y modal *Versiones*) la compara con el archivo en disco. Se rechazan los PDF incompletos (sin `%%EOF`). Si la operación falla, el archivo escrito se elimina.
 
@@ -224,9 +225,8 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - Probar en uso real el acuse final y la confirmación de pases con la nueva carpeta de PDF.
 - `DocumentoService.obtenerDependenciasHijas` y `obtenerDireccionRaiz` usan IDs fijos (1, 10, 11); conviene pasarlos a configuración.
 - El modal de salida envía `tipoRemision` e `informeActuacionId` (legajo), pero todavía no se guardan.
-- `spring.jpa.show-sql=true` está activo; desactivarlo en producción.
 - Expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes (por ejemplo TIC-2026-000001) deben revisarse manualmente.
-- Pruebas automatizadas: solo `contextLoads` y el cálculo de días hábiles (`DiasHabilesTest`).
+- Pruebas automatizadas: 18 unitarias (`DiasHabilesTest`, `ValidacionFojasTest`, `ArchivoServiceTest`); faltan pruebas de integración con una base PostgreSQL propia (Testcontainers).
 - Feriados nacionales/municipales para el SLA (requiere una tabla de feriados).
 - Paginación de bandejas para grandes volúmenes (hoy se cargan todos los expedientes activos).
 - Adoptar Flyway para aplicar las migraciones de `db/migraciones` automáticamente.

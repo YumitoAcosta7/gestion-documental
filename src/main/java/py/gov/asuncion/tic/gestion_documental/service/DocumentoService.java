@@ -76,32 +76,9 @@ public class DocumentoService {
     @Value("${app.sla.urgente.dias-critico:4}")
     private int slaUrgenteDiasCritico;
 
-    public List<Documento> obtenerDocumentosActivos() {
-        return documentoRepository.findByEstadoActualNotInOrderByFechaHoraIngresoDesc(ESTADOS_CERRADOS);
-    }
-
     public List<Dependencia> obtenerDependenciasActivas() {
         return dependenciaRepository.findByActivoTrueOrderByNombreAsc();
     }
-
-    // Método auxiliar para encontrar la Dirección raíz o el nodo superior inmediato de un usuario
-    public Dependencia obtenerDireccionRaiz(Dependencia dependenciaActual) {
-        Dependencia actual = dependenciaActual;
-        
-        // Subimos por el padre mientras tenga uno y no sea la Intendencia Municipal (ID 1)
-        while (actual != null && actual.getDependenciaPadreId() != null) {
-            Dependencia padre = dependenciaRepository.findById(actual.getDependenciaPadreId()).orElse(null);
-            
-            // Si el padre es la Intendencia (ID 1) o llegamos al nivel de Dirección (ej. nivel jerárquico 4), 
-            // entonces 'actual' es nuestra Dirección raíz.
-            if (padre == null || padre.getId() == 1 || (actual.getNivelJerarquicoId() != null && actual.getNivelJerarquicoId() == 4)) {
-                break;
-            }
-            actual = padre;
-        }
-        return actual;
-    }
-
 
     // 🛡️ CONTROL DE ACCESO POR DEPENDENCIA
     public boolean esRolAdministrativo(Usuario usuario) {
@@ -158,10 +135,6 @@ public class DocumentoService {
 
         // Para cualquier otro Jefe de Departamento, muestra únicamente las unidades hijas directas de su área
         return dependenciaRepository.findByDependenciaPadreIdAndActivoTrueOrderByNombreAsc(depActual.getId());
-    }
-
-    public List<Dependencia> obtenerDependenciasInternasTic() {
-        return dependenciaRepository.findByEsInternaTicTrueAndActivoTrueOrderByNombreAsc();
     }
 
     public Map<String, Long> obtenerMetricasDashboard() {
@@ -356,15 +329,6 @@ public class DocumentoService {
         );
 
         return docGuardado;
-    }
-
-    public List<Documento> obtenerDocumentosFinalizados() {
-        return documentoRepository.findByEstadoActualOrderByFechaHoraSalidaDesc(EstadoDocumento.FINALIZADO);
-    }
-
-    @Transactional
-    public Documento derivarDocumento(Long documentoId, Integer dependenciaDestinoId, String observacion, Usuario usuario) {
-        return derivarDocumento(documentoId, List.of(dependenciaDestinoId), observacion, false, usuario);
     }
 
 

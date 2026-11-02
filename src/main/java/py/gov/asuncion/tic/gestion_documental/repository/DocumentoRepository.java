@@ -27,7 +27,6 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
 
     List<Documento> findByEstadoActualNotInOrderByFechaHoraIngresoDesc(java.util.Collection<EstadoDocumento> estados);
 
-    boolean existsByCodigoCuti(String codigoCuti);
 
     // 🔒 Bloquea la fila del expediente hasta el fin de la transacción (SELECT ... FOR UPDATE).
     // Serializa las operaciones simultáneas sobre un mismo expediente (derivar, anular, confirmar...).
@@ -35,7 +34,6 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     @Query("SELECT d FROM Documento d WHERE d.id = :id")
     Optional<Documento> findByIdParaActualizar(@Param("id") Long id);
 
-    long countByAnio(Integer anio);
 
     // 🔢 CORRELATIVO DEL CUTI
     // Bloqueo transaccional de PostgreSQL: dos ingresos simultáneos no pueden calcular el mismo número.

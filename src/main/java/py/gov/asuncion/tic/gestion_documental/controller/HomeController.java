@@ -51,7 +51,7 @@ import java.util.Map;
 @Controller
 public class HomeController {
 
-    @Autowired(required = false)
+    @Autowired
     private DocumentoService documentoService;
 
     @Autowired
@@ -79,56 +79,30 @@ public class HomeController {
 
     @GetMapping("/")
     public String index(Model model) {
-        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
-
-        if (documentoService != null) {
-            Usuario usuarioLogueado = getUsuarioAutenticado();
-            model.addAttribute("usuarioLogueado", usuarioLogueado);
-
-            List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado);
-            model.addAttribute("documentos", activos);
-            agregarIndicadoresSla(model, activos, List.of());
-            agregarDatosArchivo(model, usuarioLogueado);
-            model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
-
-            // ==========================================
-            // NUEVO: Cargar los documentos de salida propios
-            // ==========================================
-            if (usuarioLogueado != null && usuarioLogueado.getDependencia() != null) {
-                model.addAttribute("documentosSalida", 
-                    documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuarioLogueado.getDependencia().getId())
-                );
-            } else {
-                model.addAttribute("documentosSalida", new ArrayList<>());
-            }
-            // ==========================================
-
-            if (usuarioLogueado != null) {
-                model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuarioLogueado));
-            } else {
-                model.addAttribute("dependenciasHijas", new ArrayList<>());
-            }
-
-            model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
-            model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
-            model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
-            model.addAttribute("dependenciasInternas", documentoService.obtenerDependenciasInternasTic());
-        } else {
-            model.addAttribute("documentos", new ArrayList<>());
-            model.addAttribute("documentosFinalizados", new ArrayList<>());
-            model.addAttribute("documentosSalida", new ArrayList<>()); // <- Añadido para el bloque else
-            Map<String, Long> metricasVacias = new HashMap<>();
-            metricasVacias.put("ingresados", 0L);
-            metricasVacias.put("enEsperaInforme", 0L);
-            metricasVacias.put("pendienteSalida", 0L);
-            metricasVacias.put("urgentes", 0L);
-            model.addAttribute("metricas", metricasVacias);
-            model.addAttribute("dependencias", new ArrayList<>());
-            model.addAttribute("dependenciasInternas", new ArrayList<>());
-            model.addAttribute("tiposDoc", new ArrayList<>());
-        }
-
+        cargarPantallaPrincipal(model, getUsuarioAutenticado(), List.of());
         return "index";
+    }
+
+    // Datos comunes de la pantalla principal (bandejas, KPI, catálogos), para el inicio y la búsqueda
+    private void cargarPantallaPrincipal(Model model, Usuario usuario, List<Documento> resultadosBusqueda) {
+        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
+        model.addAttribute("usuarioLogueado", usuario);
+
+        List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuario);
+        model.addAttribute("documentos", activos);
+        agregarIndicadoresSla(model, activos, resultadosBusqueda);
+        agregarDatosArchivo(model, usuario);
+        model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuario));
+
+        boolean conDependencia = usuario != null && usuario.getDependencia() != null;
+        model.addAttribute("documentosSalida", conDependencia
+                ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
+                : List.of());
+        model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuario));
+
+        model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
+        model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
+        model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
     }
 
     /**
@@ -490,48 +464,28 @@ public class HomeController {
                                    @RequestParam(value = "fechaHasta", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate fechaHasta,
                                    Model model) {
 
-        model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
+        Usuario usuarioLogueado = getUsuarioAutenticado();
+        List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(
+                texto, dependenciaId, tipoDocId, estado, biblioratoId, fechaDesde, fechaHasta);
 
-        if (documentoService != null) {
-            Usuario usuarioLogueado = getUsuarioAutenticado();
-            List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(
-                    texto, dependenciaId, tipoDocId, estado, biblioratoId, fechaDesde, fechaHasta);
-
-            // 🛡️ Departamentos y unidades solo ven en la búsqueda los expedientes de su bandeja
-            if (!documentoService.esRolAdministrativo(usuarioLogueado)) {
-                resultados = resultados.stream()
-                        .filter(d -> documentoService.puedeAccederDocumento(usuarioLogueado, d.getId()))
-                        .toList();
-            }
-
-            model.addAttribute("documentosResultados", resultados);
-            model.addAttribute("esBusqueda", true);
-            model.addAttribute("paramTexto", texto);
-            model.addAttribute("paramDependenciaId", dependenciaId);
-            model.addAttribute("paramTipoDocId", tipoDocId);
-            model.addAttribute("paramEstado", estado);
-            model.addAttribute("paramBiblioratoId", biblioratoId);
-            model.addAttribute("paramFechaDesde", fechaDesde);
-            model.addAttribute("paramFechaHasta", fechaHasta);
-
-            model.addAttribute("usuarioLogueado", usuarioLogueado);
-            List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado);
-            model.addAttribute("documentos", activos);
-            agregarIndicadoresSla(model, activos, resultados);
-            agregarDatosArchivo(model, usuarioLogueado);
-            model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
-            model.addAttribute("documentosSalida", usuarioLogueado != null && usuarioLogueado.getDependencia() != null
-                    ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuarioLogueado.getDependencia().getId())
-                    : new ArrayList<>());
-            model.addAttribute("dependenciasHijas", usuarioLogueado != null
-                    ? documentoService.obtenerDependenciasHijas(usuarioLogueado)
-                    : new ArrayList<>());
-            model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
-            model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
-            model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
-            model.addAttribute("dependenciasInternas", documentoService.obtenerDependenciasInternasTic());
+        // 🛡️ Departamentos y unidades solo ven en la búsqueda los expedientes de su bandeja
+        if (!documentoService.esRolAdministrativo(usuarioLogueado)) {
+            resultados = resultados.stream()
+                    .filter(d -> documentoService.puedeAccederDocumento(usuarioLogueado, d.getId()))
+                    .toList();
         }
 
+        model.addAttribute("documentosResultados", resultados);
+        model.addAttribute("esBusqueda", true);
+        model.addAttribute("paramTexto", texto);
+        model.addAttribute("paramDependenciaId", dependenciaId);
+        model.addAttribute("paramTipoDocId", tipoDocId);
+        model.addAttribute("paramEstado", estado);
+        model.addAttribute("paramBiblioratoId", biblioratoId);
+        model.addAttribute("paramFechaDesde", fechaDesde);
+        model.addAttribute("paramFechaHasta", fechaHasta);
+
+        cargarPantallaPrincipal(model, usuarioLogueado, resultados);
         return "index";
     }
 
@@ -591,49 +545,47 @@ public class HomeController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         List<Map<String, Object>> listaJson = new ArrayList<>();
-        if (documentoService != null) {
-            List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
+        List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
 
-            // Versiones de PDF de todas las actuaciones en una sola consulta
-            Map<Long, List<Map<String, Object>>> versiones = new HashMap<>();
-            for (AdjuntoDocumento adj : documentoService.obtenerVersionesPdfActuaciones(
-                    actuaciones.stream().map(ActuacionDocumento::getId).toList())) {
-                versiones.computeIfAbsent(adj.getActuacion().getId(), k -> new ArrayList<>()).add(adjuntoJson(adj));
-            }
+        // Versiones de PDF de todas las actuaciones en una sola consulta
+        Map<Long, List<Map<String, Object>>> versiones = new HashMap<>();
+        for (AdjuntoDocumento adj : documentoService.obtenerVersionesPdfActuaciones(
+                actuaciones.stream().map(ActuacionDocumento::getId).toList())) {
+            versiones.computeIfAbsent(adj.getActuacion().getId(), k -> new ArrayList<>()).add(adjuntoJson(adj));
+        }
 
-            for (var act : actuaciones) {
-                Map<String, Object> map = new HashMap<>();
-                map.put("id", act.getId());
-                map.put("documentoId", id);
-                map.put("tipoActuacion", act.getTipoActuacion() != null ? act.getTipoActuacion() : "PASE_INTERNO");
-                map.put("numeroActuacion", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
-                map.put("dependencia", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getNombre() : "Sin Dependencia");
-                map.put("dependenciaEmisoraId", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getId() : null);
-                map.put("dependenciaReceptoraId", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getId() : null);
-                map.put("dependenciaReceptora", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getNombre() : null);
-                map.put("descripcion", act.getDescripcionResumen());
-                map.put("bibliorato", act.getUbicacionBibliorato() != null && !act.getUbicacionBibliorato().isBlank()
-                        ? act.getUbicacionBibliorato() : "No especificado");
-                // Solo indica si hay PDF: la ruta interna del servidor no se expone
-                map.put("pdf", act.getRutaCopiaSelladaPdf() != null && !act.getRutaCopiaSelladaPdf().isBlank());
-                map.put("paseConfirmado", act.getPaseConfirmado() != null ? act.getPaseConfirmado() : true);
-                map.put("fecha", act.getFechaHoraActuacion() != null
-                        ? act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "-");
+        for (var act : actuaciones) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", act.getId());
+            map.put("documentoId", id);
+            map.put("tipoActuacion", act.getTipoActuacion() != null ? act.getTipoActuacion() : "PASE_INTERNO");
+            map.put("numeroActuacion", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
+            map.put("dependencia", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getNombre() : "Sin Dependencia");
+            map.put("dependenciaEmisoraId", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getId() : null);
+            map.put("dependenciaReceptoraId", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getId() : null);
+            map.put("dependenciaReceptora", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getNombre() : null);
+            map.put("descripcion", act.getDescripcionResumen());
+            map.put("bibliorato", act.getUbicacionBibliorato() != null && !act.getUbicacionBibliorato().isBlank()
+                    ? act.getUbicacionBibliorato() : "No especificado");
+            // Solo indica si hay PDF: la ruta interna del servidor no se expone
+            map.put("pdf", act.getRutaCopiaSelladaPdf() != null && !act.getRutaCopiaSelladaPdf().isBlank());
+            map.put("paseConfirmado", act.getPaseConfirmado() != null ? act.getPaseConfirmado() : true);
+            map.put("fecha", act.getFechaHoraActuacion() != null
+                    ? act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "-");
 
-                // Anulación lógica (pases retirados / rechazados)
-                map.put("anulada", Boolean.TRUE.equals(act.getAnulada()));
-                map.put("tipoAnulacion", act.getTipoAnulacion());
-                map.put("motivoAnulacion", act.getMotivoAnulacion());
-                map.put("fechaAnulacion", act.getFechaHoraAnulacion() != null
-                        ? act.getFechaHoraAnulacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : null);
+            // Anulación lógica (pases retirados / rechazados)
+            map.put("anulada", Boolean.TRUE.equals(act.getAnulada()));
+            map.put("tipoAnulacion", act.getTipoAnulacion());
+            map.put("motivoAnulacion", act.getMotivoAnulacion());
+            map.put("fechaAnulacion", act.getFechaHoraAnulacion() != null
+                    ? act.getFechaHoraAnulacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : null);
 
-                // Acciones que el usuario actual puede realizar sobre esta actuación
-                map.put("puedeRetirar", documentoService.puedeRetirarPase(act, usuario));
-                map.put("puedeRechazar", documentoService.puedeRechazarPase(act, usuario));
-                map.put("puedeReemplazarPdf", documentoService.puedeReemplazarPdf(act, usuario));
-                map.put("versiones", versiones.getOrDefault(act.getId(), List.of()));
-                listaJson.add(map);
-            }
+            // Acciones que el usuario actual puede realizar sobre esta actuación
+            map.put("puedeRetirar", documentoService.puedeRetirarPase(act, usuario));
+            map.put("puedeRechazar", documentoService.puedeRechazarPase(act, usuario));
+            map.put("puedeReemplazarPdf", documentoService.puedeReemplazarPdf(act, usuario));
+            map.put("versiones", versiones.getOrDefault(act.getId(), List.of()));
+            listaJson.add(map);
         }
         return ResponseEntity.ok(listaJson);
     }
@@ -648,22 +600,20 @@ public class HomeController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         List<Map<String, Object>> listaJson = new ArrayList<>();
-        if (documentoService != null) {
-            List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
-            
-            for (ActuacionDocumento act : actuaciones) {
-                if ("INFORME_TECNICO".equals(act.getTipoActuacion()) || 
-                    "MEMO".equals(act.getTipoActuacion()) || 
-                    "PROVIDENCIA".equals(act.getTipoActuacion())) {
-                    
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("id", act.getId());
-                    map.put("tipo", act.getTipoActuacion());
-                    map.put("numero", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
-                    map.put("dependencia", act.getDependenciaEmisora().getNombre());
-                    map.put("resumen", act.getDescripcionResumen());
-                    listaJson.add(map);
-                }
+        List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
+        
+        for (ActuacionDocumento act : actuaciones) {
+            if ("INFORME_TECNICO".equals(act.getTipoActuacion()) || 
+                "MEMO".equals(act.getTipoActuacion()) || 
+                "PROVIDENCIA".equals(act.getTipoActuacion())) {
+                
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", act.getId());
+                map.put("tipo", act.getTipoActuacion());
+                map.put("numero", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
+                map.put("dependencia", act.getDependenciaEmisora().getNombre());
+                map.put("resumen", act.getDescripcionResumen());
+                listaJson.add(map);
             }
         }
         return ResponseEntity.ok(listaJson);
