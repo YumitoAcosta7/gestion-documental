@@ -1,6 +1,6 @@
 # Diseño Fase 2 — Gestión Documental para toda la Municipalidad (uso interno)
 
-> **Estado:** etapa 2.1 en curso (02/11/2026): organigrama completo (V8, V9), asignaciones, visibilidad por ámbito, sin IDs fijos y CUTI configurable. El resto, propuesta de diseño.
+> **Estado:** etapa 2.1 terminada (02/11/2026). Etapa 2.2 diseñada con el canal jerárquico y el CUTI por cabecera definidos por la Dirección de TIC (§4.3, §5 y §10.1). El resto, propuesta de diseño.
 > **Base:** código de `chore/limpieza-proyecto` y estructura orgánica real de la base, relevada en modo solo lectura el 02/11/2026.
 > **Objetivo:** que todas las áreas de la Municipalidad registren, deriven, controlen y archiven sus expedientes en una sola herramienta, cada una viendo solo lo que le corresponde. Es la base para eliminar el papel (Fase 3) y para el portal del contribuyente (Fase 4).
 
@@ -148,16 +148,41 @@ La devolución transfiere la custodia de vuelta al emisor del último pase de tr
 
 Todas son **paginadas** y se resuelven con una sola consulta SQL por ámbito (unión con `ruta`). Esto elimina el filtrado expediente por expediente que hoy hace el buscador.
 
-### 4.3 Reglas de derivación
+### 4.3 Canal jerárquico (definido por la Dirección de TIC, 02/11)
 
-| Destino | Permitido a | Regla |
+El expediente **sube por la jerarquía hasta la cabecera y baja en la cabecera destino**. Nunca se saltea un nivel. Ejemplo:
+
+```
+Unidad → Departamento → Dirección ⇒ Dirección destino → Departamento → Unidad
+```
+
+**Cabecera** de una dependencia: su primer superior (o ella misma) de nivel Dirección o mayor. Puede ser una Dirección, una Dirección General o la Intendencia. Cada cabecera recibe en su **mesa de entrada** (la Unidad de Secretaría Administrativa). Si no tiene una (por ejemplo CODENI), recibe la cabecera misma.
+
+Desde la dependencia que tiene la custodia, los destinos permitidos son tres:
+
+| Movimiento | Destino | Ejemplo |
 |---|---|---|
-| Cualquier dependencia de **mi misma dirección** | Responsable, Mesa de entrada | Libre |
-| **Hacia arriba** (dirección, dirección general, Intendencia) | Responsable | Libre |
-| **Otra dirección** | Responsable, Mesa de entrada | A su **mesa de entrada**, que la redistribuye internamente. Excepción configurable: dependencias marcadas `recibe_externos` (por ejemplo, la UOC) |
-| Dependencia inactiva | Nadie | Rechazado |
+| **Subir** | Su superior inmediato. Si el superior es una cabecera, el pase llega a su mesa de entrada | Unidad de Redes → Dpto. Operativo de Informática → DTIC |
+| **Bajar** | Sus subordinadas directas | Dpto. de Contabilidad → Unidad de Bancos |
+| **Pasar a otra cabecera** | Solo entre cabeceras **hermanas**, es decir con el mismo superior, y a su mesa de entrada | DTIC → DGAF (ambas dependen de la Intendencia); Hacienda → Recaudaciones (ambas en la DGAF) |
 
-Las excepciones se configuran en una tabla `reglas_derivacion (origen, destino, permitido)`, administrada sin tocar código.
+**Entre direcciones de distintas Direcciones Generales se pasa por las Direcciones Generales** (decisión del 02/11). Por ejemplo, de Hacienda a la DTIC:
+
+```
+Hacienda → DGAF → DTIC
+```
+
+Y de la DTIC a Hacienda:
+
+```
+DTIC → DGAF → Hacienda
+```
+
+La regla general es: subir hasta la cabecera hermana del destino, pasar a ella y bajar. El sistema muestra en cada paso solo los destinos permitidos y, para un destino lejano, sugiere el recorrido.
+
+- **Documentos propios en cualquier nivel.** Una unidad, un departamento o una dirección puede iniciar un expediente con un documento propio (memo, informe, nota) y darle salida hacia su superior. Hoy solo la mesa de entrada registra documentos.
+- **Dependencias inactivas:** no reciben pases.
+- **Excepciones:** una tabla `reglas_derivacion (origen, destino, permitido)` permite habilitar atajos sin tocar código. Por ejemplo, que una UOC reciba directo de cualquier dirección.
 
 ---
 
@@ -165,7 +190,12 @@ Las excepciones se configuran en una tabla `reglas_derivacion (origen, destino, 
 
 - **Registro:** cada mesa registra los ingresos de su dirección. El expediente queda con `dependencia_registro_id` y la custodia inicial en la mesa.
 - **Mesa de Entrada General:** si la Secretaría General centraliza el ingreso externo, se carga como mesa con `recibe_externos` y deriva a las mesas de cada dirección.
-- **CUTI municipal:** una sola serie anual para toda la municipalidad, con prefijo configurable (`app.cuti.prefijo`, por ejemplo `MCA-2026-000123`). Los CUTI `TIC-` existentes se conservan y se siguen buscando. Se mantiene el bloqueo transaccional actual.
+- **CUTI por cabecera** (decisión del 02/11). Cada Dirección, Dirección General y la Intendencia tiene su propia serie anual con su sigla: `DTIC-2026-000001`, `DHAC-2026-000001`, `DGAF-2026-000001`.
+  - El expediente toma el número de la cabecera de la dependencia que lo inicia y **lo conserva en todo el recorrido**.
+  - Cada mesa que lo recibe lo anota en su libro de entradas con su propio número de orden, sin crear otro expediente.
+  - El correlativo sale de una tabla `series_cuti (dependencia_id, anio, ultimo)`, que se incrementa con `SELECT … FOR UPDATE` dentro de la transacción.
+  - Los CUTI `TIC-` existentes se conservan y se siguen buscando.
+  - Reemplaza a `app.cuti.prefijo`.
 - **Numeración de documentos emitidos** ("Nota DTIC N° 45/2026"), con correlativo por dependencia, tipo y año:
 
 ```sql
@@ -261,8 +291,8 @@ Tabla `auditoria_seguridad` con inicios de sesión correctos y fallidos, bloqueo
 
 | Etapa | Contenido | Iteraciones |
 |---|---|---|
-| **2.1 Fundaciones** | `ruta`, sigla y mesas en el organigrama; asignaciones y `PoliticaAcceso`; sacar IDs fijos; CUTI configurable; Flyway; ambiente de pruebas | 2 |
-| **2.2 Circulación** | Custodia y tipos de pase; bandejas paginadas por ámbito; reglas de derivación entre direcciones; mesas de entrada | 2 |
+| **2.1 Fundaciones** ✅ | `ruta`, sigla y mesas en el organigrama; asignaciones y `PoliticaAcceso`; sacar IDs fijos; CUTI configurable; Flyway; ambiente de pruebas (falta crear la base en el servidor) | 2 |
+| **2.2 Circulación** | Custodia y tipos de pase; canal jerárquico (§4.3); documentos propios en cualquier nivel; CUTI por cabecera; bandejas paginadas por ámbito | 2 |
 | **2.3 Administración** | Pantallas de organigrama, usuarios y asignaciones; política de contraseñas; suplencias; feriados; auditoría de seguridad | 1–2 |
 | **2.4 Comunicación y control** | Notificaciones; reportes por ámbito; numeración de documentos emitidos | 2 |
 | **Piloto ampliado** | TIC más **una** dirección de la DGAF (sugerida: Hacienda, por su volumen y su secretaría propia) | 4 semanas de uso |
@@ -270,9 +300,22 @@ Tabla `auditoria_seguridad` con inicios de sesión correctos y fallidos, bloqueo
 
 Estimación orientativa: **3,5 a 4 meses** con uno o dos desarrolladores para las etapas 2.1 a 2.4. Cada etapa se entrega usable y con sus pruebas.
 
+### 10.1 Etapa 2.2 en detalle
+
+| Paso | Contenido |
+|---|---|
+| 1. Migración V11 | En `documentos`: `dependencia_custodia_id` y `dependencia_registro_id`. En `actuaciones_documento`: `tipo_pase`. Tablas nuevas `series_cuti` y `reglas_derivacion`. Carga de los datos actuales según §9 |
+| 2. `CanalService` | Calcula los destinos permitidos desde la custodia (subir, bajar o pasar a una cabecera hermana) y el recorrido sugerido hacia un destino lejano. Reemplaza a `obtenerDependenciasHijas`. Pruebas unitarias con el árbol real |
+| 3. Custodia | Un pase `TRAMITE` confirmado transfiere la custodia; `INFORME` y `CONOCIMIENTO` no. La devolución la regresa al emisor |
+| 4. Documentos propios | Cualquier dependencia inicia un expediente con su documento y le da salida hacia su superior |
+| 5. CUTI por cabecera | `series_cuti` con bloqueo de fila; el número sale de la cabecera de quien inicia el expediente |
+| 6. Bandejas | Por recibir, En mi poder, Informes pendientes, En seguimiento y Archivo, paginadas y con una consulta por ámbito |
+| 7. Prueba de punta a punta | Expediente de una unidad de TIC hasta una unidad de Hacienda, por la base de pruebas |
+
 **Criterios de aceptación de la Fase 2:**
 - Un responsable de Hacienda **no ve** expedientes de TIC, salvo que hayan pasado por su área.
-- Un expediente derivado de TIC a Hacienda llega a la mesa de Hacienda, que lo redistribuye, y el árbol muestra todo el recorrido.
+- Un expediente de TIC para Hacienda sigue el canal DTIC → DGAF → Hacienda y llega a la mesa de Hacienda, que lo redistribuye. El árbol muestra todo el recorrido y el CUTI no cambia.
+- Una unidad puede iniciar un memo propio y darle salida solo hacia su departamento.
 - Una suplencia con fecha de fin deja de tener efecto sola ese día.
 - No queda ningún ID de dependencia escrito en el código.
 
@@ -283,8 +326,8 @@ Estimación orientativa: **3,5 a 4 meses** con uno o dos desarrolladores para la
 | # | Pregunta | Recomendación |
 |---|---|---|
 | 1 | ~~¿La Municipalidad tiene Active Directory/LDAP?~~ **Respondida (02/11):** no hay Active Directory; se usará el LDAP de Zextras Carbonio (§6.2) | Faltan los datos de conexión y la cuenta de servicio |
-| 2 | Entre direcciones, ¿siempre a través de la mesa de entrada o también directo? | A través de la mesa, con excepciones configurables |
-| 3 | ¿CUTI único municipal o con prefijo por dirección? | Único municipal (`MCA-AAAA-NNNNNN`); la sigla del área se ve aparte |
+| 2 | ~~Entre direcciones, ¿siempre a través de la mesa de entrada o también directo?~~ **Respondida (02/11):** canal jerárquico. Se sube hasta la cabecera, se pasa entre cabeceras hermanas y se baja, pasando por las Direcciones Generales (§4.3) | — |
+| 3 | ~~¿CUTI único municipal o con prefijo por dirección?~~ **Respondida (02/11):** una serie por cabecera (Dirección, Dirección General, Intendencia), que el expediente conserva en todo el recorrido (§5) | — |
 | 4 | ¿Quién administra usuarios en cada dirección? | TIC centralizado al inicio; administración delegada después |
 | 5 | ~~¿Hay correo institucional (SMTP) para avisos?~~ **Respondida (02/11):** sí, el de Zextras Carbonio | Crear la cuenta remitente `gestion.documental@…` |
 | 6 | ¿Volumen estimado de expedientes por día y por dirección? | Necesario para dimensionar el servidor |
