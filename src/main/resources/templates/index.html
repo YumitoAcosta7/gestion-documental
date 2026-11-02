@@ -62,6 +62,11 @@
                     <i class="bi bi-plus-lg me-1"></i>Nueva Salida
                 </button>
 
+                <!-- Catálogo de biblioratos (Dirección / Secretaría) -->
+                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalBiblioratos">
+                    <i class="bi bi-archive me-1"></i>Biblioratos
+                </button>
+
                 <!-- Botón de Cerrar Sesión Compacto -->
                 <form th:action="@{/logout}" method="post" class="m-0">
                     <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-semibold" title="Cerrar Sesión">
@@ -126,7 +131,14 @@
                             <label class="form-label small fw-bold">Hasta</label>
                             <input type="date" class="form-control form-control-sm" name="fechaHasta" th:value="${paramFechaHasta}">
                         </div>
-                        <div class="col-12 text-end mt-2">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Bibliorato (ubicación física)</label>
+                            <select class="form-select form-select-sm" name="biblioratoId">
+                                <option value="">Todos los biblioratos...</option>
+                                <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion}" th:selected="${paramBiblioratoId == b.id}"></option>
+                            </select>
+                        </div>
+                        <div class="col-md-8 text-end align-self-end">
                             <a th:href="@{/}" class="btn btn-sm btn-outline-secondary me-1"><i class="bi bi-x-circle me-1"></i>Limpiar Filtros</a>
                             <button type="submit" class="btn btn-sm btn-primary px-4 fw-bold"><i class="bi bi-search me-1"></i>Buscar</button>
                         </div>
@@ -198,6 +210,11 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link px-4" id="finalizados-tab" data-bs-toggle="tab" data-bs-target="#finalizados-pane" type="button" role="tab">
                     <i class="bi bi-check-circle-fill me-2 text-success"></i>Historial de Finalizados
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link px-4" id="archivo-tab" data-bs-toggle="tab" data-bs-target="#archivo-pane" type="button" role="tab">
+                    <i class="bi bi-archive-fill me-2 text-secondary"></i>Archivo físico
                 </button>
             </li>
             <li class="nav-item" role="presentation" th:if="${esBusqueda != null && esBusqueda}">
@@ -456,7 +473,11 @@
                                         <td><span class="badge bg-success" th:text="${doc.nroNotaSalida != null ? doc.nroNotaSalida : 'S/N'}">120/2026</span></td>
                                         <td th:text="${doc.dependenciaOrigen.nombre}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
-                                        <td><span class="badge bg-secondary" th:text="${doc.ubicacionBibliorato != null ? doc.ubicacionBibliorato : 'No especificado'}">BIB-2026</span></td>
+                                        <td>
+                                            <span th:if="${doc.ubicacionTexto != null}" class="small" th:text="${doc.ubicacionTexto}">BIB-2026</span>
+                                            <span th:if="${doc.bibliorato != null}" class="d-block small text-muted"><i class="bi bi-geo-alt"></i> <span th:text="${doc.bibliorato.ubicacionFisica}">Armario</span></span>
+                                            <span th:if="${doc.ubicacionTexto == null}" class="badge bg-light text-muted border">Sin ubicación</span>
+                                        </td>
                                         <td th:text="${doc.fechaHoraSalida != null ? #temporals.format(doc.fechaHoraSalida, 'dd/MM/yyyy HH:mm') : '-'}">03/08/2026 15:00</td>
                                         <td class="text-center">
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
@@ -481,6 +502,177 @@
                 </div>
             </div>
 
+            <!-- PESTAÑA 4: ARCHIVO FÍSICO (biblioratos) -->
+            <div class="tab-pane fade" id="archivo-pane" role="tabpanel">
+                <div class="card border-0 shadow-sm rounded-3">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="fw-bold text-secondary m-0"><i class="bi bi-archive-fill me-2"></i>Documentos en biblioratos</h5>
+                        <select id="filtroBibliorato" class="form-select form-select-sm w-auto">
+                            <option value="">Todos los biblioratos</option>
+                            <option value="sin">Sin ubicación física</option>
+                            <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion}"></option>
+                        </select>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="tablaArchivo">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Cód. CUTI</th>
+                                        <th>Tipo</th>
+                                        <th>Asunto</th>
+                                        <th>Bibliorato</th>
+                                        <th>Ubicación física</th>
+                                        <th>Fojas</th>
+                                        <th>Estado</th>
+                                        <th class="text-center">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr th:each="doc : ${documentosArchivo}" th:attr="data-bibliorato=${doc.bibliorato != null ? doc.bibliorato.id : 'sin'}">
+                                        <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</td>
+                                        <td>
+                                            <span class="badge bg-secondary" th:text="${doc.tipoDocumento?.nombre}">Circular</span>
+                                            <span th:if="${doc.tipoDocumento != null && doc.tipoDocumento.informativo}" class="badge bg-info-subtle text-info-emphasis border">Informativo</span>
+                                        </td>
+                                        <td th:text="${doc.asunto}">Asunto</td>
+                                        <td>
+                                            <span th:if="${doc.bibliorato != null}">
+                                                <strong th:text="${doc.bibliorato.codigo}">BIB</strong>
+                                                <span class="d-block small text-muted" th:text="${doc.bibliorato.descripcion}">Descripción</span>
+                                            </span>
+                                            <span th:if="${doc.bibliorato == null}" class="badge bg-warning text-dark">Sin ubicación</span>
+                                        </td>
+                                        <td class="small" th:text="${doc.bibliorato != null ? doc.bibliorato.ubicacionFisica : '-'}">Armario 2</td>
+                                        <td class="small" th:text="${doc.fojaDesde == null ? '-' : (doc.fojaDesde == doc.fojaHasta ? doc.fojaDesde : doc.fojaDesde + '–' + doc.fojaHasta)}">12–14</td>
+                                        <td><span class="badge bg-secondary" th:text="${doc.estadoActual}">ARCHIVADO</span></td>
+                                        <td class="text-center text-nowrap">
+                                            <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Historial">
+                                                <i class="bi bi-clock-history"></i>
+                                            </button>
+                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1"
+                                                    data-bs-toggle="modal" data-bs-target="#modalUbicacion"
+                                                    th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" th:data-tiene-ubicacion="${doc.ubicacionTexto != null}"
+                                                    title="Registrar o cambiar ubicación física">
+                                                <i class="bi bi-geo-alt"></i>
+                                            </button>
+                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR', 'JEFE_DEPTO')" type="button"
+                                                    th:if="${doc.estadoActual.name() == 'ARCHIVADO'}"
+                                                    class="btn btn-sm btn-outline-primary rounded-pill px-2"
+                                                    data-bs-toggle="modal" data-bs-target="#modalDerivar"
+                                                    th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" data-informativo="true"
+                                                    title="Difundir para conocimiento">
+                                                <i class="bi bi-megaphone"></i> Difundir
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr th:if="${#lists.isEmpty(documentosArchivo)}">
+                                        <td colspan="8" class="text-center py-4 text-muted">
+                                            <i class="bi bi-archive fs-2 d-block mb-2"></i> Todavía no hay documentos guardados en biblioratos.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MODAL UBICACIÓN FÍSICA (Dirección / Secretaría) -->
+    <div class="modal fade" id="modalUbicacion" tabindex="-1">
+        <div class="modal-dialog">
+            <form th:action="@{/documentos/ubicacion}" method="post">
+                <input type="hidden" name="documentoId" id="ubicacionDocId" />
+                <div class="modal-content">
+                    <div class="modal-header bg-secondary text-white">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-geo-alt me-2"></i>Ubicación física <span id="labelCutiUbicacion" class="text-warning"></span></h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Bibliorato <span class="text-danger">*</span></label>
+                            <select name="biblioratoId" class="form-select form-select-sm" required>
+                                <option value="" disabled selected>Seleccione...</option>
+                                <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion + ' (' + b.ubicacionFisica + ')'}"></option>
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col"><label class="form-label small fw-bold">Foja desde</label><input type="number" min="1" name="fojaDesde" class="form-control form-control-sm"></div>
+                            <div class="col"><label class="form-label small fw-bold">Foja hasta</label><input type="number" min="1" name="fojaHasta" class="form-control form-control-sm"></div>
+                        </div>
+                        <div id="bloqueMotivoUbicacion">
+                            <label class="form-label small fw-bold">Motivo del traslado <span class="text-danger">*</span></label>
+                            <input type="text" name="motivo" class="form-control form-control-sm" minlength="10" placeholder="Ej: Se reorganizó el archivo 2026">
+                            <div class="form-text">Obligatorio cuando el documento ya tenía ubicación: queda en la auditoría.</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm fw-bold">Guardar ubicación</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL CATÁLOGO DE BIBLIORATOS (Dirección / Secretaría) -->
+    <div class="modal fade" id="modalBiblioratos" tabindex="-1" sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-archive me-2"></i>Catálogo de biblioratos</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle small">
+                            <thead class="table-light">
+                                <tr><th>Código</th><th>Descripción</th><th>Dependencia</th><th>Año</th><th>Ubicación física</th><th>Uso</th><th>Estado</th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                <tr th:each="b : ${biblioratosTodos}" th:with="uso=${usoBiblioratos != null ? usoBiblioratos[b.id] : null}" th:classappend="${!b.activo} ? 'text-muted'">
+                                    <td class="fw-bold" th:text="${b.codigo}">BIB</td>
+                                    <td th:text="${b.descripcion}">Desc</td>
+                                    <td th:text="${b.dependencia.nombre}">Dep</td>
+                                    <td th:text="${b.anio}">2026</td>
+                                    <td th:text="${b.ubicacionFisica}">Armario</td>
+                                    <td th:text="${(uso != null ? uso[0] : 0) + ' doc. · última foja ' + (uso != null ? uso[1] : 0) + (b.capacidadFojas != null ? ' de ' + b.capacidadFojas : '')}">0 doc.</td>
+                                    <td><span th:class="${b.activo ? 'badge bg-success' : 'badge bg-secondary'}" th:text="${b.activo ? 'Abierto' : 'Cerrado'}">Abierto</span></td>
+                                    <td>
+                                        <form th:action="@{/biblioratos/{id}/estado(id=${b.id})}" method="post" class="m-0">
+                                            <input type="hidden" name="activo" th:value="${!b.activo}">
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm py-0" th:text="${b.activo ? 'Cerrar' : 'Reabrir'}">Cerrar</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <tr th:if="${biblioratosTodos == null || #lists.isEmpty(biblioratosTodos)}">
+                                    <td colspan="8" class="text-center text-muted py-3">Todavía no hay biblioratos registrados.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <form th:action="@{/biblioratos/guardar}" method="post" class="border rounded p-3 bg-light">
+                        <div class="fw-bold small mb-2"><i class="bi bi-plus-lg me-1"></i>Nuevo bibliorato</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><input type="text" name="codigo" class="form-control form-control-sm text-uppercase" required pattern="[A-Za-z0-9][A-Za-z0-9\-]{2,29}" placeholder="Código (BIB-DTIC-2026-001)"></div>
+                            <div class="col-md-5"><input type="text" name="descripcion" class="form-control form-control-sm" required maxlength="150" placeholder="Descripción (Circulares recibidas 2026 - Tomo 1)"></div>
+                            <div class="col-md-2"><input type="number" name="anio" class="form-control form-control-sm" required min="2000" max="2100" th:value="${#temporals.year(#temporals.createNow())}"></div>
+                            <div class="col-md-2"><input type="number" name="capacidadFojas" class="form-control form-control-sm" min="1" placeholder="Capacidad (fojas)"></div>
+                            <div class="col-md-5">
+                                <select name="dependenciaId" class="form-select form-select-sm" required>
+                                    <option value="" disabled selected>Dependencia responsable...</option>
+                                    <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
+                                </select>
+                            </div>
+                            <div class="col-md-5"><input type="text" name="ubicacionFisica" class="form-control form-control-sm" required maxlength="150" placeholder="Ubicación física (Archivo DTIC · Armario 2 · Estante 3)"></div>
+                            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Crear</button></div>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1008,10 +1200,15 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Tipo de Documento</label>
-                                <select class="form-select form-select-sm" th:field="*{tipoDocumentoId}" required>
+                                <select class="form-select form-select-sm" th:field="*{tipoDocumentoId}" id="ingresoTipo" required onchange="ajustarIngresoPorTipo()">
                                     <option value="" disabled selected>Seleccione...</option>
-                                    <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}" th:text="${tipo.nombre}"></option>
+                                    <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}"
+                                            th:text="${tipo.nombre + (tipo.informativo ? ' (informativo)' : '')}"
+                                            th:attr="data-informativo=${tipo.informativo},data-requiere-bibliorato=${tipo.requiereBibliorato}"></option>
                                 </select>
+                                <div id="avisoInformativo" class="form-text text-primary d-none">
+                                    <i class="bi bi-info-circle"></i> Documento informativo: se registra y queda <strong>archivado</strong> directamente, sin circuito de derivaciones.
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">N° Documento Origen</label>
@@ -1047,6 +1244,22 @@
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Asunto / Extracto del Documento</label>
                                 <textarea class="form-control form-control-sm" th:field="*{asunto}" rows="3" required placeholder="Resumen del documento..."></textarea>
+                            </div>
+                            <!-- 📚 Ubicación física -->
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Bibliorato <span id="biblioratoObligatorio" class="text-danger d-none">*</span></label>
+                                <select class="form-select form-select-sm" th:field="*{biblioratoId}" id="ingresoBibliorato">
+                                    <option value="">Sin archivar todavía</option>
+                                    <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion}"></option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Foja desde</label>
+                                <input type="number" min="1" class="form-control form-control-sm" th:field="*{fojaDesde}" placeholder="Ej: 12">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Foja hasta</label>
+                                <input type="number" min="1" class="form-control form-control-sm" th:field="*{fojaHasta}" placeholder="Ej: 14">
                             </div>
                         </div>
                     </div>
@@ -1139,6 +1352,18 @@
             document.getElementById('devolverDocId').value = docId;
             const modalDevolver = new bootstrap.Modal(document.getElementById('modalDevolver'));
             modalDevolver.show();
+        }
+
+        // Ingreso: los tipos informativos se archivan directamente y pueden exigir bibliorato
+        function ajustarIngresoPorTipo() {
+            const sel = document.getElementById('ingresoTipo');
+            if (!sel) return;
+            const opcion = sel.selectedOptions[0];
+            const informativo = opcion && opcion.getAttribute('data-informativo') === 'true';
+            const requiere = opcion && opcion.getAttribute('data-requiere-bibliorato') === 'true';
+            document.getElementById('avisoInformativo').classList.toggle('d-none', !informativo);
+            document.getElementById('biblioratoObligatorio').classList.toggle('d-none', !requiere);
+            document.getElementById('ingresoBibliorato').required = requiere;
         }
 
         // Abre un modal desde el árbol de trazabilidad (cierra primero el árbol)
@@ -1341,9 +1566,44 @@
                         document.getElementById('selectDestinoUnico').selectedIndex = 0;
                         modalDerivar.querySelectorAll('.check-dependencia').forEach(c => c.checked = false);
                         alternarModo('UNICO');
+
+                        // Difusión de un informativo: solo para conocimiento
+                        const esInformativo = button.getAttribute('data-informativo') === 'true';
+                        const selInforme = modalDerivar.querySelector('[name=requiereInforme]');
+                        selInforme.value = 'false';
+                        selInforme.querySelector('option[value="true"]').disabled = esInformativo;
                     }
                 });
             }
+
+            // Pestaña Archivo físico: filtro por bibliorato
+            const filtroBibliorato = document.getElementById('filtroBibliorato');
+            if (filtroBibliorato) {
+                filtroBibliorato.addEventListener('change', function () {
+                    const valor = this.value;
+                    document.querySelectorAll('#tablaArchivo tbody tr[data-bibliorato]').forEach(fila => {
+                        fila.style.display = (!valor || fila.getAttribute('data-bibliorato') === valor) ? '' : 'none';
+                    });
+                });
+            }
+
+            // Modal Ubicación física: el motivo solo se exige al trasladar
+            const modalUbicacion = document.getElementById('modalUbicacion');
+            if (modalUbicacion) {
+                modalUbicacion.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (!button) return;
+                    modalUbicacion.querySelector('#ubicacionDocId').value = button.getAttribute('data-doc-id');
+                    modalUbicacion.querySelector('#labelCutiUbicacion').textContent = `(${button.getAttribute('data-doc-cuti')})`;
+                    const traslado = button.getAttribute('data-tiene-ubicacion') === 'true';
+                    const motivo = modalUbicacion.querySelector('[name=motivo]');
+                    motivo.value = '';
+                    motivo.required = traslado;
+                    document.getElementById('bloqueMotivoUbicacion').classList.toggle('d-none', !traslado);
+                });
+            }
+
+            ajustarIngresoPorTipo();
 
             // Modal Salida: Carga de Informes Disponibles por API
             const modalSalida = document.getElementById('modalSalida');

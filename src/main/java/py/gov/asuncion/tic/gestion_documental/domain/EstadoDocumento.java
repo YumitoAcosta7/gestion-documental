@@ -6,5 +6,6 @@ public enum EstadoDocumento {
     EN_ESPERA_INFORME,
     CON_RESPUESTA_TECNICA,
     PENDIENTE_SALIDA,
-    FINALIZADO
+    FINALIZADO,
+    ARCHIVADO   // Documento informativo (ej. circular): se archiva al registrarse, no se tramita
 }

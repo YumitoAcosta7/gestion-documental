@@ -98,11 +98,32 @@ public class Documento {
     @Builder.Default
     private Boolean archivado = false;
 
+    // Texto libre histórico (antes del catálogo de biblioratos)
     @Column(name = "ubicacion_bibliorato", length = 255)
     private String ubicacionBibliorato;
 
     @Column(name = "fecha_hora_archivado")
     private LocalDateTime fechaHoraArchivado;
+
+    // Ubicación física estructurada: bibliorato del catálogo + fojas
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bibliorato_id")
+    private Bibliorato bibliorato;
+
+    @Column(name = "foja_desde")
+    private Integer fojaDesde;
+
+    @Column(name = "foja_hasta")
+    private Integer fojaHasta;
+
+    // Texto de ubicación para mostrar: el catálogo si existe, si no el texto histórico
+    public String getUbicacionTexto() {
+        if (bibliorato != null) {
+            String fojas = fojaDesde == null ? "" : (fojaDesde.equals(fojaHasta) ? " · Foja " + fojaDesde : " · Fojas " + fojaDesde + "–" + fojaHasta);
+            return bibliorato.getCodigo() + " — " + bibliorato.getDescripcion() + fojas;
+        }
+        return ubicacionBibliorato != null && !ubicacionBibliorato.isBlank() ? ubicacionBibliorato : null;
+    }
 
     // Mantenemos la compatibilidad con el mapeo anterior si es necesario
     @ManyToOne(fetch = FetchType.LAZY)

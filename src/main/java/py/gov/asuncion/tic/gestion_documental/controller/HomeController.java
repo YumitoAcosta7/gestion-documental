@@ -36,6 +36,7 @@ import py.gov.asuncion.tic.gestion_documental.repository.DocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 import py.gov.asuncion.tic.gestion_documental.service.ArchivoService;
 import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
+import py.gov.asuncion.tic.gestion_documental.service.BiblioratoService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
 
 import java.io.File;
@@ -67,6 +68,9 @@ public class HomeController {
 
     @Autowired
     private ArchivoService archivoService;
+
+    @Autowired
+    private BiblioratoService biblioratoService;
     
 
     /**
@@ -84,6 +88,7 @@ public class HomeController {
             List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado);
             model.addAttribute("documentos", activos);
             agregarIndicadoresSla(model, activos, List.of());
+            agregarDatosArchivo(model, usuarioLogueado);
             model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
 
             // ==========================================
@@ -376,6 +381,73 @@ public class HomeController {
         return map;
     }
 
+    /**
+     * 📚 REGISTRAR O CAMBIAR LA UBICACIÓN FÍSICA (bibliorato + fojas)
+     */
+    @PostMapping("/documentos/ubicacion")
+    public String cambiarUbicacion(@RequestParam("documentoId") Long documentoId,
+                                   @RequestParam("biblioratoId") Integer biblioratoId,
+                                   @RequestParam(value = "fojaDesde", required = false) Integer fojaDesde,
+                                   @RequestParam(value = "fojaHasta", required = false) Integer fojaHasta,
+                                   @RequestParam(value = "motivo", required = false) String motivo,
+                                   RedirectAttributes redirectAttributes) {
+        try {
+            Documento doc = documentoService.cambiarUbicacion(documentoId, biblioratoId, fojaDesde, fojaHasta, motivo,
+                    getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", doc.getCodigoCuti() + " guardado en " + doc.getUbicacionTexto() + ".");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "No se pudo registrar la ubicación: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * 📚 CATÁLOGO DE BIBLIORATOS: alta
+     */
+    @PostMapping("/biblioratos/guardar")
+    public String guardarBibliorato(@RequestParam("codigo") String codigo,
+                                    @RequestParam("descripcion") String descripcion,
+                                    @RequestParam("dependenciaId") Integer dependenciaId,
+                                    @RequestParam("anio") Integer anio,
+                                    @RequestParam("ubicacionFisica") String ubicacionFisica,
+                                    @RequestParam(value = "capacidadFojas", required = false) Integer capacidadFojas,
+                                    RedirectAttributes redirectAttributes) {
+        try {
+            var b = biblioratoService.crear(codigo, descripcion, dependenciaId, anio, ubicacionFisica, capacidadFojas,
+                    getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Bibliorato " + b.getCodigo() + " creado.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "No se pudo crear el bibliorato: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * 📚 CATÁLOGO DE BIBLIORATOS: activar / cerrar
+     */
+    @PostMapping("/biblioratos/{id}/estado")
+    public String cambiarEstadoBibliorato(@PathVariable Integer id,
+                                          @RequestParam("activo") boolean activo,
+                                          RedirectAttributes redirectAttributes) {
+        try {
+            var b = biblioratoService.cambiarEstado(id, activo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Bibliorato " + b.getCodigo() + (activo ? " reabierto." : " cerrado."));
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "No se pudo actualizar el bibliorato: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    // 📚 Datos de la pestaña "Archivo físico" y del catálogo de biblioratos
+    private void agregarDatosArchivo(Model model, Usuario usuario) {
+        model.addAttribute("biblioratos", biblioratoService.listarActivos());
+        model.addAttribute("documentosArchivo", documentoService.obtenerDocumentosArchivoParaUsuario(usuario, null));
+        if (documentoService.esRolAdministrativo(usuario)) {
+            model.addAttribute("biblioratosTodos", biblioratoService.listarTodos());
+            model.addAttribute("usoBiblioratos", biblioratoService.obtenerUso());
+        }
+    }
+
     // ⏱️ Indicadores de demora para la bandeja de activos y los resultados de búsqueda
     private void agregarIndicadoresSla(Model model, List<Documento> activos, List<Documento> resultados) {
         List<Documento> todos = new ArrayList<>(activos);
@@ -396,6 +468,7 @@ public class HomeController {
                                    @RequestParam(value = "dependenciaId", required = false) Integer dependenciaId,
                                    @RequestParam(value = "tipoDocId", required = false) Integer tipoDocId,
                                    @RequestParam(value = "estado", required = false) String estado,
+                                   @RequestParam(value = "biblioratoId", required = false) Integer biblioratoId,
                                    @RequestParam(value = "fechaDesde", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate fechaDesde,
                                    @RequestParam(value = "fechaHasta", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate fechaHasta,
                                    Model model) {
@@ -405,7 +478,7 @@ public class HomeController {
         if (documentoService != null) {
             Usuario usuarioLogueado = getUsuarioAutenticado();
             List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(
-                    texto, dependenciaId, tipoDocId, estado, fechaDesde, fechaHasta);
+                    texto, dependenciaId, tipoDocId, estado, biblioratoId, fechaDesde, fechaHasta);
 
             // 🛡️ Departamentos y unidades solo ven en la búsqueda los expedientes de su bandeja
             if (!documentoService.esRolAdministrativo(usuarioLogueado)) {
@@ -420,6 +493,7 @@ public class HomeController {
             model.addAttribute("paramDependenciaId", dependenciaId);
             model.addAttribute("paramTipoDocId", tipoDocId);
             model.addAttribute("paramEstado", estado);
+            model.addAttribute("paramBiblioratoId", biblioratoId);
             model.addAttribute("paramFechaDesde", fechaDesde);
             model.addAttribute("paramFechaHasta", fechaHasta);
 
@@ -427,6 +501,7 @@ public class HomeController {
             List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuarioLogueado);
             model.addAttribute("documentos", activos);
             agregarIndicadoresSla(model, activos, resultados);
+            agregarDatosArchivo(model, usuarioLogueado);
             model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuarioLogueado));
             model.addAttribute("documentosSalida", usuarioLogueado != null && usuarioLogueado.getDependencia() != null
                     ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuarioLogueado.getDependencia().getId())

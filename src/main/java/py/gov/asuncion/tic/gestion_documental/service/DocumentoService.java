@@ -57,6 +57,12 @@ public class DocumentoService {
     @Autowired
     private ArchivoService archivoService;
 
+    @Autowired
+    private BiblioratoService biblioratoService;
+
+    // Estados que ya no forman parte de las bandejas de trabajo
+    private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
+
     // ⏱️ Umbrales de demora (días hábiles sin movimiento), configurables en application.properties
     @Value("${app.sla.dias-advertencia:5}")
     private int slaDiasAdvertencia;
@@ -71,7 +77,7 @@ public class DocumentoService {
     private int slaUrgenteDiasCritico;
 
     public List<Documento> obtenerDocumentosActivos() {
-        return documentoRepository.findByEstadoActualNotOrderByFechaHoraIngresoDesc(EstadoDocumento.FINALIZADO);
+        return documentoRepository.findByEstadoActualNotInOrderByFechaHoraIngresoDesc(ESTADOS_CERRADOS);
     }
 
     public List<Dependencia> obtenerDependenciasActivas() {
@@ -164,7 +170,7 @@ public class DocumentoService {
                                          + documentoRepository.countByEstadoActual(EstadoDocumento.EN_REVISION));
         metricas.put("enEsperaInforme", documentoRepository.countByEstadoActual(EstadoDocumento.EN_ESPERA_INFORME));
         metricas.put("pendienteSalida", documentoRepository.countByEstadoActual(EstadoDocumento.PENDIENTE_SALIDA));
-        metricas.put("urgentes", documentoRepository.countByPrioridadAndEstadoActualNot(Prioridad.URGENTE, EstadoDocumento.FINALIZADO));
+        metricas.put("urgentes", documentoRepository.countByPrioridadAndEstadoActualNotIn(Prioridad.URGENTE, ESTADOS_CERRADOS));
         return metricas;
     }
 
@@ -213,11 +219,20 @@ public class DocumentoService {
             throw new IllegalArgumentException("Debe ingresar el asunto del documento.");
         }
 
+        TipoDocumento tipo = tipoDocumentoRepository.findById(dto.getTipoDocumentoId())
+                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + dto.getTipoDocumentoId()));
+        if (!Boolean.TRUE.equals(tipo.getActivo())) {
+            throw new IllegalArgumentException("El tipo de documento '" + tipo.getNombre() + "' está dado de baja.");
+        }
+        Dependencia origen = dependenciaRepository.findById(dto.getDependenciaOrigenId())
+                .orElseThrow(() -> new IllegalArgumentException("Dependencia no encontrada: " + dto.getDependenciaOrigenId()));
+        if (Boolean.FALSE.equals(origen.getActivo())) {
+            throw new IllegalArgumentException("La dependencia '" + origen.getNombre() + "' está inactiva.");
+        }
+
         Documento documento = new Documento();
-        documento.setTipoDocumento(tipoDocumentoRepository.findById(dto.getTipoDocumentoId())
-                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + dto.getTipoDocumentoId())));
-        documento.setDependenciaOrigen(dependenciaRepository.findById(dto.getDependenciaOrigenId())
-                .orElseThrow(() -> new IllegalArgumentException("Dependencia no encontrada: " + dto.getDependenciaOrigenId())));
+        documento.setTipoDocumento(tipo);
+        documento.setDependenciaOrigen(origen);
         documento.setPrioridad(dto.getPrioridad() != null ? dto.getPrioridad() : Prioridad.NORMAL);
         documento.setNumeroDocumentoOrigen(dto.getNumeroDocumentoOrigen());
         documento.setPersonaEntrega(dto.getPersonaEntrega());
@@ -225,7 +240,70 @@ public class DocumentoService {
         documento.setNroPaginaLibro(dto.getNroPaginaLibro());
         documento.setAsunto(dto.getAsunto().trim());
 
-        return guardarNuevoDocumento(documento, usuarioSesion);
+        // 📚 Ubicación física: obligatoria para los tipos que la requieren (ej. circulares)
+        if (dto.getBiblioratoId() != null) {
+            biblioratoService.asignarUbicacion(documento, dto.getBiblioratoId(), dto.getFojaDesde(), dto.getFojaHasta());
+        } else if (Boolean.TRUE.equals(tipo.getRequiereBibliorato())) {
+            throw new IllegalArgumentException("Para '" + tipo.getNombre() + "' es obligatorio indicar el bibliorato donde se archiva.");
+        } else if (dto.getFojaDesde() != null || dto.getFojaHasta() != null) {
+            throw new IllegalArgumentException("Indicó fojas pero no el bibliorato.");
+        }
+
+        Documento guardado = guardarNuevoDocumento(documento, usuarioSesion);
+
+        // 🗄️ Los informativos no se tramitan: quedan archivados en el mismo acto
+        if (tipo.isInformativo()) {
+            guardado.setEstadoActual(EstadoDocumento.ARCHIVADO);
+            guardado.setArchivado(true);
+            guardado.setFechaHoraArchivado(LocalDateTime.now());
+            documentoRepository.save(guardado);
+            auditoriaService.registrarEvento(guardado, "ARCHIVO_INFORMATIVO", EstadoDocumento.INGRESADO, EstadoDocumento.ARCHIVADO,
+                    "Documento informativo archivado en " + guardado.getUbicacionTexto(), usuarioSesion, null);
+        }
+        return guardado;
+    }
+
+    // 📚 Asigna o cambia la ubicación física (bibliorato + fojas) de un documento. Solo Dirección/Secretaría.
+    @Transactional
+    public Documento cambiarUbicacion(Long documentoId, Integer biblioratoId, Integer fojaDesde, Integer fojaHasta,
+                                      String motivo, Usuario usuario) {
+        if (!esRolAdministrativo(usuario)) {
+            throw new AccessDeniedException("Solo Dirección o Secretaría registran la ubicación física de los documentos.");
+        }
+        if (biblioratoId == null) {
+            throw new IllegalArgumentException("Debe seleccionar el bibliorato.");
+        }
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+
+        String anterior = doc.getUbicacionTexto();
+        if (anterior != null) {
+            validarMotivo(motivo, 10, "el motivo del cambio de ubicación");
+        }
+        biblioratoService.asignarUbicacion(doc, biblioratoId, fojaDesde, fojaHasta);
+
+        // Un expediente concluido que se guarda en un bibliorato queda archivado físicamente
+        if ((doc.getEstadoActual() == EstadoDocumento.FINALIZADO || doc.getEstadoActual() == EstadoDocumento.ARCHIVADO)
+                && doc.getFechaHoraArchivado() == null) {
+            doc.setArchivado(true);
+            doc.setFechaHoraArchivado(LocalDateTime.now());
+        }
+        documentoRepository.save(doc);
+
+        auditoriaService.registrarEvento(doc, "CAMBIO_UBICACION", doc.getEstadoActual(), doc.getEstadoActual(),
+                (anterior == null ? "Ubicación física registrada: " : "Ubicación física cambiada de [" + anterior + "] a: ")
+                        + doc.getUbicacionTexto() + (motivo != null && !motivo.isBlank() ? ". Motivo: " + motivo.trim() : ""),
+                usuario, null);
+        return doc;
+    }
+
+    // 📚 Archivo físico visible para el usuario (Dirección/Secretaría: todo; resto: lo que le corresponde)
+    public List<Documento> obtenerDocumentosArchivoParaUsuario(Usuario usuario, Integer biblioratoId) {
+        List<Documento> docs = documentoRepository.findDocumentosArchivo(biblioratoId);
+        if (esRolAdministrativo(usuario)) {
+            return docs;
+        }
+        return docs.stream().filter(d -> puedeAccederDocumento(usuario, d.getId())).toList();
     }
 
     @Transactional
@@ -297,9 +375,10 @@ public class DocumentoService {
                 .orElseThrow(() -> new EntityNotFoundException("Documento no encontrado"));
 
         // 2. Validar estado operativo con getEstadoActual()
-        if (documento.getEstadoActual() == EstadoDocumento.FINALIZADO || 
-            documento.getEstadoActual() == EstadoDocumento.PENDIENTE_SALIDA) {
-            throw new IllegalStateException("No se puede devolver un documento que ya se encuentra finalizado o pendiente de salida.");
+        if (documento.getEstadoActual() == EstadoDocumento.FINALIZADO ||
+            documento.getEstadoActual() == EstadoDocumento.PENDIENTE_SALIDA ||
+            documento.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
+            throw new IllegalStateException("No se puede devolver un documento finalizado, pendiente de salida o archivado.");
         }
 
         if (usuarioActual == null || usuarioActual.getDependencia() == null) {
@@ -405,6 +484,12 @@ public class DocumentoService {
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "derivar");
 
+        boolean esInformeRequerido = (requiereInforme != null && requiereInforme);
+        boolean esInformativo = doc.getTipoDocumento() != null && doc.getTipoDocumento().isInformativo();
+        if (esInformeRequerido && (esInformativo || doc.getEstadoActual() == EstadoDocumento.ARCHIVADO)) {
+            throw new IllegalArgumentException("Un documento informativo no se deriva para informe: solo puede difundirse para conocimiento.");
+        }
+
         // No se duplica un pase que todavía espera el acuse de la misma dependencia
         List<String> conPasePendiente = new ArrayList<>();
         for (Integer depId : destinos) {
@@ -418,9 +503,11 @@ public class DocumentoService {
         }
 
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
-        boolean esInformeRequerido = (requiereInforme != null && requiereInforme);
 
-        if (esInformeRequerido) {
+        if (estadoAnterior == EstadoDocumento.ARCHIVADO) {
+            // Difusión de un informativo archivado: los pases son de conocimiento y el estado no cambia
+            doc.setEstadoActual(EstadoDocumento.ARCHIVADO);
+        } else if (esInformeRequerido) {
             doc.setEstadoActual(EstadoDocumento.EN_ESPERA_INFORME);
         } else if (estadoAnterior == EstadoDocumento.EN_ESPERA_INFORME && quedanPasesParaInformeVigentes(documentoId)) {
             // Una derivación de conocimiento no interrumpe los informes que siguen pendientes
@@ -565,6 +652,9 @@ public class DocumentoService {
         Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "registrar la salida de");
+        if (doc.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
+            throw new IllegalStateException("Un documento informativo archivado no tiene salida exterior.");
+        }
         if (nroNotaSalida == null || nroNotaSalida.isBlank()) {
             throw new IllegalArgumentException("Debe ingresar el N° de nota o remisión de salida.");
         }
@@ -642,7 +732,8 @@ public class DocumentoService {
     public List<Documento> buscarDocumentosMulticriterio(String texto, 
                                                         Integer dependenciaId, 
                                                         Integer tipoDocId, 
-                                                        String estadoStr, 
+                                                        String estadoStr,
+                                                        Integer biblioratoId,
                                                         LocalDate fechaDesde, 
                                                         LocalDate fechaHasta) {
 
@@ -658,7 +749,7 @@ public class DocumentoService {
 
         String textoLimpio = (texto != null && !texto.isBlank()) ? texto.trim() : null;
 
-        return documentoRepository.buscarMulticriterio(textoLimpio, dependenciaId, tipoDocId, estadoEnum, desde, hasta);
+        return documentoRepository.buscarMulticriterio(textoLimpio, dependenciaId, tipoDocId, estadoEnum, biblioratoId, desde, hasta);
     }
 
     @Transactional
@@ -866,7 +957,7 @@ public class DocumentoService {
 
         // 👑 Dirección de TIC y Secretaría Ven Todo
         if (usuario.getRol() == RolUsuario.DIRECTOR || usuario.getRol() == RolUsuario.SECRETARIA_ADMIN) {
-            return documentoRepository.findByEstadoActualNotOrderByFechaHoraIngresoDesc(EstadoDocumento.FINALIZADO);
+            return documentoRepository.findByEstadoActualNotInOrderByFechaHoraIngresoDesc(ESTADOS_CERRADOS);
         }
 
         // 🏢 Jefes de Departamento y Unidades Ven Solo lo derivado a su Dependencia
@@ -1140,7 +1231,8 @@ public class DocumentoService {
         Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
-        if (estadoAnterior == EstadoDocumento.PENDIENTE_SALIDA || estadoAnterior == EstadoDocumento.FINALIZADO) {
+        if (estadoAnterior == EstadoDocumento.PENDIENTE_SALIDA || estadoAnterior == EstadoDocumento.FINALIZADO
+                || estadoAnterior == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("El expediente ya está en " + estadoAnterior + ": no corresponde forzar el cierre.");
         }
 
@@ -1202,7 +1294,7 @@ public class DocumentoService {
     public Map<Long, IndicadorSla> calcularSla(List<Documento> documentos) {
         Map<Long, IndicadorSla> resultado = new HashMap<>();
         List<Documento> activos = documentos.stream()
-                .filter(d -> d.getEstadoActual() != EstadoDocumento.FINALIZADO).toList();
+                .filter(d -> !ESTADOS_CERRADOS.contains(d.getEstadoActual())).toList();
         if (activos.isEmpty()) {
             return resultado;
         }

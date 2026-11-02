@@ -46,6 +46,15 @@ Los PDF antiguos que quedaron en `./uploads/acuses` se siguen encontrando; los n
 | `V3__verificacion_previa.sql` | Consultas de solo lectura a ejecutar **antes** de V3 (todas deben devolver 0 filas) |
 | `V3__integridad_y_derivaciones.sql` | Historial no borrable (`RESTRICT`), `CHECK` de dominios, `requiere_informe`, unicidad de pases pendientes, tipos de clave corregidos |
 | `V4__roles_usuarios.sql` | Reasigna roles heredados (`JEFA_SECRETARIA`, `OPERADOR_MESA_ENTRADA`) a `SECRETARIA_ADMIN` y agrega el `CHECK` de rol |
+| `V5__biblioratos_informativos.sql` | Categoría del tipo documental (trámite/informativo), catálogo `biblioratos`, ubicación de cada documento (bibliorato + fojas) |
+
+**Documentos informativos y archivo físico (V5):**
+- **Tipos informativos** (hoy: Circular): se registran directamente como `ARCHIVADO`, con bibliorato obligatorio. No se derivan para informe; solo se difunden para conocimiento, sin cambiar su estado. Quedan fuera de las bandejas de trabajo, de las alertas de demora y de los indicadores.
+- **Biblioratos:** catálogo administrado por Dirección/Secretaría (botón *Biblioratos*), con código único, ubicación física (armario/estante) y capacidad. Un bibliorato cerrado no recibe documentos nuevos.
+- **Ubicación:** cada documento puede tener bibliorato y fojas. Se valida el rango, la capacidad y la superposición con otros documentos del mismo bibliorato.
+  - El traslado exige motivo y queda auditado como `CAMBIO_UBICACION`.
+  - El texto libre `ubicacion_bibliorato` se conserva solo como dato histórico.
+- **Consulta:** pestaña *Archivo físico* (con filtro por bibliorato), filtro en el buscador, búsqueda por código o descripción y ubicación visible en Finalizados.
 
 Ejecutar:
 

@@ -33,9 +33,16 @@
 | H7 | ✅ | `CHECK` de estado, prioridad, tipo de actuación y coherencia de anulación (V3). `CHECK` de rol en V4, después de reasignar a `SECRETARIA_ADMIN` los dos usuarios con roles heredados (`zlobo`, `griveros`), que antes no podían iniciar sesión. |
 | H8 | ✅ | Columna `requiere_informe` (9 pases existentes migrados desde la descripción) |
 | H11 | ✅ | `dependencia_emisora_id` y `usuario_id` a `INTEGER`, `fecha_hora_ingreso NOT NULL`, índice redundante eliminado, índice por estado |
-| H3, H4, H9, H10 | ❌ | Pasos 3 y 4 del plan |
+| H3 | ✅ (V5) | `tipos_documentos.categoria` (`TRAMITE`/`INFORMATIVO`) y `requiere_bibliorato`; Circular = informativo. Los informativos se registran como `ARCHIVADO`, no se derivan para informe (solo difusión de conocimiento) y quedan fuera de bandejas, alertas de demora y KPI. |
+| H4 | ✅ (V5) | Catálogo `biblioratos` (código, descripción, dependencia, año, ubicación física, capacidad, abierto/cerrado), `documentos.bibliorato_id` + fojas con validación de rango, capacidad y superposición. Pestaña *Archivo físico*, filtro y búsqueda por bibliorato, traslado auditado (`CAMBIO_UBICACION`). |
+| H9, H10 | ❌ | Paso 4 del plan |
 
-Pruebas ejecutadas: BD-01 a BD-05 (en una transacción revertida), DV-03, DV-04 y DV-07, todas correctas.
+Pruebas ejecutadas:
+- Base de datos: BD-01 a BD-05, en una transacción revertida.
+- Derivaciones: DV-03, DV-04 y DV-07.
+- Informativos y biblioratos: BI-01, BI-02, BI-04, BI-05, BI-06, BI-07, BI-08, BI-09, BI-10 y BI-11, más el rechazo por capacidad.
+
+Todas correctas. No quedan pruebas pendientes de los pasos 1 a 3.
 
 **Lo que ya está bien (verificado):**
 - CUTI único con bloqueo transaccional.
