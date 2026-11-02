@@ -8,7 +8,6 @@ import java.util.List;
 
 @Repository
 public interface AdjuntoDocumentoRepository extends JpaRepository<AdjuntoDocumento, Long> {
-    List<AdjuntoDocumento> findByDocumentoId(Long documentoId);
 
     // Adjuntos propios del documento (salida / acuse final), sin los de actuaciones
     List<AdjuntoDocumento> findByDocumentoIdAndActuacionIsNullOrderByFechaHoraSubidaAsc(Long documentoId);

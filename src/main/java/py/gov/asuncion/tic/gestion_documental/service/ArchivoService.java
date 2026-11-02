@@ -19,7 +19,6 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
-import java.util.List;
 import java.util.UUID;
 
 // 📎 Almacenamiento de PDF en disco.
@@ -30,9 +29,6 @@ import java.util.UUID;
 public class ArchivoService {
 
     private static final Logger log = LoggerFactory.getLogger(ArchivoService.class);
-
-    // Carpeta histórica relativa donde quedaron los PDF anteriores a la unificación
-    private static final Path CARPETA_HISTORICA = Paths.get("uploads/acuses");
 
     public static final String TIPO_MIME_PDF = "application/pdf";
 
@@ -140,18 +136,13 @@ public class ArchivoService {
         }
     }
 
-    // Ubica un PDF por su ruta o nombre guardado. Solo usa el nombre del archivo para evitar
-    // rutas manipuladas, y lo busca en app.upload.dir y en la carpeta histórica.
+    // Ubica un PDF por su ruta o nombre guardado dentro de app.upload.dir.
+    // Solo usa el nombre del archivo para evitar rutas manipuladas.
     public Path resolver(String rutaGuardada) {
         if (rutaGuardada == null || rutaGuardada.isBlank()) {
             return null;
         }
-        Path nombre = Paths.get(rutaGuardada).getFileName();
-        for (Path candidato : List.of(Paths.get(uploadDir).resolve(nombre), CARPETA_HISTORICA.resolve(nombre))) {
-            if (Files.isRegularFile(candidato)) {
-                return candidato;
-            }
-        }
-        return null;
+        Path candidato = Paths.get(uploadDir).resolve(Paths.get(rutaGuardada).getFileName());
+        return Files.isRegularFile(candidato) ? candidato : null;
     }
 }
