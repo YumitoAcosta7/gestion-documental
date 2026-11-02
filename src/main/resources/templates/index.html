@@ -62,6 +62,11 @@
                     <i class="bi bi-plus-lg me-1"></i>Nueva Salida
                 </button>
 
+                <!-- Documento propio: lo inicia cualquier dependencia y sale hacia su superior -->
+                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_ACTUACION')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalDocumentoPropio">
+                    <i class="bi bi-pencil-square me-1"></i>Documento propio
+                </button>
+
                 <!-- Catálogo de biblioratos (Dirección / Secretaría) -->
                 <button sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalBiblioratos">
                     <i class="bi bi-archive me-1"></i>Biblioratos
@@ -793,6 +798,66 @@
     </div>
 
     <!-- MODAL NUEVO DOCUMENTO DE SALIDA (DIRECTA) -->
+    <!-- ✍️ Documento propio (memo, informe, nota) de cualquier dependencia -->
+    <div class="modal fade" id="modalDocumentoPropio" tabindex="-1" aria-labelledby="modalDocumentoPropioLabel" aria-hidden="true" sec:authorize="hasAuthority('PERMISO_REGISTRAR_ACTUACION')">
+        <div class="modal-dialog modal-lg">
+            <form th:action="@{/documentos/propio}" method="post" enctype="multipart/form-data">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title fw-bold" id="modalDocumentoPropioLabel"><i class="bi bi-pencil-square me-2"></i>Nuevo documento propio</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="small text-muted">Un documento redactado en su dependencia. Recibe el CUTI de su dirección y, si lo envía, sale hacia su dependencia superior con un pase de trámite.</p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Tipo de documento</label>
+                                <select name="tipoDocumentoId" class="form-select form-select-sm" required>
+                                    <option value="" selected disabled>Seleccione tipo...</option>
+                                    <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}" th:text="${tipo.nombre}"></option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">N° / año</label>
+                                <input type="text" name="numeroDocumento" class="form-control form-control-sm" placeholder="Ej: 45/2026 o S/N" pattern="^(S/N|s/n|\d+/\d{4})$">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Prioridad</label>
+                                <select name="prioridad" class="form-select form-select-sm">
+                                    <option value="NORMAL" selected>Normal</option>
+                                    <option value="IMPORTANTE">Importante</option>
+                                    <option value="URGENTE">Urgente</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Asunto</label>
+                                <textarea name="asunto" class="form-control form-control-sm" rows="2" required placeholder="Describa el asunto del documento..."></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Documento en PDF (opcional)</label>
+                                <input type="file" name="archivo" class="form-control form-control-sm" accept="application/pdf">
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="enviarAlSuperior" value="true" id="checkEnviarSuperior" checked>
+                                    <label class="form-check-label small" for="checkEnviarSuperior">Enviarlo ahora a mi dependencia superior (pase de trámite)</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Observación para el superior</label>
+                                <textarea name="observacion" class="form-control form-control-sm" rows="2" placeholder="Ej: Se eleva para su consideración"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-send me-1"></i>Crear documento</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="modal fade" id="modalNuevoDocSalida" tabindex="-1" aria-labelledby="modalNuevoDocSalidaLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <form th:action="@{/documentos/salida-directa}" method="post" enctype="multipart/form-data">

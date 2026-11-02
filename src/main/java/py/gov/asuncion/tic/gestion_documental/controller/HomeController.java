@@ -30,6 +30,7 @@ import py.gov.asuncion.tic.gestion_documental.domain.ActuacionDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AdjuntoDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.Documento;
+import py.gov.asuncion.tic.gestion_documental.domain.Prioridad;
 import py.gov.asuncion.tic.gestion_documental.domain.TipoPase;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
 import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
@@ -142,6 +143,29 @@ public class HomeController {
             redirectAttributes.addFlashAttribute("mensajeExito", "Documento registrado con CUTI " + docGuardado.getCodigoCuti() + ".");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error al registrar el documento: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * ✍️ DOCUMENTO PROPIO: lo inicia cualquier dependencia y puede salir hacia su superior
+     */
+    @PostMapping("/documentos/propio")
+    public String iniciarDocumentoPropio(@RequestParam("tipoDocumentoId") Integer tipoDocumentoId,
+                                         @RequestParam(value = "numeroDocumento", required = false) String numeroDocumento,
+                                         @RequestParam("asunto") String asunto,
+                                         @RequestParam(value = "prioridad", required = false) Prioridad prioridad,
+                                         @RequestParam(value = "observacion", required = false) String observacion,
+                                         @RequestParam(value = "enviarAlSuperior", defaultValue = "false") boolean enviarAlSuperior,
+                                         @RequestParam(value = "archivo", required = false) MultipartFile archivo,
+                                         RedirectAttributes redirectAttributes) {
+        try {
+            Documento doc = documentoService.iniciarDocumentoPropio(tipoDocumentoId, numeroDocumento, asunto, prioridad,
+                    observacion, enviarAlSuperior, archivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Documento " + doc.getCodigoCuti()
+                    + (enviarAlSuperior ? " creado y enviado a su dependencia superior." : " creado."));
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al crear el documento: " + mensajeError(e));
         }
         return "redirect:/";
     }

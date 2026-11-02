@@ -51,8 +51,9 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V8__organigrama_y_asignaciones.sql` | Fase 2: sigla, `ruta` materializada (con trigger que la recalcula y rechaza ciclos), mesa de entrada y `recibe_externos` en `dependencias`; tabla `asignaciones` cargada desde los roles actuales |
 | `V9__organigrama_RI887.sql` | Organigrama completo (Res. N° 887/08-07-2026, 580 dependencias). **Generado** por `db/organigrama/ImportarOrganigrama.java` desde `db/organigrama/organigrama_RI887_2026.txt`: se corrige el .txt y se regenera, no se edita a mano |
 | `V10__asignaciones_director.sql` | Quien tenía el rol `DIRECTOR` recibe además `MESA_ENTRADA` en su ámbito, para conservar las acciones que tenía |
+| `V11__custodia_y_canal.sql` | Etapa 2.2. Agrega dependencia de registro y de custodia a cada expediente, `tipo_pase` (`TRAMITE`, `INFORME`, `CONOCIMIENTO`) y las tablas `series_cuti` y `reglas_derivacion`. Completa los datos de los expedientes existentes |
 
-**Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base, carpeta de PDF y serie de CUTI (`PRU-`) propias. La preparación está en `docs/ambiente-pruebas.md`.
+**Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`. **Atención:** la prueba de arranque (`GestionDocumentalApplicationTests`) usa la base configurada, así que `mvnw test` aplica en ella las migraciones pendientes. Conviene correr las pruebas con el perfil `pruebas` en cuanto exista esa base.
 
 **Integridad de archivos (V6):** cada PDF guarda su huella SHA-256 al subirse. El botón *Verificar* (historial del PDF y modal *Versiones*) la compara con el archivo en disco. Se rechazan los PDF incompletos (sin `%%EOF`). Si la operación falla, el archivo escrito se elimina.
 
@@ -161,10 +162,27 @@ Reglas adicionales:
 
 ## 5. 💼 LÓGICA DE NEGOCIO
 
-- **CUTI:** `<prefijo>-AAAA-NNNNNN`, con prefijo configurable en `app.cuti.prefijo` (hoy `TIC`; `MCA` para la serie municipal única). Se toma un bloqueo transaccional de PostgreSQL (`pg_advisory_xact_lock`) y se usa el último correlativo del año + 1, de modo que dos registros simultáneos no repiten número.
+- **CUTI por cabecera:** `SIGLA-AAAA-NNNNNN`, con una serie anual por Dirección, Dirección General e Intendencia (`DTIC-2026-000001`, `DHAC-2026-000001`).
+  - El número sale de la cabecera de la dependencia que registra el expediente, y el expediente lo conserva en todo su recorrido.
+  - El correlativo se incrementa en `series_cuti` con una sola sentencia que bloquea la fila hasta el commit, así dos registros simultáneos no repiten número.
+  - Los CUTI `TIC-2026-…` anteriores se conservan.
+- **Custodia:** cada expediente sabe qué dependencia tiene el original (`dependencia_custodia_id`).
+  - Al registrarse queda en la mesa (o dependencia) que lo registra.
+  - Cambia solo cuando el receptor confirma un pase de **trámite**, o con una devolución.
+- **Canal jerárquico** (`Organigrama`, `CanalService`, diseño §4.3): se deriva **desde quien tiene el original** y solo a estos destinos:
+  - su superior inmediato;
+  - sus subordinadas directas;
+  - otra cabecera con el mismo superior.
+
+  Un pase dirigido a una cabecera llega a su mesa de entrada, que actúa en su nombre. Entre direcciones de distintas Direcciones Generales se pasa por ellas (Hacienda → DGAF → DTIC). La tabla `reglas_derivacion` permite habilitar atajos sin tocar código. Lo controla el servidor; el modal de derivación pide los destinos a `GET /api/documentos/{id}/destinos`.
+- **Tipos de pase:**
+  - `TRAMITE` entrega el original a una sola dependencia y no puede haber dos pendientes a la vez.
+  - `INFORME` (`EN_ESPERA_INFORME`) y `CONOCIMIENTO` (`EN_REVISION`) van a una o varias dependencias y no mueven la custodia.
+
+  Cada destino genera un `PASE_INTERNO` pendiente de acuse.
+- **Documento propio:** cualquier dependencia (unidad, departamento, dirección) inicia un expediente con su documento (`POST /documentos/propio`), con el CUTI de su cabecera, y puede elevarlo en el mismo acto a su superior con un pase de trámite.
 - **Bandejas:** cada usuario ve los expedientes de su ámbito (ver §4) y aquellos en los que su dependencia es emisora o receptora de un pase. Para pases antiguos sin receptora se usa la descripción `➔ <dependencia>:`.
-- **Derivación flexible:** a una dependencia (modo único) o a varias (modo copias), para conocimiento (`EN_REVISION`) o para informe (`EN_ESPERA_INFORME`). Cada destino genera un `PASE_INTERNO` pendiente de acuse.
-- **Confirmación de pase:** la dependencia receptora sube la copia sellada en PDF; el pase pasa a `PASE_CONFIRMADO`.
+- **Confirmación de pase:** la dependencia receptora (o quien actúa por ella, como la mesa de su dirección) sube la copia sellada en PDF y el pase pasa a `PASE_CONFIRMADO`. Si era de trámite, el original pasa al receptor.
 - **Cierre automático de informes:** cuando **cada** dependencia a la que se pidió informe emitió un `INFORME_TECNICO` o `MEMO`, el expediente pasa solo de `EN_ESPERA_INFORME` a `PENDIENTE_SALIDA`.
 - **Devolución rápida:** la dependencia devuelve el expediente a quien le envió el último pase recibido (actuación `DEVOLUCION`), el estado vuelve a `EN_REVISION`. No se puede devolver dos veces el mismo pase ni devolver a la propia dependencia.
 - **Salida exterior:** registra nota, destino, mensajero y funcionario. No aplica a expedientes `FINALIZADO`.

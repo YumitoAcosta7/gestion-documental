@@ -204,8 +204,17 @@ public class DocumentoService {
                 .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
         Dependencia custodia = custodiaDe(doc);
         boolean puede = canalService.puedeActuarPor(usuario, custodia);
-        List<DestinoPase> destinos = !puede ? List.of() : canalService.organigrama().destinos(custodia.getId()).stream()
-                .map(d -> new DestinoPase(d.nodo().id(), d.nodo().nombre(), d.nodo().sigla(), d.movimiento().name()))
+        Organigrama organigrama = canalService.organigrama();
+        // Un pase a otra dirección llega a su mesa de entrada: se muestra el nombre de la dirección,
+        // no el de su "Unidad de Secretaría Administrativa", que se repite en todas
+        List<DestinoPase> destinos = !puede ? List.of() : organigrama.destinos(custodia.getId()).stream()
+                .map(d -> {
+                    Organigrama.Nodo efectivo = organigrama.nodoEfectivo(d.nodo());
+                    boolean esMesa = !efectivo.id().equals(d.nodo().id());
+                    return new DestinoPase(d.nodo().id(),
+                            esMesa ? efectivo.nombre() + " (mesa de entrada)" : d.nodo().nombre(),
+                            esMesa ? efectivo.sigla() : d.nodo().sigla(), d.movimiento().name());
+                })
                 .toList();
         return new OpcionesDerivacion(custodia.getNombre(), puede, destinos);
     }
@@ -220,20 +229,17 @@ public class DocumentoService {
         return metricas;
     }
 
-    // Prefijo del CUTI (TIC-2026-000001). Para la serie municipal única: app.cuti.prefijo=MCA
-    @Value("${app.cuti.prefijo:TIC}")
-    private String prefijoCuti;
-
-    // Clave base del bloqueo de PostgreSQL para el correlativo del CUTI (se le suma el año)
-    private static final long CLAVE_BLOQUEO_CUTI = 7_384_000_000L;
-
-    // Debe llamarse dentro de una transacción: el bloqueo dura hasta el commit,
+    // 🔢 CUTI por cabecera (docs/diseno-fase2-multiarea.md §5): DTIC-2026-000001, DHAC-2026-000001...
+    // El número sale de la serie de la cabecera (Dirección, Dirección General o Intendencia) de la
+    // dependencia que registra el expediente. La fila de series_cuti queda bloqueada hasta el commit,
     // así dos registros simultáneos no obtienen el mismo número.
-    private String generarCodigoCuti(int anio) {
-        documentoRepository.bloquearCorrelativoCuti(CLAVE_BLOQUEO_CUTI + anio);
-        String prefijo = String.format("%s-%d-", prefijoCuti, anio);
-        int ultimo = documentoRepository.obtenerUltimoCorrelativoCuti(prefijo + "%");
-        return String.format("%s%06d", prefijo, ultimo + 1);
+    private String generarCodigoCuti(Dependencia registro, int anio) {
+        Organigrama organigrama = canalService.organigrama();
+        Organigrama.Nodo cabecera = organigrama.cabecera(organigrama.nodo(registro.getId()));
+        String sigla = cabecera.sigla() != null ? cabecera.sigla() : "MCA";
+        String prefijo = String.format("%s-%d-", sigla, anio);
+        int numero = documentoRepository.siguienteCorrelativoCuti(cabecera.id(), anio, prefijo + "%");
+        return String.format("%s%06d", prefijo, numero);
     }
 
     private void validarNoFinalizado(Documento doc, String accion) {
@@ -351,6 +357,63 @@ public class DocumentoService {
         return docs.stream().filter(d -> puedeAccederDocumento(usuario, d.getId())).toList();
     }
 
+    // ✍️ DOCUMENTO PROPIO (§4.3): cualquier dependencia (unidad, departamento, dirección) inicia un
+    // expediente con su documento. Queda en su custodia, con el CUTI de su cabecera, y puede salir
+    // en el mismo acto hacia su superior con un pase de trámite.
+    @Transactional
+    public Documento iniciarDocumentoPropio(Integer tipoDocumentoId, String numeroDocumento, String asunto,
+                                           Prioridad prioridad, String observacion, boolean enviarAlSuperior,
+                                           MultipartFile archivo, Usuario usuarioSesion) {
+        if (usuarioSesion == null || usuarioSesion.getDependencia() == null) {
+            throw new IllegalStateException("El usuario actual no tiene una dependencia asignada para emitir documentos.");
+        }
+        if (tipoDocumentoId == null) {
+            throw new IllegalArgumentException("Debe seleccionar el tipo de documento.");
+        }
+        if (asunto == null || asunto.isBlank()) {
+            throw new IllegalArgumentException("Debe ingresar el asunto del documento.");
+        }
+        TipoDocumento tipo = tipoDocumentoRepository.findById(tipoDocumentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + tipoDocumentoId));
+        if (!Boolean.TRUE.equals(tipo.getActivo())) {
+            throw new IllegalArgumentException("El tipo de documento '" + tipo.getNombre() + "' está dado de baja.");
+        }
+        if (archivo != null && !archivo.isEmpty()) {
+            archivoService.validarPdf(archivo); // antes de grabar nada
+        }
+
+        // Emite la dependencia por la que actúa el usuario: su mesa si es mesa de entrada, si no la propia
+        Dependencia emisora = canalService.dependenciaDeRegistro(usuarioSesion);
+        Organigrama.Destino superior = null;
+        if (enviarAlSuperior) {
+            superior = canalService.organigrama().destinos(emisora.getId()).stream()
+                    .filter(d -> d.movimiento() == Organigrama.Movimiento.SUBIR)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(emisora.getNombre() + " no tiene una dependencia superior a la que dar salida."));
+        }
+
+        Documento doc = new Documento();
+        doc.setTipoDocumento(tipo);
+        doc.setAsunto(asunto.trim());
+        doc.setPrioridad(prioridad != null ? prioridad : Prioridad.NORMAL);
+        doc.setNumeroDocumentoOrigen(numeroDocumento);
+        doc.setDependenciaOrigen(emisora);
+        doc.setDependenciaRegistro(emisora);
+        doc.setDependenciaCustodia(emisora);
+        Documento guardado = guardarNuevoDocumento(doc, usuarioSesion);
+        auditoriaService.registrarEvento(guardado, "DOCUMENTO_PROPIO", guardado.getEstadoActual(), guardado.getEstadoActual(),
+                "Documento propio iniciado por " + emisora.getNombre(), usuarioSesion, null);
+
+        if (archivo != null && !archivo.isEmpty()) {
+            registrarAdjunto(guardado, null, archivo, "DOCUMENTO", "DOCUMENTO_PROPIO", usuarioSesion);
+        }
+        if (superior != null) {
+            String motivo = observacion != null && observacion.trim().length() >= 5 ? observacion.trim() : "Se eleva para su consideración";
+            derivarDocumento(guardado.getId(), List.of(superior.nodo().id()), motivo, TipoPase.TRAMITE, usuarioSesion);
+        }
+        return guardado;
+    }
+
     @Transactional
     public Documento guardarNuevoDocumento(Documento documento, Usuario usuarioSesion) {
         LocalDateTime ahora = LocalDateTime.now();
@@ -367,16 +430,15 @@ public class DocumentoService {
         documento.setEstadoActual(EstadoDocumento.INGRESADO);
         documento.setAnio(anioActual);
 
-        if (documento.getCodigoCuti() == null || documento.getCodigoCuti().isBlank()) {
-            documento.setCodigoCuti(generarCodigoCuti(anioActual));
-        }
-
         documento.setFechaHoraCargaIngreso(ahora);
         documento.setUsuarioCargaIngreso(usuarioSesion);
 
-        // El original queda en la mesa (o dependencia) que lo registra
+        // El original queda en la mesa (o dependencia) que lo registra, y el CUTI sale de la serie de su cabecera
         if (documento.getDependenciaRegistro() == null) {
             documento.setDependenciaRegistro(canalService.dependenciaDeRegistro(usuarioSesion));
+        }
+        if (documento.getCodigoCuti() == null || documento.getCodigoCuti().isBlank()) {
+            documento.setCodigoCuti(generarCodigoCuti(documento.getDependenciaRegistro(), anioActual));
         }
         if (documento.getDependenciaCustodia() == null) {
             documento.setDependenciaCustodia(documento.getDependenciaRegistro());
@@ -653,16 +715,17 @@ public class DocumentoService {
         // 1. Crear el documento nativo de la dependencia
         Documento doc = new Documento();
 
-        // Generación oficial del CUTI
+        // Generación oficial del CUTI, de la serie de la cabecera que registra
+        Dependencia registro = canalService.dependenciaDeRegistro(usuarioSesion);
         doc.setAnio(anioActual);
-        doc.setCodigoCuti(generarCodigoCuti(anioActual));
+        doc.setCodigoCuti(generarCodigoCuti(registro, anioActual));
 
         doc.setAsunto(asunto.trim());
         doc.setTipoDocumento(tipoDoc);
         doc.setPrioridad(Prioridad.NORMAL);
         doc.setNumeroDocumentoOrigen("S/N");
         doc.setDependenciaOrigen(usuarioSesion.getDependencia());
-        doc.setDependenciaRegistro(canalService.dependenciaDeRegistro(usuarioSesion));
+        doc.setDependenciaRegistro(registro);
         doc.setDependenciaCustodia(doc.getDependenciaRegistro());
         doc.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
         doc.setFechaHoraIngreso(ahora);
