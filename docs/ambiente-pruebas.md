@@ -66,3 +66,19 @@ $env:DB_PASSWORD_PRUEBAS = '<contraseña de la base de pruebas>'
 ```
 
 Al arrancar, Flyway aplica sobre la base de pruebas las migraciones que falten. Conviene probar ahí cada versión nueva antes de llevarla a producción.
+
+## 4. Pruebas automáticas
+
+Las pruebas que usan base (marcadas con `@PruebaConBaseDePruebas`) corren contra esta base, nunca contra producción. Para correrlas todas:
+
+```powershell
+$env:DB_PASSWORD_PRUEBAS = '<contraseña del rol de pruebas>'
+```
+
+```powershell
+.\mvnw.cmd test
+```
+
+- **Sin la variable:** las pruebas unitarias corren igual y las que usan base aparecen como saltadas (`Skipped`) en el resumen.
+- **Migraciones nuevas:** el arranque de prueba aplica en esta base las que falten. Así se ensayan antes de llevarlas a producción, donde se aplican recién cuando arranca la aplicación real.
+- **Pruebas nuevas que usen base:** tienen que llevar `@PruebaConBaseDePruebas`, nunca `@SpringBootTest` solo.

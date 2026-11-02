@@ -53,7 +53,12 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V10__asignaciones_director.sql` | Quien tenía el rol `DIRECTOR` recibe además `MESA_ENTRADA` en su ámbito, para conservar las acciones que tenía |
 | `V11__custodia_y_canal.sql` | Etapa 2.2. Agrega dependencia de registro y de custodia a cada expediente, `tipo_pase` (`TRAMITE`, `INFORME`, `CONOCIMIENTO`) y las tablas `series_cuti` y `reglas_derivacion`. Completa los datos de los expedientes existentes |
 
-**Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`. **Atención:** la prueba de arranque (`GestionDocumentalApplicationTests`) usa la base configurada, así que `mvnw test` aplica en ella las migraciones pendientes. Conviene correr las pruebas con el perfil `pruebas` en cuanto exista esa base.
+**Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`.
+
+**Pruebas automáticas:**
+- Las que usan base llevan `@PruebaConBaseDePruebas`: corren con el perfil `pruebas` y solo si está definida `DB_PASSWORD_PRUEBAS`; si no, se saltean.
+- `mvnw test` **nunca se conecta a producción**, y las migraciones nuevas se aplican primero en la base de pruebas.
+- El resto son unitarias y corren siempre.
 
 **Integridad de archivos (V6):** cada PDF guarda su huella SHA-256 al subirse. El botón *Verificar* (historial del PDF y modal *Versiones*) la compara con el archivo en disco. Se rechazan los PDF incompletos (sin `%%EOF`). Si la operación falla, el archivo escrito se elimina.
 
@@ -266,6 +271,6 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - El modal de salida envía `tipoRemision` e `informeActuacionId` (legajo), pero todavía no se guardan.
 - Expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes (por ejemplo TIC-2026-000001) deben revisarse manualmente.
 - Fase 2, etapa 2.2 (circulación): completa en código, con custodia, canal jerárquico, tipos de pase, CUTI por cabecera, documentos propios y bandejas. Etapa 2.1 (`docs/diseno-fase2-multiarea.md` §10): completa en código. Están hechos el organigrama, las asignaciones, la visibilidad por ámbito, `PoliticaAcceso`, la eliminación de los IDs fijos, el CUTI configurable y Flyway. Falta crear la base de pruebas en el servidor (`docs/ambiente-pruebas.md`).
-- Pruebas automatizadas: 24 unitarias (`DiasHabilesTest`, `ValidacionFojasTest`, `ArchivoServiceTest`, `PoliticaAccesoTest`) y el arranque contra la base. Faltan pruebas de integración sobre la base de pruebas.
+- Pruebas automatizadas: 36 unitarias (`DiasHabilesTest`, `ValidacionFojasTest`, `ArchivoServiceTest`, `PoliticaAccesoTest`, `OrganigramaTest`) y el arranque de la aplicación sobre la base de pruebas. Faltan pruebas de integración de los flujos (ingreso, derivación, confirmación) sobre esa base.
 - Feriados nacionales/municipales para el SLA (requiere una tabla de feriados).
 - Paginación de bandejas para grandes volúmenes (hoy se cargan todos los expedientes activos).
