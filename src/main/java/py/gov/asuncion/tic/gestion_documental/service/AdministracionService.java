@@ -115,6 +115,10 @@ public class AdministracionService {
         }
         Dependencia dep = dependenciaActiva(dependenciaId);
         if (!dep.getId().equals(u.getDependencia().getId())) {
+            // La propia dependencia define lo que se ve sin asignaciones de trámite: no se la cambia uno mismo
+            if (u.getId().equals(admin.getId())) {
+                throw new IllegalStateException("No puede cambiar su propia dependencia: debe hacerlo otro administrador.");
+            }
             cambios.append("dependencia: ").append(u.getDependencia().getNombreVisible()).append(" → ").append(dep.getNombreVisible()).append("; ");
             u.setDependencia(dep);
         }
@@ -203,6 +207,11 @@ public class AdministracionService {
         Usuario u = obtenerUsuario(usuarioId, admin);
         if (rol == null) {
             throw new IllegalArgumentException("Seleccione el rol.");
+        }
+        // Separación de funciones: administrar usuarios no da acceso a expedientes, y un administrador
+        // no puede dárselo a sí mismo. Sus roles de trámite los asigna otro administrador.
+        if (u.getId().equals(admin.getId()) && rol != RolAsignacion.ADMIN_SISTEMA) {
+            throw new IllegalStateException("Un administrador no puede asignarse roles de trámite a sí mismo: debe hacerlo otro administrador.");
         }
         Dependencia ambito = dependenciaActiva(ambitoId);
         LocalDate inicio = desde != null ? desde : LocalDate.now();

@@ -93,6 +93,19 @@ class AdministracionServiceTest {
     }
 
     @Test
+    void elAdministradorNoSeAsignaRolesDeTramiteNiSeMudaDeDependencia() {
+        when(usuarios.findById(1)).thenReturn(Optional.of(admin));
+        admin.setDependencia(Dependencia.builder().id(10).nombre("DTIC").activo(true).build());
+        for (RolAsignacion rol : new RolAsignacion[]{RolAsignacion.MESA_ENTRADA, RolAsignacion.RESPONSABLE,
+                RolAsignacion.OPERADOR, RolAsignacion.CONSULTA}) {
+            assertThrows(IllegalStateException.class, () -> servicio.crearAsignacion(1, rol, 77, true,
+                    LocalDate.now(), null, false, null, "Res. prueba", admin), "autoasignación de " + rol);
+        }
+        assertThrows(IllegalStateException.class, () -> servicio.actualizarUsuario(1, admin.getNombreCompleto(), null, 77, admin));
+        verify(asignaciones, never()).save(any());
+    }
+
+    @Test
     void nadieSeDaDeBajaASiMismo() {
         when(usuarios.findById(1)).thenReturn(Optional.of(admin));
         assertThrows(IllegalStateException.class, () -> servicio.cambiarEstado(1, false, "Prueba de baja", admin));

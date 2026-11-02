@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
@@ -38,15 +39,25 @@ public class ActualizacionPermisosFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         Authentication actual = SecurityContextHolder.getContext().getAuthentication();
         if (actual instanceof UsernamePasswordAuthenticationToken && actual.isAuthenticated()) {
-            usuarioRepository.findByUsernameAndActivoTrue(actual.getName()).ifPresent(usuario -> {
-                UsernamePasswordAuthenticationToken renovada = UsernamePasswordAuthenticationToken.authenticated(
-                        actual.getPrincipal(), null, politicaAcceso.autoridades(usuario));
-                renovada.setDetails(actual.getDetails());
-                // Solo para esta petición: el contexto guardado en la sesión no se modifica
-                SecurityContext contexto = SecurityContextHolder.createEmptyContext();
-                contexto.setAuthentication(renovada);
-                SecurityContextHolder.setContext(contexto);
-            });
+            var usuario = usuarioRepository.findByUsernameAndActivoTrue(actual.getName());
+            if (usuario.isEmpty()) {
+                // Dado de baja (o eliminado) con la sesión abierta: se cierra en esta misma petición,
+                // en lugar de seguir usando los permisos guardados en la sesión hasta que venza
+                SecurityContextHolder.clearContext();
+                HttpSession sesion = request.getSession(false);
+                if (sesion != null) {
+                    sesion.invalidate();
+                }
+                response.sendRedirect(request.getContextPath() + "/login?baja");
+                return;
+            }
+            UsernamePasswordAuthenticationToken renovada = UsernamePasswordAuthenticationToken.authenticated(
+                    actual.getPrincipal(), null, politicaAcceso.autoridades(usuario.get()));
+            renovada.setDetails(actual.getDetails());
+            // Solo para esta petición: el contexto guardado en la sesión no se modifica
+            SecurityContext contexto = SecurityContextHolder.createEmptyContext();
+            contexto.setAuthentication(renovada);
+            SecurityContextHolder.setContext(contexto);
         }
         chain.doFilter(request, response);
     }
