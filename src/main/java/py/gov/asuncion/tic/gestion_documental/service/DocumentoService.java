@@ -60,6 +60,9 @@ public class DocumentoService {
     @Autowired
     private BiblioratoService biblioratoService;
 
+    @Autowired
+    private AsignacionRepository asignacionRepository;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
 
@@ -76,8 +79,69 @@ public class DocumentoService {
     @Value("${app.sla.urgente.dias-critico:4}")
     private int slaUrgenteDiasCritico;
 
-    public List<Dependencia> obtenerDependenciasActivas() {
-        return dependenciaRepository.findByActivoTrueOrderByNombreAsc();
+    // 🏛️ Selectores de dependencias: con todo el organigrama hay muchos nombres repetidos
+    // ("Unidad de Secretaría Administrativa", "Departamento Administrativo"...), así que se
+    // agrupan por dirección, en orden jerárquico, y cada opción lleva la sigla de su dirección.
+    public record OpcionDependencia(Integer id, String texto) {}
+
+    public record GrupoDependencias(String etiqueta, List<OpcionDependencia> opciones) {}
+
+    public List<GrupoDependencias> obtenerDependenciasAgrupadas() {
+        Map<Integer, Integer> ordenPorNivel = new HashMap<>();
+        dependenciaRepository.findNiveles().forEach(n -> ordenPorNivel.put(n.getId(), n.getOrdenNivel()));
+        Map<Integer, Dependencia> porId = new HashMap<>();
+        dependenciaRepository.findAll().forEach(d -> porId.put(d.getId(), d));
+
+        // Clave de orden: nombres desde la raíz, así cada dependencia queda debajo de su superior
+        Map<Integer, String> clave = new HashMap<>();
+        java.util.function.Function<Dependencia, String> claveDe = new java.util.function.Function<>() {
+            public String apply(Dependencia d) {
+                String c = clave.get(d.getId());
+                if (c == null) {
+                    Dependencia padre = d.getDependenciaPadreId() == null ? null : porId.get(d.getDependenciaPadreId());
+                    c = (padre == null ? "" : apply(padre) + "\u0001") + d.getNombre();
+                    clave.put(d.getId(), c);
+                }
+                return c;
+            }
+        };
+
+        // Dirección de referencia: la propia dependencia o su primer superior de nivel Dirección o mayor
+        Map<Dependencia, List<Dependencia>> porDireccion = new java.util.TreeMap<>(java.util.Comparator.comparing(claveDe));
+        for (Dependencia d : porId.values()) {
+            if (!Boolean.TRUE.equals(d.getActivo())) {
+                continue;
+            }
+            Dependencia dir = d;
+            while (ordenPorNivel.getOrDefault(dir.getNivelJerarquicoId(), 99) > 4 && porId.get(dir.getDependenciaPadreId()) != null) {
+                dir = porId.get(dir.getDependenciaPadreId());
+            }
+            porDireccion.computeIfAbsent(dir, k -> new ArrayList<>()).add(d);
+        }
+
+        List<GrupoDependencias> grupos = new ArrayList<>();
+        porDireccion.forEach((dir, deps) -> {
+            deps.sort(java.util.Comparator.comparing(claveDe));
+            int profundidadDir = claveDe.apply(dir).split("\u0001").length;
+            String sigla = dir.getSigla() != null ? dir.getSigla() : "";
+            // Nombres que se repiten dentro de la misma dirección (las unidades de cada Centro Municipal):
+            // se aclara con el nombre de su superior en lugar de la sigla
+            Map<String, Long> repeticiones = deps.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(Dependencia::getNombre, java.util.stream.Collectors.counting()));
+            List<OpcionDependencia> opciones = deps.stream().map(d -> {
+                int nivel = claveDe.apply(d).split("\u0001").length - profundidadDir;
+                String aclaracion = d == dir ? ""
+                        : repeticiones.get(d.getNombre()) > 1 && porId.get(d.getDependenciaPadreId()) != null
+                            ? " (" + porId.get(d.getDependenciaPadreId()).getNombre() + ")"
+                            : sigla.isEmpty() ? "" : " (" + sigla + ")";
+                return new OpcionDependencia(d.getId(), "   ".repeat(nivel) + d.getNombre() + aclaracion);
+            }).toList();
+            Dependencia superior = porId.get(dir.getDependenciaPadreId());
+            String etiqueta = (sigla.isEmpty() ? "" : sigla + " · ") + dir.getNombre()
+                    + (superior != null && superior.getDependenciaPadreId() != null && superior.getSigla() != null ? " (" + superior.getSigla() + ")" : "");
+            grupos.add(new GrupoDependencias(etiqueta, opciones));
+        });
+        return grupos;
     }
 
     // 🛡️ CONTROL DE ACCESO POR DEPENDENCIA
@@ -86,13 +150,13 @@ public class DocumentoService {
                 && (usuario.getRol() == RolUsuario.DIRECTOR || usuario.getRol() == RolUsuario.SECRETARIA_ADMIN);
     }
 
-    // Dirección y Secretaría acceden a todo; el resto solo a los documentos originados
-    // en su dependencia o en los que su dependencia emitió/recibió una actuación.
+    // Cada usuario accede a los expedientes de su ámbito (asignaciones vigentes, por organigrama)
+    // y a los originados en su dependencia o en los que su dependencia emitió/recibió una actuación.
     public boolean puedeAccederDocumento(Usuario usuario, Long documentoId) {
         if (usuario == null || documentoId == null) {
             return false;
         }
-        if (esRolAdministrativo(usuario)) {
+        if (documentoRepository.existeEnAmbito(usuario.getId(), documentoId)) {
             return true;
         }
         if (usuario.getDependencia() == null) {
@@ -125,16 +189,19 @@ public class DocumentoService {
             return new ArrayList<>();
         }
 
-        Dependencia depActual = usuario.getDependencia();
-
-        // Si es la Secretaría Administrativa (ID 11) o Director, 
-        // les devolvemos las dependencias que cuelgan directamente de la Dirección de TIC (ej. Padre ID 10)
-        if (depActual.getId() == 11 || usuario.getRol() == RolUsuario.SECRETARIA_ADMIN || usuario.getRol() == RolUsuario.DIRECTOR) {
-            return dependenciaRepository.findByDependenciaPadreIdAndActivoTrueOrderByNombreAsc(10);
+        // Se deriva a las dependencias que cuelgan directamente de cada ámbito de gestión del usuario
+        // (Mesa de Entrada o Responsable). Así la secretaría de una dirección deriva a toda su dirección.
+        java.util.Set<Integer> raices = new java.util.LinkedHashSet<>();
+        for (Asignacion a : asignacionRepository.findVigentes(usuario.getId(), LocalDate.now())) {
+            if (a.getRol() == RolAsignacion.MESA_ENTRADA || a.getRol() == RolAsignacion.RESPONSABLE) {
+                raices.add(a.getDependenciaAmbito().getId());
+            }
         }
-
-        // Para cualquier otro Jefe de Departamento, muestra únicamente las unidades hijas directas de su área
-        return dependenciaRepository.findByDependenciaPadreIdAndActivoTrueOrderByNombreAsc(depActual.getId());
+        // Sin asignaciones de gestión: las unidades hijas directas de su propia dependencia
+        if (raices.isEmpty()) {
+            raices.add(usuario.getDependencia().getId());
+        }
+        return dependenciaRepository.findByDependenciaPadreIdInAndActivoTrueOrderByNombreAsc(raices);
     }
 
     public Map<String, Long> obtenerMetricasDashboard() {
@@ -147,6 +214,10 @@ public class DocumentoService {
         return metricas;
     }
 
+    // Prefijo del CUTI (TIC-2026-000001). Para la serie municipal única: app.cuti.prefijo=MCA
+    @Value("${app.cuti.prefijo:TIC}")
+    private String prefijoCuti;
+
     // Clave base del bloqueo de PostgreSQL para el correlativo del CUTI (se le suma el año)
     private static final long CLAVE_BLOQUEO_CUTI = 7_384_000_000L;
 
@@ -154,7 +225,7 @@ public class DocumentoService {
     // así dos registros simultáneos no obtienen el mismo número.
     private String generarCodigoCuti(int anio) {
         documentoRepository.bloquearCorrelativoCuti(CLAVE_BLOQUEO_CUTI + anio);
-        String prefijo = String.format("TIC-%d-", anio);
+        String prefijo = String.format("%s-%d-", prefijoCuti, anio);
         int ultimo = documentoRepository.obtenerUltimoCorrelativoCuti(prefijo + "%");
         return String.format("%s%06d", prefijo, ultimo + 1);
     }
@@ -270,12 +341,9 @@ public class DocumentoService {
         return doc;
     }
 
-    // 📚 Archivo físico visible para el usuario (Dirección/Secretaría: todo; resto: lo que le corresponde)
+    // 📚 Archivo físico visible para el usuario: solo lo de su ámbito
     public List<Documento> obtenerDocumentosArchivoParaUsuario(Usuario usuario, Integer biblioratoId) {
         List<Documento> docs = documentoRepository.findDocumentosArchivo(biblioratoId);
-        if (esRolAdministrativo(usuario)) {
-            return docs;
-        }
         return docs.stream().filter(d -> puedeAccederDocumento(usuario, d.getId())).toList();
     }
 
@@ -919,17 +987,23 @@ public class DocumentoService {
             return new ArrayList<>();
         }
 
-        // 👑 Dirección de TIC y Secretaría Ven Todo
-        if (usuario.getRol() == RolUsuario.DIRECTOR || usuario.getRol() == RolUsuario.SECRETARIA_ADMIN) {
-            return documentoRepository.findByEstadoActualNotInOrderByFechaHoraIngresoDesc(ESTADOS_CERRADOS);
+        // 🧭 Lo de su ámbito, más lo derivado a su propia dependencia (pases antiguos sin receptora incluidos)
+        List<Documento> ambito = documentoRepository.findActivosEnAmbito(usuario.getId());
+        if (usuario.getDependencia() == null) {
+            return ambito;
         }
+        return unir(ambito, documentoRepository.findDocumentosActivosPorDependencia(usuario.getDependencia().getId()),
+                java.util.Comparator.comparing(Documento::getFechaHoraIngreso,
+                        java.util.Comparator.nullsLast(java.util.Comparator.<LocalDateTime>naturalOrder())).reversed());
+    }
 
-        // 🏢 Jefes de Departamento y Unidades Ven Solo lo derivado a su Dependencia
-        if (usuario.getDependencia() != null) {
-            return documentoRepository.findDocumentosActivosPorDependencia(usuario.getDependencia().getId());
-        }
-
-        return new ArrayList<>();
+    private static List<Documento> unir(List<Documento> a, List<Documento> b, java.util.Comparator<Documento> orden) {
+        Map<Long, Documento> porId = new java.util.LinkedHashMap<>();
+        a.forEach(d -> porId.put(d.getId(), d));
+        b.forEach(d -> porId.putIfAbsent(d.getId(), d));
+        List<Documento> todos = new ArrayList<>(porId.values());
+        todos.sort(orden);
+        return todos;
     }
 
     // =====================================================================
@@ -1332,16 +1406,13 @@ public class DocumentoService {
             return new ArrayList<>();
         }
 
-        // 👑 Dirección y Secretaría ven todo el archivo finalizado
-        if (usuario.getRol() == RolUsuario.DIRECTOR || usuario.getRol() == RolUsuario.SECRETARIA_ADMIN) {
-            return documentoRepository.findByEstadoActualOrderByFechaHoraSalidaDesc(EstadoDocumento.FINALIZADO);
+        // 🧭 Los finalizados de su ámbito y aquellos en los que participó su dependencia
+        List<Documento> ambito = documentoRepository.findFinalizadosEnAmbito(usuario.getId());
+        if (usuario.getDependencia() == null) {
+            return ambito;
         }
-
-        // 🏢 Departamentos y Unidades ven solo los finalizados en los que participaron
-        if (usuario.getDependencia() != null) {
-            return documentoRepository.findDocumentosFinalizadosPorDependencia(usuario.getDependencia().getId());
-        }
-
-        return new ArrayList<>();
+        return unir(ambito, documentoRepository.findDocumentosFinalizadosPorDependencia(usuario.getDependencia().getId()),
+                java.util.Comparator.comparing(Documento::getFechaHoraSalida,
+                        java.util.Comparator.nullsFirst(java.util.Comparator.<LocalDateTime>naturalOrder())).reversed());
     }
 }

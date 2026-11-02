@@ -1,0 +1,592 @@
+# Estructura Organizacional de la Municipalidad de Asunción
+# Fuente: organigramas por área, Res. N° 887/08-07-2026 (Dpto. de Organización y Métodos - DTIC)
+# Transcripción: 02/11/2026
+#
+# Formato (una dependencia por línea, la sangría de 2 espacios indica de quién depende):
+#   codigo|nombre|nivel|id_actual
+#   - codigo: opcional; si se omite se genera a partir del superior (-SA, -Dnn, -Unn)
+#   - nivel: I = Intendencia, DG = Dirección General, D = Dirección, DP = Departamento, U = Unidad
+#   - id_actual: id de la dependencia ya cargada en la base (si existe), para no duplicarla
+#   - "SA" sola (o "SA|id") = Unidad de Secretaría Administrativa: mesa de entrada de su área
+#   - "!" al final de la línea = verificar con Organización y Métodos (lectura dudosa del gráfico)
+
+INT|Intendencia Municipal|I|1
+  DSPRIV|Dirección de Secretaría Privada|D
+    SA
+    |Departamento de Ceremonial|DP
+    |Unidad de Gestión Técnica y Administrativa|U
+  DSG|Dirección de Secretaría General|D
+    SA
+    |Departamento Mesa Central de Entradas|DP
+    |Departamento de Documentación|DP
+      |Unidad de Archivo General|U
+  DTA|Dirección de Transparencia y Anticorrupción|D
+    SA
+    |Departamento de Transparencia|DP
+    |Departamento de Detección e Investigación|DP
+  DAJ|Dirección de Asuntos Jurídicos|D
+    SA
+    |Departamento de Acciones Judiciales|DP
+      |Unidad de lo Contencioso Administrativo|U
+      |Unidad de Juicios Ordinarios y Especiales|U
+      |Unidad de Recuperación de Predios Municipales|U
+    |Departamento de Asuntos Urbanísticos|DP
+      |Unidad Urbana|U
+      |Unidad Ciudadana|U
+      |Unidad de Patrimonio Inmobiliario|U
+    |Departamento Tributario y de Apelación|DP
+      |Unidad Tributaria|U
+      |Unidad de Apelación|U
+    |Departamento de Contrataciones y Convenios|DP
+      |Unidad de Contratos y Convenios|U
+      |Unidad de Licitaciones|U
+    |Departamento de Relaciones Laborales|DP
+      |Unidad Sumarial|U
+      |Unidad Laboral|U
+    |Departamento de Procuraduría|DP
+    |Departamento de Gestión Judicial, de Cobro y de Urgencias|DP|!
+  DCI|Dirección de Contraloría Interna|D
+    SA
+    |Departamento de Auditoría de Cumplimiento|DP
+    |Departamento de Auditoría Financiera|DP
+    |Departamento de Auditoría de Desempeño|DP
+      |Unidad de Auditoría Especializada|U
+      |Unidad de Control Operativo|U
+  DGG|Dirección General de Gabinete|DG
+    SA
+    |Unidad Planificadora de Proyectos|U
+  DGC|Dirección General de Comunicaciones|DG
+    SA
+    DCOM|Dirección de Comunicaciones|D
+      SA
+      |Departamento de Marketing|DP
+        |Unidad de Audiovisuales|U
+        |Unidad de Gestión Informativa|U
+      |Departamento de Prensa|DP
+        |Unidad de Monitoreo|U
+        |Unidad de Respuestas a Medios de Comunicación|U
+      |Departamento de Comunicación Digital|DP
+      |Departamento de Atención al Ciudadano|DP
+        |Unidad de Denuncias y Reclamos|U
+        |Unidad de Informaciones|U
+        |Unidad de Trámites Municipales|U
+  DGP|Dirección General de Planificación|DG
+    SA
+    DPE|Dirección de Planeamiento Estratégico|D
+      SA
+      |Departamento de Desarrollo del Plan Estratégico|DP
+      |Departamento de Monitoreo y Seguimiento|DP
+        |Unidad de Estadística|U
+    DEE|Dirección de Estudios Económicos|D
+      SA
+      |Departamento de Ingresos|DP
+      |Departamento de Egresos|DP
+      |Departamento de Costos|DP
+    |Departamento de Sistema Municipal de Inversión Pública (SMIP)|DP
+      |Unidad de Admisibilidad y Viabilidad|U
+      |Unidad de Programación Presupuestaria y de Control|U
+  DGAF|Dirección General de Administración y Finanzas|DG|100
+    SA|101
+    |Unidad Revisora de Documentos|U|102
+    |Unidad de Rendición de Cuentas|U|103
+    |Unidad Operativa de Contrataciones (UOC N° 3)|U|104
+    |Unidad Operativa de Contrataciones (UOC N° 5)|U|105
+    DREC|Dirección de Recaudaciones|D|110
+      SA|111
+      |Unidad de Control Interno|U|112
+      |Departamento de Atención al Contribuyente|DP|113
+        |Unidad de Gestión Tributaria|U|1131
+        |Unidad de Créditos y Prescripción|U|1132
+        |Unidad de Exoneraciones|U|1133
+        |Unidad de Facturación|U|1134
+        |Unidad de Constancias y Certificados|U|1135
+      |Departamento de Liquidaciones|DP|114
+        |Unidad de Inmuebles|U|1141
+        |Unidad de Liquidación de Necrópolis|U|1142
+        |Unidad de Ingresos Varios|U|1143
+        |Unidad de Desinfestación y Salubridad|U|1144
+      |Departamento de Patentes y Actividades|DP|115
+        |Unidad de Patentes|U|1151
+        |Unidad de Servicios Especiales|U|1152
+        |Unidad de Patentes de Rodados y Licencias de Conducir|U|1153
+      |Departamento de Cobranzas|DP|116
+        |Unidad de Apremios|U|1161
+        |Unidad de Pagarés|U|1162
+      |Departamento de Grandes Contribuyentes|DP|117
+        |Unidad de Atención Personalizada|U|1171
+        |Unidad de Gestión de Cobro|U|1172
+        |Unidad de Call Center Tributario|U|1173
+      |Departamento de Ingresos|DP|118
+        |Unidad de Valores|U|1181
+        |Unidad de Cajas|U|1182
+      |Departamento de Centralización de Recaudaciones Externa|DP|119
+        |Unidad de Entes Externos|U|1191
+        |Unidad de Documentación de Pagos|U|1192
+    DADQ|Dirección de Adquisiciones|D|120
+      SA|121
+      |Departamento de Planeamiento y Control|DP|122
+      |Departamento de Licitaciones de Menor Cuantía|DP|123
+      |Departamento de Licitaciones Públicas|DP|124
+      |Departamento de Contratos|DP|125
+    DSADM|Dirección de Servicios Administrativos|D|130
+      SA|131
+      |Departamento de Bienes Patrimoniales|DP|136
+        |Unidad de Inventario|U|1361
+        |Unidad de Depósito de Excedentes|U|1362
+      |Departamento de Servicios Generales|DP|137
+        |Unidad de Telecomunicaciones|U|1371
+        |Unidad de Mantenimiento Electromecánico|U|1372
+      |Departamento de Transporte|DP|138
+      |Unidad de Almacenes|U|132
+      |Unidad de Combustibles|U|133
+      |Unidad de Mantenimiento Civil|U|134
+      |Unidad de Imprenta|U|135
+    DHAC|Dirección de Hacienda|D|140
+      SA|141
+      |Departamento de Tesorería|DP|143
+        |Unidad de Recursos|U|1431
+        |Unidad de Gastos Generales|U|1432
+        |Unidad de Sueldos|U|1433
+      |Departamento de Presupuesto|DP|144
+        |Unidad de Formulación Presupuestaria|U|1441
+        |Unidad de Ejecución Presupuestaria|U|1442
+        |Unidad de Análisis y Programación de Servicios Personales|U|1443
+      |Departamento de Contabilidad|DP|145
+        |Unidad de Patrimonio|U|1451
+        |Unidad de Ingresos|U|1452
+        |Unidad de Egresos|U|1453
+        |Unidad de Rendición de Fondos|U|1454
+        |Unidad de Bancos|U|1455
+      |Unidad de Finanzas|U|142
+  DGO|Dirección General de Obras|DG
+    SA
+    DOM|Dirección de Obras Municipales|D
+      SA
+      |Departamento de Ingeniería|DP
+        |Unidad de Proyectos Viales y Civiles|U
+        |Unidad de Digitalización de Planos|U
+        |Unidad de Proyectos de Desagüe Pluvial|U
+        |Unidad de Proyectos Especiales (FPE)|U
+      |Departamento de Fiscalización de Obras|DP
+        |Unidad de Fiscalización de Obras Viales|U
+        |Unidad de Fiscalización de Obras Civiles y Desagüe Pluvial|U
+    DVIA|Dirección de Vialidad|D
+      SA
+      |Unidad de Adecuación Ambiental|U
+      |Unidad de Mantenimiento de Obras y Desagüe Pluvial|U
+      |Departamento Administrativo|DP
+        |Unidad de Depósito de Materiales|U
+        |Unidad de Abastecimiento de Combustible|U
+        |Unidad de Báscula|U
+        |Unidad de Servicios Generales|U
+      |Departamento Operativo|DP
+        |Unidad de Planta Asfáltica|U
+        |Unidad Vial|U
+        |Unidad de Obras Civiles|U
+        |Unidad de Transporte, Equipos y Talleres|U
+        |Unidad de Fiscalización y Monitoreo|U
+        |Unidad de Marcas y Señales|U
+  DGDU|Dirección General de Desarrollo Urbano|DG
+    SA
+    |Unidad "Centro de Formación y Capacitación Laboral" (Escuela Taller)|U
+    |Unidad de Gestión Técnica y Administrativa|U
+    DOP|Dirección de Obras Particulares|D
+      SA
+      |Departamento de Aprobación de Planos|DP
+        |Unidad de Evaluaciones Legales y Técnicas|U
+        |Unidad de Proyectos y Regularizaciones|U
+        |Unidad de Estudios Viales y Estacionamiento|U
+        |Unidad de Tasación y Liquidación|U
+        |Unidad de Resoluciones y Certificados|U
+        |Unidad de Archivo de Planos de Construcciones|U
+      |Departamento de Fiscalización de Obras|DP
+        |Unidad de Fiscalización de Planos|U
+        |Unidad de Fiscalización Final de Obras|U
+        |Unidad de Intervención de Obras|U
+      |Departamento de Prevención contra Incendios (PCI)|DP
+        |Unidad de Intervención de PCI|U
+        |Unidad de Fiscalización de PCI|U
+      |Unidad de Estudio de Aplicación de Normativas de PCI|U
+    DCAT|Dirección de Catastro Municipal|D
+      SA
+      |Departamento de Bienes Inmobiliarios|DP
+        |Unidad de Patrimonio Inmobiliario|U
+      |Departamento del Sistema de Información Geográfica|DP
+        |Unidad de Cartografía y Geoprocesamiento|U
+        |Unidad de Archivo de Planos de Loteamientos|U
+      |Departamento de Topografía|DP
+        |Unidad de Relevamiento y Proyectos|U
+        |Unidad de Loteamiento|U
+      |Departamento Técnico Catastral|DP
+        |Unidad de Mantenimiento Catastral|U
+        |Unidad de Valuaciones e Informes|U
+        |Unidad de Levantamiento Catastral|U
+      |Departamento de Necrópolis|DP
+        |Unidad de Cementerios|U
+    DPU|Dirección de Planeamiento Urbano|D
+      SA
+      |Unidad Revisora de Documentos y Gestión de Licencias|U
+      |Departamento de Proyectos Urbanos|DP
+        |Unidad de Diseño y Presupuesto|U
+      |Departamento de Patrimonio Cultural de la Ciudad|DP
+      |Departamento de Planificación Urbana y Territorial|DP
+        |Unidad de Ordenamiento Urbano|U
+        |Unidad de Intervención en el Dominio Público|U
+        |Unidad de Rehabilitación Urbana|U
+      |Departamento de Licencias de Establecimientos|DP
+        |Unidad Técnica de Licencias|U
+      |Departamento de Desarrollo y Seguimiento de Obras|DP
+  DGGA|Dirección General de Gestión Ambiental|DG
+    |Secretaría Administrativa|U|!
+    |Departamento de Bienes Naturales y Adecuación Ambiental|DP
+      |Unidad de Recursos Hídricos y Suelo|U
+      |Unidad de Recursos Atmosféricos|U
+      |Unidad de Biodiversidad y Áreas Silvestres Protegidas|U
+      |Unidad de Arbolado Urbano|U
+    |Departamento de Prevención de Polución Sonora y Visual|DP
+    |Departamento de Centro de Educación y Promoción Ambiental (CEPAM)|DP
+      |Unidad de Centro de Conservación y Educación Ambiental (CECEAM)|U
+    |Unidad de Gestión Integral de Residuos|U
+    |Unidad Técnica de Medio Ambiente|U
+    |Unidad de Monitoreo de Licencia Ambiental Institucional|U
+  DGAS|Dirección General del Área Social|DG
+    SA
+    DDC|Dirección de Defensa al Consumidor|D
+      SA
+      |Departamento de Protección del Consumidor y Usuario|DP
+      |Departamento de Laboratorio|DP
+        |Unidad de Fisicoquímico|U
+        |Unidad de Microbiología|U
+      |Departamento de Salubridad|DP
+        |Unidad de Controles en Establecimientos|U
+        |Unidad de Productos Naturales|U
+        |Unidad de Productos en Importación|U
+        |Unidad de Productos Procesados|U
+      |Departamento de Higiene|DP
+        |Unidad de Desinfestación|U
+        |Unidad de Prevención de Zoonosis|U
+    DPPC|Dirección de Promoción de la Participación Ciudadana|D
+      SA
+      |Departamento de Fondos para Proyectos Especiales|DP
+      |Departamento Centro Municipal N° 1 "Ita Ybate"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 2 "Oñondivepa"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 3 "Jopoi"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 4 "Mburukuja"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 5 "Ko'eti"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 6 "Jeruti"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 7 "Marangatu"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 8 "Tenondete"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 9 "Ñasaindy"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 10 "Ñepytyvo Jovai"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento Centro Municipal N° 11 "Ñu Guazu"|DP
+        |Unidad de Gestión Administrativa|U
+        |Unidad Operativa|U
+      |Departamento de Servicios|DP
+        |Unidad de Asistencia Social|U
+        |Unidad de Servicios Ciudadanos|U
+        |Unidad de Tierras|U
+        |Unidad de Adultos Mayores|U
+    DJD|Dirección de Juventud y Deportes|D
+      SA
+      |Departamento de Juventud|DP
+      |Departamento de Deportes|DP
+    DPOLI|Dirección del Policlínico Municipal|D
+      SA
+      |Unidad de Prevención de Adicciones|U
+      |Departamento Administrativo|DP
+        |Unidad de Contabilidad|U
+        |Unidad de Servicios Operativos|U
+      |Departamento de Servicios Asistenciales|DP
+        |Unidad Asistencial y de Diagnóstico|U
+        |Unidad de Clínicas Periféricas y Centros Especializados|U
+        |Unidad de Servicios de Enfermería|U
+      |Unidad de Gestión y Control de Servicio|U
+      |Unidad de Gestión de Personas|U
+    DPG|Dirección de Políticas de Género|D
+      SA
+      |Departamento de Formación y Equidad de Género|DP
+      |Departamento de Promoción y Atención a la Mujer|DP
+    DCODENI|Dirección de CODENI, Niñez y Adolescencia|D
+      |Departamento de CODENI|DP
+      |Departamento de Educación y Servicios|DP
+        |Unidad de Guarderías, Comedores y SIAP|U
+        |Unidad de Escuelas y AMICAS|U
+        |Unidad Centro Integral de Atención a la 1ª Infancia "Tapytami"|U
+        |Unidad "Taller de Expresión y Desarrollo Infantil Municipal" (TEDIM)|U
+    DCEMUPE|Dirección del Centro Municipal de Promoción Empresarial (CEMUPE)|D
+      SA
+      |Departamento Administrativo|DP
+      |Departamento de Emprendedurismo y Capacitación|DP
+      |Unidad de Promoción de Empleos|U
+  DGCT|Dirección General de Cultura y Turismo|DG
+    SA
+    |Unidad de Gestión de Personas|U
+    |Departamento Administrativo|DP
+    |Departamento de Prensa y Promoción Cultural|DP
+    |Departamento de Turismo|DP
+    DIMA|Dirección del Instituto Municipal de Arte (IMA)|D
+      SA
+      |Departamento Académico|DP
+        |Escuela de Arte Infantil|U
+        |Escuela de Arte Dramático|U
+        |Escuela de Danza|U
+        |Escuela de Canto|U
+        |Escuela de Música|U
+        |Escuela de Locución|U
+        |Unidad "Taller de Teatro María Elena Sachero"|U
+      |Departamento Administrativo y de Servicios|DP
+    DCPJ|Dirección del Centro Paraguayo Japonés (CPJ)|D
+      SA
+      |Unidad de Comunicación y Marketing|U
+      |Departamento Administrativo|DP
+        |Unidad de Tesorería|U
+        |Unidad de Contabilidad|U
+        |Unidad de Presupuesto|U
+      |Departamento de Operaciones y Servicios|DP
+        |Unidad de Mantenimientos|U
+        |Unidad de Servicios Esenciales|U
+      |Departamento Cultural|DP
+        |Unidad de Gestión de Eventos y Espacios|U
+        |Unidad de Producción de Eventos|U
+      |Departamento Académico|DP
+        |Unidad de Idiomas|U
+        |Unidad de Computación|U
+        |Unidad de Gimnasio|U
+        |Unidad de Conservatorio|U
+        |Unidad de Danzas|U
+        |Unidad de Arte|U
+    DTMIAP|Dirección del Teatro Municipal Ignacio A. Pane|D
+      SA
+      |Unidad de Programación y Comunicación|U
+      |Departamento Administrativo|DP
+      |Departamento de Escenotecnia|DP
+      |Unidad "Orquesta Sinfónica de la Ciudad de Asunción"|U
+      |Unidad "Orquesta de Cámara Municipal de Asunción"|U
+      |Unidad "Ballet Clásico y Moderno Municipal de Asunción"|U
+    DMR|Dirección del Centro Cultural de la Ciudad Carlos Colombino "Manzana de la Rivera"|D
+      SA
+      |Unidad de Comunicación|U
+      |Departamento de Audiovisual|DP
+      |Departamento de Museos y Centro Numismático Municipal|DP
+      |Unidad de Biblioteca y Extensión Bibliotecaria|U
+      |Unidad de Servicios Generales|U
+      |Unidad de Espacio Cultural|U
+    DACC|Dirección de Acción Cultural y Comunitaria|D
+      SA
+      |Departamento de Eventos y Logística|DP
+        |Unidad Escenario Móvil|U
+        |Unidad de Plazas Temáticas de Cultura y Eventos Barriales|U
+      |Departamento de Elencos Municipales|DP
+        |Banda Folklórica Municipal de Asunción|U
+        |Ballet Folklórico Municipal de Asunción|U
+        |Conjunto Folklórico Municipal de Asunción|U
+  DGRICE|Dirección General de Relaciones Interinstitucionales y Cooperación Externa|DG
+    SA
+    DRICE|Dirección de Relaciones Internacionales y Cooperación Externa|D
+      |Departamento de Vinculación Internacional|DP
+      |Departamento de Cooperación Internacional|DP
+      |Departamento Técnico y de Gestión de Proyectos|DP
+      |Departamento de Gestión Formativa y Representación Externa|DP
+    DRIOC|Dirección de Relaciones Intergubernamentales y Organizaciones Civiles|D
+      SA
+      |Departamento de Relaciones con Entes Públicos|DP
+      |Departamento de Relaciones con Entes Privados|DP
+  DGPM|Dirección General de la Policía Municipal|DG
+    SA
+    DPMI|Dirección de la Policía Municipal Instructora|D
+      SA
+      |Departamento de Academia de Policía Municipal|DP
+        |Unidad de Formación Integral|U
+      |Departamento de Capacitación|DP
+        |Unidad de Formación Vial|U
+    DPMS|Dirección de la Policía Municipal de Seguridad|D
+      SA
+      |Departamento Operativo de Seguridad|DP
+      |Departamento de Seguridad de Plazas y Parques|DP
+    DPMT|Dirección de Policía Municipal de Tránsito (PMT)|D
+      SA
+      |Departamento Administrativo|DP
+        |Unidad de Servicios Generales|U
+      |Departamento Operativo y de Tráfico|DP
+        |Unidad de Base 1|U
+        |Unidad de Base 2|U
+        |Unidad de Base 3|U
+        |Unidad de Base 4|U
+        |Unidad de Base 5|U
+        |Unidad de Base 6|U
+        |Unidad de Base 7 y Comunicaciones|U
+        |Unidad de Base 8|U
+        |Unidad de Base 10|U
+        |Unidad de Motorizada|U
+        |Unidad de Estacionamiento Controlado de Asunción|U
+      |Unidad de Denuncia y Parte Policial|U
+    DTT|Dirección de Tránsito y Transporte|D
+      SA
+      |Departamento de Licencias e Infracciones|DP
+        |Unidad de Licencias de Conducir|U
+        |Unidad de Infracciones|U
+      |Departamento de Rodados|DP
+        |Unidad de Inscripción y Habilitación|U
+        |Unidad de Fiscalización e Inspección Técnica Vehicular|U
+      |Departamento de Ingeniería de Tráfico|DP
+        |Unidad de Semáforos y Señalética|U
+      |Unidad de Sala de Examen|U
+    DPMV|Dirección de la Policía Municipal de Vigilancia|D
+      SA
+      |Departamento de Fiscalización de Venta en la Vía Pública|DP
+      |Departamento de Fiscalización de Aseo Urbano|DP
+        |Unidad de Planificación y Monitoreo|U
+  DGGRRDM|Dirección General de Gestión y Reducción de Riesgos de Desastres Municipal|DG
+    SA
+    |Unidad Operativa de Contrataciones|U
+    DADMR|Dirección Administrativa|D
+      SA
+      |Departamento Administrativo|DP
+      |Departamento Financiero|DP
+      |Departamento de Control Interno|DP
+    DGRRD|Dirección de Gestión y Reducción de Riesgos de Desastres|D
+      SA
+      |Departamento de Gestión de Riesgos|DP
+      |Departamento de Respuesta y Recuperación de Desastre|DP
+  DTIC|Dirección de Tecnologías de la Información y Comunicación|D|10
+    SA|11
+    |Departamento de Organización y Métodos|DP|20
+      |Unidad de Organización|U|71
+      |Unidad de Procesos|U|72
+      |Unidad de Gestión de Papel Cero|U|73
+    |Departamento de Investigación y Desarrollo|DP|30
+      |Unidad de Análisis y Desarrollo|U|74
+    |Departamento Operativo de Informática|DP|40
+      |Unidad de Redes|U|75
+      |Unidad de Soporte Técnico|U|76
+    |Departamento de Base de Datos y Sistemas Operativos|DP|50
+      |Unidad de Data Center|U|77
+    |Departamento de Administración de Seguridad de la Información|DP|60
+      |Unidad de Documentación|U|78
+    |Departamento de Gestión Técnica y Administrativa|DP|70
+  DRRHH|Dirección de Recursos Humanos|D
+    SA
+    |Departamento de Administración del Personal|DP
+      |Unidad de Liquidación de Haberes|U
+      |Unidad de Fiscalización|U
+      |Unidad de Beneficios del Personal|U
+      |Unidad Operativa Descentralizada|U
+    |Departamento de Documentaciones|DP
+      |Unidad de Legajos|U
+      |Unidad de Resoluciones y Contratos|U
+    |Departamento de Desarrollo y Bienestar del Personal|DP
+      |Unidad del Bienestar del Personal|U
+      |Unidad de Selección y Capacitación|U
+      |Unidad de Salud y Seguridad Ocupacional|U
+    |Unidad de Atención al Funcionario|U
+  DAMA|Dirección de Abastecimiento de la Municipalidad de Asunción (DAMA)|D
+    SA
+    |Unidad de Asuntos Legales|U
+    |Departamento Administrativo|DP
+      |Unidad Operativa de Contrataciones N° 4|U
+      |Unidad de Tesorería|U
+      |Unidad de Cobros Tributarios|U
+      |Unidad de Presupuesto|U
+      |Unidad de Contabilidad|U
+    |Departamento de Servicios Generales|DP
+      |Unidad de Obras Civiles, Viales y Pluvial|U
+      |Unidad de Transporte, Equipos y Talleres|U
+      |Unidad de Patrimonio y Suministro|U
+      |Unidad de Protección Ambiental|U
+    |Departamento de Gestión Operativa|DP
+      |Unidad de Higiene y Salubridad|U
+      |Unidad de Policía de DAMA|U
+      |Unidad Técnica|U
+    |Unidad de Registro de Permisionarios|U
+    |Unidad de Gestión de la Información|U
+    |Unidad de Gestión de Personas|U
+    |Unidad de Tecnología de la Información|U
+  DEBA|Dirección de Estación de Buses de Asunción (DEBA)|D
+    SA
+    |Unidad de Asuntos Legales|U
+    |Departamento de Conservación y Mantenimiento|DP
+    |Departamento de Policía Municipal de la DEBA|DP
+    |Departamento Administrativo|DP
+      |Unidad de Contabilidad y Presupuesto|U
+      |Unidad de Tesorería|U
+      |Unidad de Cobros Tributarios|U
+    |Departamento de Gestión de Personas|DP
+    |Departamento de Gestión Operativa|DP
+    |Unidad Operativa de Contrataciones|U
+    |Unidad de Gestión de la Información|U
+    |Unidad de Atención Social|U
+    |Unidad de Inspectoría Tributaria|U
+  DSU|Dirección de Servicios Urbanos|D
+    SA
+    |Departamento Administrativo|DP
+      |Unidad de Adquisiciones|U
+      |Unidad de Inventario y Suministro|U
+      |Unidad Revisora de Documentos|U
+    |Departamento de Áreas Verdes y Mantenimiento|DP
+      |Unidad de Mantenimiento de Plazas, Parques y Paseos|U
+      |Unidad de Mantenimiento|U
+    |Departamento de Aseo Urbano|DP
+      |Unidad de Barrido y Cuadrilla|U
+      |Unidad de Servicios Varios|U
+      |Unidad de UNILIMER|U
+    |Departamento de Recolección|DP
+      |Unidad de Recolección Domiciliaria|U
+      |Unidad de Desechos Patológicos|U
+    |Departamento de Servicios Generales|DP
+      |Unidad de Mantenimiento de Planta|U
+      |Unidad de Transporte|U
+      |Unidad de Talleres|U
+    |Departamento de Mingas Ambientales|DP
+      |Unidad de Limpieza y Mantenimiento|U
+      |Unidad de Fumigación|U
+    |Unidad de Disposición y Tratamiento Final|U
+  DMZ|Dirección de Mercados Zonales|D
+    SA
+    |Unidad de Asuntos Legales|U
+    |Departamento Administrativo|DP
+      |Unidad de Registro de Permisionarios y Vendedores|U
+      |Unidad de Cobros Tributarios|U
+      |Unidad de Tesorería|U
+    |Departamento de Gestión de Operaciones y de Control|DP
+      |Unidad de Servicios de Mantenimiento y Conservación|U
+      |Unidad de Control de Aplicación de Normativas|U
+    |Departamento de Mercados|DP
+      |Unidad de Mercado 1|U
+      |Unidad de Mercado 2|U
+      |Unidad de Mercado 3|U
+      |Unidad de Mercado 5|U
+    |Unidad de Gestión de Personas|U
+  DJBZ|Dirección del Jardín Botánico y Zoológico|D
+    SA
+    |Departamento de Botánica|DP
+    |Departamento de Zoológico|DP
+    |Departamento de Mantenimiento|DP
+    |Unidad de Depósito|U
+    |Unidad de Museo de Historia Natural e Indigenista|U
+    |Unidad de Guarda Zoo y Guarda Parques|U
+    |Unidad de Cría|U
+  DPMF|Dirección de la Policía Municipal Fiscalizadora|D
+    SA
+    |Departamento Fiscalizador de Negocios|DP
+    |Unidad Fiscalizadora de Juegos de Entretenimiento y de Azar|U
+    |Unidad Fiscalizadora de Anuncios Publicitarios e Identificatorios|U

@@ -1,6 +1,6 @@
 # Diseño Fase 2 — Gestión Documental para toda la Municipalidad (uso interno)
 
-> **Estado:** propuesta de diseño, no implementada.
+> **Estado:** etapa 2.1 en curso (02/11/2026): organigrama completo (V8, V9), asignaciones, visibilidad por ámbito, sin IDs fijos y CUTI configurable. El resto, propuesta de diseño.
 > **Base:** código de `chore/limpieza-proyecto` y estructura orgánica real de la base, relevada en modo solo lectura el 02/11/2026.
 > **Objetivo:** que todas las áreas de la Municipalidad registren, deriven, controlen y archiven sus expedientes en una sola herramienta, cada una viendo solo lo que le corresponde. Es la base para eliminar el papel (Fase 3) y para el portal del contribuyente (Fase 4).
 

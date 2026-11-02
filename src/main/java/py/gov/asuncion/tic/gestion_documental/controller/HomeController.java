@@ -101,7 +101,7 @@ public class HomeController {
         model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuario));
 
         model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
-        model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
+        model.addAttribute("dependenciasAgrupadas", documentoService.obtenerDependenciasAgrupadas());
         model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
     }
 
@@ -468,12 +468,10 @@ public class HomeController {
         List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(
                 texto, dependenciaId, tipoDocId, estado, biblioratoId, fechaDesde, fechaHasta);
 
-        // 🛡️ Departamentos y unidades solo ven en la búsqueda los expedientes de su bandeja
-        if (!documentoService.esRolAdministrativo(usuarioLogueado)) {
-            resultados = resultados.stream()
-                    .filter(d -> documentoService.puedeAccederDocumento(usuarioLogueado, d.getId()))
-                    .toList();
-        }
+        // 🛡️ La búsqueda muestra solo los expedientes del ámbito del usuario
+        resultados = resultados.stream()
+                .filter(d -> documentoService.puedeAccederDocumento(usuarioLogueado, d.getId()))
+                .toList();
 
         model.addAttribute("documentosResultados", resultados);
         model.addAttribute("esBusqueda", true);

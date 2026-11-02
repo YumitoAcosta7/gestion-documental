@@ -29,6 +29,27 @@ public class Dependencia {
 
     private Boolean activo;
 
+    // Sigla única del organigrama (DTIC, DGAF, DREC-D02...)
+    @Column(length = 20, unique = true)
+    private String sigla;
+
+    // Ruta materializada (/1/10/40/): la calcula un trigger de la base al crear o mover la dependencia
+    @Column(nullable = false, length = 500, insertable = false, updatable = false)
+    private String ruta;
+
+    // Secretaría que recibe y registra los documentos de su dirección
+    @Builder.Default
+    @Column(name = "es_mesa_entrada", nullable = false)
+    private Boolean esMesaEntrada = false;
+
+    // Mesa que recibe los documentos externos y los deriva a cada dirección
+    @Builder.Default
+    @Column(name = "recibe_externos", nullable = false)
+    private Boolean recibeExternos = false;
+
+    @Column(length = 100)
+    private String resolucion;
+
     // 🌳 Mapeo de la Jerarquía Orgánica Inmutable (Padre -> Hijas)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dependencia_padre_id")
