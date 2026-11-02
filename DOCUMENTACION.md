@@ -52,6 +52,7 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V9__organigrama_RI887.sql` | Organigrama completo (Res. N° 887/08-07-2026, 580 dependencias). **Generado** por `db/organigrama/ImportarOrganigrama.java` desde `db/organigrama/organigrama_RI887_2026.txt`: se corrige el .txt y se regenera, no se edita a mano |
 | `V10__asignaciones_director.sql` | Quien tenía el rol `DIRECTOR` recibe además `MESA_ENTRADA` en su ámbito, para conservar las acciones que tenía |
 | `V11__custodia_y_canal.sql` | Etapa 2.2. Agrega dependencia de registro y de custodia a cada expediente, `tipo_pase` (`TRAMITE`, `INFORME`, `CONOCIMIENTO`) y las tablas `series_cuti` y `reglas_derivacion`. Completa los datos de los expedientes existentes |
+| `V12__usuario_administrador_sistema.sql` | Crea el primer administrador (`juan.acosta`, Jefe de la Unidad de Data Center), con `RESPONSABLE` de su unidad y `ADMIN_SISTEMA` sobre toda la municipalidad. Se crea **sin contraseña utilizable**: la define el propio usuario con `db/herramientas/DefinirContrasena.java` |
 
 **Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`.
 
@@ -146,10 +147,10 @@ Las acciones las decide un único componente, `PoliticaAcceso`, a partir de las 
 
 | Rol de la asignación | Acciones |
 |---|---|
-| `MESA_ENTRADA` | Todas: ingreso, salida y acuse final (`REGISTRAR_SALIDA`), derivar, actuaciones, archivo físico y biblioratos, cierre forzado, auditoría, supervisar los pases de otras dependencias del ámbito |
+| `MESA_ENTRADA` | Todas las del trámite (no administra el sistema): ingreso, salida y acuse final (`REGISTRAR_SALIDA`), derivar, actuaciones, archivo físico y biblioratos, cierre forzado, auditoría, supervisar los pases de otras dependencias del ámbito |
 | `RESPONSABLE` | Derivar, actuaciones, cierre forzado, auditoría |
 | `OPERADOR` | Actuaciones: informes, memos, devoluciones, confirmar pases recibidos |
-| `ADMIN_SISTEMA` | Archivo físico y biblioratos, auditoría |
+| `ADMIN_SISTEMA` | Administrar el sistema (`ADMINISTRAR_SISTEMA`): usuarios, asignaciones, suplencias y feriados. **No** da acceso a expedientes: esa asignación no cuenta para el ámbito de visibilidad |
 | `CONSULTA` | Solo lectura |
 | (sin asignaciones vigentes) | Como `OPERADOR` de su propia dependencia |
 

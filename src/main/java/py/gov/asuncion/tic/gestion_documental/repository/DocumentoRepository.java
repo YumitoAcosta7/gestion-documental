@@ -53,13 +53,13 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
         WITH amb AS (
             SELECT dep.ruta, a.incluye_subordinadas
               FROM asignaciones a JOIN dependencias dep ON dep.id = a.dependencia_ambito_id
-             WHERE a.usuario_id = :usuarioId AND a.activa
+             WHERE a.usuario_id = :usuarioId AND a.activa AND a.rol <> 'ADMIN_SISTEMA'
                AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)
             UNION ALL
             SELECT dep.ruta, FALSE
               FROM usuarios u JOIN dependencias dep ON dep.id = u.dependencia_id
              WHERE u.id = :usuarioId
-               AND NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa
+               AND NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa AND a.rol <> 'ADMIN_SISTEMA'
                                  AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE))
         ), deps AS (
             SELECT x.id FROM dependencias x JOIN amb ON x.ruta = amb.ruta OR (amb.incluye_subordinadas AND x.ruta LIKE amb.ruta || '%')
