@@ -47,7 +47,7 @@
                     <i class="bi bi-person-circle text-primary me-2"></i>
                     <span class="fw-semibold small text-dark me-2" sec:authentication="name">usuario</span>
                     <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2 py-1 align-middle" style="font-size: 0.7rem;" 
-                          th:text="${#strings.replace(#authentication.authorities[0].authority, 'ROLE_', '')}">
+                          th:text="${rolesUsuario}">
                         ROL
                     </span>
                 </div>
@@ -293,6 +293,20 @@
                             <i class="bi bi-alarm me-1"></i><span th:text="${slaCriticos}">0</span> con demora crítica
                         </span>
                     </div>
+                    <!-- 📥 Bandejas de trabajo por ámbito -->
+                    <div class="px-3 pt-2 pb-2 bg-white border-bottom">
+                        <ul class="nav nav-pills nav-sm gap-1 small">
+                            <li class="nav-item" th:each="b : ${bandejas}">
+                                <a th:href="@{/(bandeja=${b.name()},pagina=0)}"
+                                   th:class="${'nav-link py-1 px-3 rounded-pill ' + (b == bandejaActual ? 'active' : 'border')}">
+                                    <span th:text="${b.etiqueta}">Bandeja</span>
+                                    <span th:if="${contadoresBandejas[b.name()] != null}"
+                                          th:class="${'badge ms-1 ' + (b == bandejaActual ? 'bg-light text-dark' : 'bg-secondary')}"
+                                          th:text="${contadoresBandejas[b.name()]}">0</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
                             <table class="table table-hover align-middle mb-0">
@@ -398,6 +412,16 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                    <!-- Paginación de la bandeja -->
+                    <div th:if="${paginaBandeja != null && paginaBandeja.totalPages > 1}" class="card-footer bg-white d-flex justify-content-between align-items-center small">
+                        <span class="text-muted" th:text="${'Página ' + (paginaBandeja.number + 1) + ' de ' + paginaBandeja.totalPages + ' · ' + paginaBandeja.totalElements + ' expedientes'}">Página 1 de 1</span>
+                        <div class="btn-group btn-group-sm">
+                            <a th:classappend="${paginaBandeja.first} ? 'disabled'" class="btn btn-outline-secondary"
+                               th:href="@{/(bandeja=${bandejaActual.name()},pagina=${paginaBandeja.number - 1})}">‹ Anterior</a>
+                            <a th:classappend="${paginaBandeja.last} ? 'disabled'" class="btn btn-outline-secondary"
+                               th:href="@{/(bandeja=${bandejaActual.name()},pagina=${paginaBandeja.number + 1})}">Siguiente ›</a>
                         </div>
                     </div>
                 </div>

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.data.domain.Page;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -38,6 +39,7 @@ import py.gov.asuncion.tic.gestion_documental.repository.AdjuntoDocumentoReposit
 import py.gov.asuncion.tic.gestion_documental.repository.DocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 import py.gov.asuncion.tic.gestion_documental.service.ArchivoService;
+import py.gov.asuncion.tic.gestion_documental.service.BandejaService;
 import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
 import py.gov.asuncion.tic.gestion_documental.service.BiblioratoService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
@@ -78,6 +80,9 @@ public class HomeController {
 
     @Autowired
     private BiblioratoService biblioratoService;
+
+    @Autowired
+    private BandejaService bandejaService;
     
 
     /**
@@ -85,17 +90,32 @@ public class HomeController {
      */
 
     @GetMapping("/")
-    public String index(Model model) {
-        cargarPantallaPrincipal(model, getUsuarioAutenticado(), List.of());
+    public String index(@RequestParam(value = "bandeja", defaultValue = "TODOS") BandejaService.Bandeja bandeja,
+                        @RequestParam(value = "pagina", defaultValue = "0") int pagina,
+                        Model model) {
+        cargarPantallaPrincipal(model, getUsuarioAutenticado(), List.of(), bandeja, pagina);
         return "index";
     }
 
     // Datos comunes de la pantalla principal (bandejas, KPI, catálogos), para el inicio y la búsqueda
-    private void cargarPantallaPrincipal(Model model, Usuario usuario, List<Documento> resultadosBusqueda) {
+    private void cargarPantallaPrincipal(Model model, Usuario usuario, List<Documento> resultadosBusqueda,
+                                         BandejaService.Bandeja bandeja, int pagina) {
         model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
         model.addAttribute("usuarioLogueado", usuario);
+        model.addAttribute("rolesUsuario", politicaAcceso.descripcionRoles(usuario));
 
-        List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuario);
+        // 📥 Bandejas: "Todos" es la lista completa de antes; el resto, paginadas por ámbito
+        List<Documento> activos;
+        if (bandeja == BandejaService.Bandeja.TODOS || usuario == null) {
+            activos = documentoService.obtenerDocumentosActivosParaUsuario(usuario);
+        } else {
+            Page<Documento> paginaBandeja = bandejaService.listar(usuario, bandeja, pagina);
+            activos = paginaBandeja.getContent();
+            model.addAttribute("paginaBandeja", paginaBandeja);
+        }
+        model.addAttribute("bandejas", BandejaService.Bandeja.values());
+        model.addAttribute("bandejaActual", bandeja);
+        model.addAttribute("contadoresBandejas", usuario != null ? bandejaService.contadores(usuario) : java.util.Map.of());
         model.addAttribute("documentos", activos);
         agregarIndicadoresSla(model, activos, resultadosBusqueda);
         agregarDatosArchivo(model, usuario);
@@ -512,7 +532,7 @@ public class HomeController {
         model.addAttribute("paramFechaDesde", fechaDesde);
         model.addAttribute("paramFechaHasta", fechaHasta);
 
-        cargarPantallaPrincipal(model, usuarioLogueado, resultados);
+        cargarPantallaPrincipal(model, usuarioLogueado, resultados, BandejaService.Bandeja.TODOS, 0);
         return "index";
     }
 

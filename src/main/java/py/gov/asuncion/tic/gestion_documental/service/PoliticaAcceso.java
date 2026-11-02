@@ -63,6 +63,25 @@ public class PoliticaAcceso {
         }
     }
 
+    // Para mostrar junto al nombre del usuario: "Mesa de entrada · DTIC, Responsable · DTIC"
+    public String descripcionRoles(Usuario usuario) {
+        if (usuario == null || usuario.getId() == null) {
+            return "";
+        }
+        List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
+        if (vigentes.isEmpty()) {
+            return "Operador";
+        }
+        return vigentes.stream()
+                .map(a -> {
+                    String rol = a.getRol().name().replace('_', ' ').toLowerCase();
+                    String sigla = a.getDependenciaAmbito().getSigla();
+                    return Character.toUpperCase(rol.charAt(0)) + rol.substring(1) + (sigla != null ? " · " + sigla : "");
+                })
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
     public List<GrantedAuthority> autoridades(Usuario usuario) {
         return acciones(usuario).stream().<GrantedAuthority>map(a -> new SimpleGrantedAuthority(a.autoridad())).toList();
     }
