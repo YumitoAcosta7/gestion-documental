@@ -38,12 +38,11 @@ Otras propiedades relevantes:
 
 Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archivos no se versionan en git.
 
-**Migraciones de base de datos.** Como Hibernate solo valida el esquema, cada cambio de modelo viene con un script en `db/migraciones/`. Hay que aplicarlo (pgAdmin, DBeaver o `psql`) **antes** de iniciar la versión que lo requiere; los scripts son idempotentes.
+**Migraciones de base de datos (Flyway).** Como Hibernate solo valida el esquema, cada cambio de modelo viene con un script `V<n>__<descripcion>.sql` en `db/migraciones/`. Desde la V10, **Flyway los aplica solo al arrancar**: ejecuta en una transacción cada script que falte y lo registra en `flyway_schema_history`. Por eso los scripts no llevan `BEGIN`/`COMMIT` propios. Un script ya aplicado no se modifica; cada cambio nuevo va en el siguiente número. La base existente se tomó como línea base en la V6, porque V2 a V6 se aplicaron a mano. La consulta de verificación previa a V3 quedó en `db/verificaciones/`.
 
 | Script | Contenido |
 |---|---|
 | `V2__mejoras_operativas.sql` | Anulación lógica de actuaciones y versionado de adjuntos |
-| `V3__verificacion_previa.sql` | Consultas de solo lectura a ejecutar **antes** de V3 (todas deben devolver 0 filas) |
 | `V3__integridad_y_derivaciones.sql` | Historial no borrable (`RESTRICT`), `CHECK` de dominios, `requiere_informe`, unicidad de pases pendientes, tipos de clave corregidos |
 | `V4__roles_usuarios.sql` | Reasigna roles heredados (`JEFA_SECRETARIA`, `OPERADOR_MESA_ENTRADA`) a `SECRETARIA_ADMIN` y agrega el `CHECK` de rol |
 | `V5__biblioratos_informativos.sql` | Categoría del tipo documental (trámite/informativo), catálogo `biblioratos`, ubicación de cada documento (bibliorato + fojas) |
@@ -51,6 +50,9 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V7__limpieza_esquema.sql` | Elimina tablas heredadas vacías (`solicitudes_informes`, `historial_estados`, `movimientos_documento`) y la columna sin uso `documentos.usuario_registra_salida_id`. Se cancela si alguna tiene datos |
 | `V8__organigrama_y_asignaciones.sql` | Fase 2: sigla, `ruta` materializada (con trigger que la recalcula y rechaza ciclos), mesa de entrada y `recibe_externos` en `dependencias`; tabla `asignaciones` cargada desde los roles actuales |
 | `V9__organigrama_RI887.sql` | Organigrama completo (Res. N° 887/08-07-2026, 580 dependencias). **Generado** por `db/organigrama/ImportarOrganigrama.java` desde `db/organigrama/organigrama_RI887_2026.txt`: se corrige el .txt y se regenera, no se edita a mano |
+| `V10__asignaciones_director.sql` | Quien tenía el rol `DIRECTOR` recibe además `MESA_ENTRADA` en su ámbito, para conservar las acciones que tenía |
+
+**Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base, carpeta de PDF y serie de CUTI (`PRU-`) propias. La preparación está en `docs/ambiente-pruebas.md`.
 
 **Integridad de archivos (V6):** cada PDF guarda su huella SHA-256 al subirse. El botón *Verificar* (historial del PDF y modal *Versiones*) la compara con el archivo en disco. Se rechazan los PDF incompletos (sin `%%EOF`). Si la operación falla, el archivo escrito se elimina.
 
@@ -134,21 +136,26 @@ Nombres de tablas y columnas tal como están mapeados en las entidades JPA.
 
 ## 4. 👥 ROLES Y CONTROL DE ACCESO
 
-| Rol | Puede |
+Las acciones las decide un único componente, `PoliticaAcceso`, a partir de las **asignaciones vigentes hoy** (rol × ámbito × vigencia). Se recalculan en cada petición (`ActualizacionPermisosFilter`): una asignación nueva o una suplencia vencida rige sin volver a iniciar sesión. Spring Security las recibe como autoridades `PERMISO_<ACCION>`, que usan tanto las reglas por URL como los botones de la pantalla.
+
+| Rol de la asignación | Acciones |
 |---|---|
-| `DIRECTOR` | Todo: ingreso, salida, salida directa, acuse final, derivar, actuaciones, auditoría. Ve todos los expedientes. |
-| `SECRETARIA_ADMIN` | Igual que `DIRECTOR`. |
-| `JEFE_DEPTO` | Derivar a sus unidades hijas, registrar actuaciones, devolver, confirmar pases recibidos. |
-| `JEFE_UNIDAD` | Registrar actuaciones, devolver, confirmar pases recibidos. |
+| `MESA_ENTRADA` | Todas: ingreso, salida y acuse final (`REGISTRAR_SALIDA`), derivar, actuaciones, archivo físico y biblioratos, cierre forzado, auditoría, supervisar los pases de otras dependencias del ámbito |
+| `RESPONSABLE` | Derivar, actuaciones, cierre forzado, auditoría |
+| `OPERADOR` | Actuaciones: informes, memos, devoluciones, confirmar pases recibidos |
+| `ADMIN_SISTEMA` | Archivo físico y biblioratos, auditoría |
+| `CONSULTA` | Solo lectura |
+| (sin asignaciones vigentes) | Como `OPERADOR` de su propia dependencia |
+
+Un usuario con varias asignaciones suma sus acciones. `usuarios.rol` ya no se usa para autorizar; se conserva hasta retirarlo.
 
 **Acceso por ámbito** (`DocumentoService.puedeAccederDocumento`): cada usuario accede a los expedientes de su ámbito, es decir, de las dependencias que abarcan sus asignaciones vigentes hoy (con sus subordinadas, por la `ruta` del organigrama). Un expediente está en el ámbito si una de esas dependencias lo envió, lo registró, lo derivó o lo recibió. Sin asignaciones vigentes, el ámbito es solo la propia dependencia. Además, como antes, se accede a los expedientes en los que la propia dependencia emitió o recibió una actuación. Se aplica a bandejas, árbol, informes, PDF, acuses (HTTP 403), buscador, archivo físico, registrar actuación y derivar. Las asignaciones iniciales (V8): Director → `RESPONSABLE` de la Dirección de TIC; Secretaría → `MESA_ENTRADA` de la Dirección de TIC; jefes → `RESPONSABLE` de su dependencia.
 
 Reglas adicionales:
 - Solo se deriva a las dependencias que cuelgan directamente de los ámbitos de gestión del usuario (`MESA_ENTRADA` o `RESPONSABLE`); sin ellos, a las hijas de su propia dependencia. No hay IDs de dependencia escritos en el código.
-- Los permisos sobre acciones (ingreso, salida, acuse final, ubicación física) siguen dependiendo de `usuarios.rol` mientras convivan ambos modelos.
-- Solo la dependencia receptora confirma un pase (o Dirección/Secretaría).
+- Solo la dependencia receptora confirma un pase, salvo quien tenga `SUPERVISAR_PASES` (mesa de entrada).
 - El ingreso usa `NuevoDocumentoDTO`: el navegador no puede fijar CUTI, estado ni usuarios.
-- Los botones de la interfaz se muestran según el rol.
+- Los botones de la interfaz se muestran según las acciones habilitadas.
 
 ---
 
@@ -170,29 +177,29 @@ Reglas adicionales:
 
 ## 6. 🌐 ENDPOINTS (`HomeController`, `LoginController`)
 
-| Método y ruta | Descripción | Roles |
+| Método y ruta | Descripción | Permiso |
 |---|---|---|
 | `GET /login` | Formulario de acceso | Público |
 | `GET /` | Dashboard: KPIs, activos, salidas propias, finalizados | Autenticado |
 | `GET /documentos/buscar` | Buscador multicriterio (filtrado por acceso) | Autenticado |
-| `POST /documentos/guardar` | Ingreso de expediente | DIRECTOR, SECRETARIA_ADMIN |
-| `POST /documentos/derivar` | Derivación única o múltiple | DIRECTOR, SECRETARIA_ADMIN, JEFE_DEPTO |
-| `POST /documentos/devolver` | Devolución rápida | Autenticado (según pases recibidos) |
-| `POST /documentos/salida` | Salida exterior | DIRECTOR, SECRETARIA_ADMIN |
-| `POST /documentos/salida-directa` | Documento propio + salida | DIRECTOR, SECRETARIA_ADMIN |
-| `POST /documentos/confirmar-acuse` | Acuse final → `FINALIZADO` | DIRECTOR, SECRETARIA_ADMIN |
-| `POST /documentos/actuaciones/guardar` | Informe, memo, acta o providencia | Todos los roles |
+| `POST /documentos/guardar` | Ingreso de expediente | `REGISTRAR_INGRESO` |
+| `POST /documentos/derivar` | Derivación única o múltiple | `DERIVAR` |
+| `POST /documentos/devolver` | Devolución rápida | `REGISTRAR_ACTUACION` (según pases recibidos) |
+| `POST /documentos/salida` | Salida exterior | `REGISTRAR_SALIDA` |
+| `POST /documentos/salida-directa` | Documento propio + salida | `REGISTRAR_SALIDA` |
+| `POST /documentos/confirmar-acuse` | Acuse final → `FINALIZADO` | `REGISTRAR_SALIDA` |
+| `POST /documentos/actuaciones/guardar` | Informe, memo, acta o providencia | `REGISTRAR_ACTUACION` |
 | `POST /documentos/actuaciones/confirmar-pase` | Confirmar recepción de pase con PDF | Dependencia receptora |
 | `GET /documentos/actuaciones/{id}/pdf` | PDF de una actuación | Con acceso al expediente |
 | `GET /documentos/descargar-acuse/{documentoId}` | Último adjunto (acuse) del documento | Con acceso al expediente |
 | `GET /api/documentos/{id}/actuaciones` | JSON para el árbol de trazabilidad | Con acceso al expediente |
 | `GET /api/documentos/{id}/informes-disponibles` | JSON de informes/memos/providencias | Con acceso al expediente |
-| `GET /api/documentos/{id}/auditoria` | JSON de la bitácora | DIRECTOR, SECRETARIA_ADMIN |
+| `GET /api/documentos/{id}/auditoria` | JSON de la bitácora | `VER_AUDITORIA` |
 
 | `POST /documentos/actuaciones/anular-pase` | Retirar (emisor) o rechazar (receptor) un pase pendiente, con motivo | Dependencia emisora/receptora |
-| `POST /documentos/forzar-cierre` | Cierre excepcional de informes → `PENDIENTE_SALIDA`, con justificación | DIRECTOR, SECRETARIA_ADMIN |
-| `POST /documentos/actuaciones/reemplazar-pdf` | Nueva versión del PDF de una actuación | Dependencia que lo cargó, DIRECTOR, SECRETARIA_ADMIN |
-| `POST /documentos/reemplazar-acuse` | Nueva versión del acuse del expediente | DIRECTOR, SECRETARIA_ADMIN |
+| `POST /documentos/forzar-cierre` | Cierre excepcional de informes → `PENDIENTE_SALIDA`, con justificación | `FORZAR_CIERRE` |
+| `POST /documentos/actuaciones/reemplazar-pdf` | Nueva versión del PDF de una actuación | Dependencia que lo cargó o `SUPERVISAR_PASES` |
+| `POST /documentos/reemplazar-acuse` | Nueva versión del acuse del expediente | `REGISTRAR_SALIDA` |
 | `GET /documentos/adjuntos/{id}/pdf` | Descarga de una versión concreta (vigente o reemplazada) | Con acceso al expediente |
 | `GET /api/documentos/{id}/adjuntos` | JSON de versiones de los acuses del expediente | Con acceso al expediente |
 
@@ -233,8 +240,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - Probar en uso real el acuse final y la confirmación de pases con la nueva carpeta de PDF.
 - El modal de salida envía `tipoRemision` e `informeActuacionId` (legajo), pero todavía no se guardan.
 - Expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes (por ejemplo TIC-2026-000001) deben revisarse manualmente.
-- Fase 2, etapa 2.1 (`docs/diseno-fase2-multiarea.md` §10): hecho el organigrama completo, las asignaciones, la visibilidad por ámbito, la eliminación de los IDs fijos y el CUTI configurable. Falta: un único componente `PoliticaAcceso` para las acciones (hoy por `usuarios.rol`), Flyway y el ambiente de pruebas.
-- Pruebas automatizadas: 18 unitarias (`DiasHabilesTest`, `ValidacionFojasTest`, `ArchivoServiceTest`); faltan pruebas de integración con una base PostgreSQL propia (Testcontainers).
+- Fase 2, etapa 2.1 (`docs/diseno-fase2-multiarea.md` §10): completa en código. Están hechos el organigrama, las asignaciones, la visibilidad por ámbito, `PoliticaAcceso`, la eliminación de los IDs fijos, el CUTI configurable y Flyway. Falta crear la base de pruebas en el servidor (`docs/ambiente-pruebas.md`).
+- Pruebas automatizadas: 24 unitarias (`DiasHabilesTest`, `ValidacionFojasTest`, `ArchivoServiceTest`, `PoliticaAccesoTest`) y el arranque contra la base. Faltan pruebas de integración sobre la base de pruebas.
 - Feriados nacionales/municipales para el SLA (requiere una tabla de feriados).
 - Paginación de bandejas para grandes volúmenes (hoy se cargan todos los expedientes activos).
-- Adoptar Flyway para aplicar las migraciones de `db/migraciones` automáticamente.

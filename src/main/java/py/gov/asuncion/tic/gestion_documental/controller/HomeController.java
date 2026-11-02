@@ -25,6 +25,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import py.gov.asuncion.tic.gestion_documental.domain.Accion;
 import py.gov.asuncion.tic.gestion_documental.domain.ActuacionDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AdjuntoDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
@@ -38,6 +39,7 @@ import py.gov.asuncion.tic.gestion_documental.service.ArchivoService;
 import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
 import py.gov.asuncion.tic.gestion_documental.service.BiblioratoService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
+import py.gov.asuncion.tic.gestion_documental.service.PoliticaAcceso;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -53,6 +55,9 @@ public class HomeController {
 
     @Autowired
     private DocumentoService documentoService;
+
+    @Autowired
+    private PoliticaAcceso politicaAcceso;
 
     @Autowired
     private UsuarioRepository usuarioRepository;
@@ -433,7 +438,7 @@ public class HomeController {
     private void agregarDatosArchivo(Model model, Usuario usuario) {
         model.addAttribute("biblioratos", biblioratoService.listarActivos());
         model.addAttribute("documentosArchivo", documentoService.obtenerDocumentosArchivoParaUsuario(usuario, null));
-        if (documentoService.esRolAdministrativo(usuario)) {
+        if (politicaAcceso.puede(usuario, Accion.GESTIONAR_ARCHIVO)) {
             model.addAttribute("biblioratosTodos", biblioratoService.listarTodos());
             model.addAttribute("usoBiblioratos", biblioratoService.obtenerUso());
         }

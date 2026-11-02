@@ -5,10 +5,9 @@
 -- desde organigrama_RI887_2026.txt: no editar a mano; se corrige el .txt
 -- y se regenera. Requiere V8. Actualiza por id las dependencias ya
 -- cargadas (conservan su historial) y da de alta las nuevas, ubicando
--- a cada superior por su sigla. Idempotente.
+-- a cada superior por su sigla. Idempotente. Flyway la ejecuta en una
+-- sola transacción.
 -- =====================================================================
-
-BEGIN;
 
 -- Los ids actuales se cargaron a mano (1131, 1455...): la secuencia queda detrás del máximo
 SELECT setval('dependencias_id_seq', (SELECT MAX(id) FROM dependencias));
@@ -1589,5 +1588,3 @@ BEGIN
         RAISE EXCEPTION 'Quedaron dependencias sin sigla';
     END IF;
 END $$;
-
-COMMIT;

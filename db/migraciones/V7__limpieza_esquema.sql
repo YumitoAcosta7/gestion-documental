@@ -7,8 +7,6 @@
 -- Idempotente.
 -- =====================================================================
 
-BEGIN;
-
 DO $$
 DECLARE
     filas BIGINT;
@@ -36,4 +34,3 @@ DROP TABLE IF EXISTS historial_estados;
 DROP TABLE IF EXISTS movimientos_documento;
 ALTER TABLE documentos DROP COLUMN IF EXISTS usuario_registra_salida_id;
 
-COMMIT;

@@ -11,8 +11,6 @@
 -- No borra nada. Idempotente.
 -- =====================================================================
 
-BEGIN;
-
 -- ---------------------------------------------------------------------
 -- 1. Organigrama
 -- ---------------------------------------------------------------------
@@ -142,4 +140,3 @@ SELECT u.id,
  WHERE u.rol IN ('DIRECTOR', 'SECRETARIA_ADMIN', 'JEFE_DEPTO', 'JEFE_UNIDAD')
    AND NOT EXISTS (SELECT 1 FROM asignaciones x WHERE x.usuario_id = u.id);
 
-COMMIT;
