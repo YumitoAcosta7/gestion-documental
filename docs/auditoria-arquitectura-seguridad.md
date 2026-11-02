@@ -139,9 +139,10 @@ Además, rechazar una asignación activa idéntica (mismo usuario, rol y ámbito
 - Vincular cada respuesta a su pase, con `actuacion_padre_id` o, como mínimo, con fecha posterior al pase y misma receptora.
 - En el cierre excepcional, anular los pases pendientes con `tipo_anulacion = 'CIERRE_EXCEPCIONAL'`.
 
-**A5 — La bitácora no es realmente inmutable.** 🟡 **Corregido en el código (02/11/2026); falta un paso en el servidor.**
+**A5 — La bitácora no es realmente inmutable.** 🟡 **Corregido en la base de pruebas (02/11/2026); falta producción.**
 - V14 protege `auditorias_documento` contra UPDATE y DELETE, y las dos bitácoras contra `TRUNCATE`.
-- **Pendiente:** el cambio de dueño lo hace `postgres` con `db/seguridad/proteger_bitacoras.sh`, en cada base y después de aplicar V14.
+- **Base de pruebas (hecho):** `proteger_bitacoras.sh` dejó las dos bitácoras a nombre de `gestion_documental_bitacora`; la aplicación solo lee y agrega, y sigue registrando eventos con normalidad.
+- **Producción (pendiente):** arrancar la aplicación real (aplica V13 y V14) y correr `sudo -u postgres bash proteger_bitacoras.sh gestion_documental gestion_documental`.
 
 El trigger de `auditoria_sistema` frena `UPDATE` y `DELETE`, pero:
 - **no frena `TRUNCATE`**;
