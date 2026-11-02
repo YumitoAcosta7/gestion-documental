@@ -62,6 +62,11 @@
                     <i class="bi bi-plus-lg me-1"></i>Nueva Salida
                 </button>
 
+                <!-- Catálogo de biblioratos (Dirección / Secretaría) -->
+                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalBiblioratos">
+                    <i class="bi bi-archive me-1"></i>Biblioratos
+                </button>
+
                 <!-- Botón de Cerrar Sesión Compacto -->
                 <form th:action="@{/logout}" method="post" class="m-0">
                     <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-semibold" title="Cerrar Sesión">
@@ -126,7 +131,14 @@
                             <label class="form-label small fw-bold">Hasta</label>
                             <input type="date" class="form-control form-control-sm" name="fechaHasta" th:value="${paramFechaHasta}">
                         </div>
-                        <div class="col-12 text-end mt-2">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Bibliorato (ubicación física)</label>
+                            <select class="form-select form-select-sm" name="biblioratoId">
+                                <option value="">Todos los biblioratos...</option>
+                                <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion}" th:selected="${paramBiblioratoId == b.id}"></option>
+                            </select>
+                        </div>
+                        <div class="col-md-8 text-end align-self-end">
                             <a th:href="@{/}" class="btn btn-sm btn-outline-secondary me-1"><i class="bi bi-x-circle me-1"></i>Limpiar Filtros</a>
                             <button type="submit" class="btn btn-sm btn-primary px-4 fw-bold"><i class="bi bi-search me-1"></i>Buscar</button>
                         </div>
@@ -200,6 +212,11 @@
                     <i class="bi bi-check-circle-fill me-2 text-success"></i>Historial de Finalizados
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link px-4" id="archivo-tab" data-bs-toggle="tab" data-bs-target="#archivo-pane" type="button" role="tab">
+                    <i class="bi bi-archive-fill me-2 text-secondary"></i>Archivo físico
+                </button>
+            </li>
             <li class="nav-item" role="presentation" th:if="${esBusqueda != null && esBusqueda}">
                 <button class="nav-link active px-4 text-primary fw-bold" id="resultados-tab" data-bs-toggle="tab" data-bs-target="#resultados-pane" type="button" role="tab">
                     <i class="bi bi-funnel-fill me-2"></i>Resultados de Búsqueda (<span th:text="${#lists.size(documentosResultados)}">0</span>)
@@ -238,7 +255,14 @@
                                         <td th:text="${doc.dependenciaOrigen?.nombre}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
-                                        <td th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</td>
+                                        <td th:with="ind=${sla != null ? sla[doc.id] : null}">
+                                            <span class="d-block" th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</span>
+                                            <!-- ⏱️ Días hábiles sin movimiento (amarillo: advertencia, rojo: crítico) -->
+                                            <span th:if="${ind != null}"
+                                                  th:class="${ind.nivel() == 'CRITICO' ? 'badge bg-danger' : (ind.nivel() == 'ADVERTENCIA' ? 'badge bg-warning text-dark' : 'badge bg-light text-muted border')}"
+                                                  th:text="${ind.diasHabiles() + (ind.diasHabiles() == 1 ? ' día' : ' días') + ' sin movimiento'}"
+                                                  title="Días hábiles desde el último movimiento del expediente">0 días</span>
+                                        </td>
                                         <td class="text-center">
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
                                                 <i class="bi bi-clock-history"></i> Historial
@@ -258,8 +282,11 @@
             <!-- PESTAÑA 1: TRÁMITES ACTIVOS -->
             <div th:class="${esBusqueda != null && esBusqueda ? 'tab-pane fade' : 'tab-pane fade show active'}" id="activos-pane" role="tabpanel">
                 <div class="card border-0 shadow-sm rounded-3">
-                    <div class="card-header bg-white py-3">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                         <h5 class="fw-bold text-secondary m-0">Trámites en Curso</h5>
+                        <span th:if="${slaCriticos != null && slaCriticos > 0}" class="badge bg-danger fs-6">
+                            <i class="bi bi-alarm me-1"></i><span th:text="${slaCriticos}">0</span> con demora crítica
+                        </span>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -290,7 +317,14 @@
                                         <td th:text="${doc.dependenciaOrigen?.nombre}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
-                                        <td th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</td>
+                                        <td th:with="ind=${sla != null ? sla[doc.id] : null}">
+                                            <span class="d-block" th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</span>
+                                            <!-- ⏱️ Días hábiles sin movimiento (amarillo: advertencia, rojo: crítico) -->
+                                            <span th:if="${ind != null}"
+                                                  th:class="${ind.nivel() == 'CRITICO' ? 'badge bg-danger' : (ind.nivel() == 'ADVERTENCIA' ? 'badge bg-warning text-dark' : 'badge bg-light text-muted border')}"
+                                                  th:text="${ind.diasHabiles() + (ind.diasHabiles() == 1 ? ' día' : ' días') + ' sin movimiento'}"
+                                                  title="Días hábiles desde el último movimiento del expediente">0 días</span>
+                                        </td>
                                         <td class="text-center">
                                             <div class="btn-group" role="group">
                                                 <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalAgregarActuacion" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
@@ -338,6 +372,16 @@
                                                         th:data-doc-cuti="${doc.codigoCuti}"
                                                         th:title="${doc.fechaHoraSalida == null ? 'Primero debe registrar la salida física con el mensajero' : 'Subir acuse final firmado'}">
                                                     <i class="bi bi-file-earmark-check"></i> Confirmar Acuse
+                                                </button>
+
+                                                <!-- BOTÓN CIERRE EXCEPCIONAL (solo Dirección / Secretaría) -->
+                                                <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button"
+                                                        th:if="${doc.estadoActual.name() != 'PENDIENTE_SALIDA' and doc.estadoActual.name() != 'FINALIZADO'}"
+                                                        class="btn btn-sm btn-outline-danger rounded-pill px-2 me-1"
+                                                        data-bs-toggle="modal" data-bs-target="#modalForzarCierre"
+                                                        th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"
+                                                        title="Cerrar informes y pasar a salida sin esperar todas las respuestas">
+                                                    <i class="bi bi-exclamation-octagon"></i> Cierre excepcional
                                                 </button>
                                             </div>
                                         </td>
@@ -429,7 +473,11 @@
                                         <td><span class="badge bg-success" th:text="${doc.nroNotaSalida != null ? doc.nroNotaSalida : 'S/N'}">120/2026</span></td>
                                         <td th:text="${doc.dependenciaOrigen.nombre}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
-                                        <td><span class="badge bg-secondary" th:text="${doc.ubicacionBibliorato != null ? doc.ubicacionBibliorato : 'No especificado'}">BIB-2026</span></td>
+                                        <td>
+                                            <span th:if="${doc.ubicacionTexto != null}" class="small" th:text="${doc.ubicacionTexto}">BIB-2026</span>
+                                            <span th:if="${doc.bibliorato != null}" class="d-block small text-muted"><i class="bi bi-geo-alt"></i> <span th:text="${doc.bibliorato.ubicacionFisica}">Armario</span></span>
+                                            <span th:if="${doc.ubicacionTexto == null}" class="badge bg-light text-muted border">Sin ubicación</span>
+                                        </td>
                                         <td th:text="${doc.fechaHoraSalida != null ? #temporals.format(doc.fechaHoraSalida, 'dd/MM/yyyy HH:mm') : '-'}">03/08/2026 15:00</td>
                                         <td class="text-center">
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
@@ -437,6 +485,10 @@
                                             </button>
                                             <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría">
                                                 <i class="bi bi-shield-check"></i> Auditoría
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1 btn-ver-adjuntos"
+                                                    th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Versiones del acuse y adjuntos">
+                                                <i class="bi bi-files"></i> Versiones
                                             </button>
                                             <a th:href="@{/documentos/descargar-acuse/{id}(id=${doc.id})}" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
                                                 <i class="bi bi-file-pdf me-1"></i> Acuse Final
@@ -450,6 +502,177 @@
                 </div>
             </div>
 
+            <!-- PESTAÑA 4: ARCHIVO FÍSICO (biblioratos) -->
+            <div class="tab-pane fade" id="archivo-pane" role="tabpanel">
+                <div class="card border-0 shadow-sm rounded-3">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="fw-bold text-secondary m-0"><i class="bi bi-archive-fill me-2"></i>Documentos en biblioratos</h5>
+                        <select id="filtroBibliorato" class="form-select form-select-sm w-auto">
+                            <option value="">Todos los biblioratos</option>
+                            <option value="sin">Sin ubicación física</option>
+                            <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion}"></option>
+                        </select>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="tablaArchivo">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Cód. CUTI</th>
+                                        <th>Tipo</th>
+                                        <th>Asunto</th>
+                                        <th>Bibliorato</th>
+                                        <th>Ubicación física</th>
+                                        <th>Fojas</th>
+                                        <th>Estado</th>
+                                        <th class="text-center">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr th:each="doc : ${documentosArchivo}" th:attr="data-bibliorato=${doc.bibliorato != null ? doc.bibliorato.id : 'sin'}">
+                                        <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</td>
+                                        <td>
+                                            <span class="badge bg-secondary" th:text="${doc.tipoDocumento?.nombre}">Circular</span>
+                                            <span th:if="${doc.tipoDocumento != null && doc.tipoDocumento.informativo}" class="badge bg-info-subtle text-info-emphasis border">Informativo</span>
+                                        </td>
+                                        <td th:text="${doc.asunto}">Asunto</td>
+                                        <td>
+                                            <span th:if="${doc.bibliorato != null}">
+                                                <strong th:text="${doc.bibliorato.codigo}">BIB</strong>
+                                                <span class="d-block small text-muted" th:text="${doc.bibliorato.descripcion}">Descripción</span>
+                                            </span>
+                                            <span th:if="${doc.bibliorato == null}" class="badge bg-warning text-dark">Sin ubicación</span>
+                                        </td>
+                                        <td class="small" th:text="${doc.bibliorato != null ? doc.bibliorato.ubicacionFisica : '-'}">Armario 2</td>
+                                        <td class="small" th:text="${doc.fojaDesde == null ? '-' : (doc.fojaDesde == doc.fojaHasta ? doc.fojaDesde : doc.fojaDesde + '–' + doc.fojaHasta)}">12–14</td>
+                                        <td><span class="badge bg-secondary" th:text="${doc.estadoActual}">ARCHIVADO</span></td>
+                                        <td class="text-center text-nowrap">
+                                            <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Historial">
+                                                <i class="bi bi-clock-history"></i>
+                                            </button>
+                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1"
+                                                    data-bs-toggle="modal" data-bs-target="#modalUbicacion"
+                                                    th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" th:data-tiene-ubicacion="${doc.ubicacionTexto != null}"
+                                                    title="Registrar o cambiar ubicación física">
+                                                <i class="bi bi-geo-alt"></i>
+                                            </button>
+                                            <button sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR', 'JEFE_DEPTO')" type="button"
+                                                    th:if="${doc.estadoActual.name() == 'ARCHIVADO'}"
+                                                    class="btn btn-sm btn-outline-primary rounded-pill px-2"
+                                                    data-bs-toggle="modal" data-bs-target="#modalDerivar"
+                                                    th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" data-informativo="true"
+                                                    title="Difundir para conocimiento">
+                                                <i class="bi bi-megaphone"></i> Difundir
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr th:if="${#lists.isEmpty(documentosArchivo)}">
+                                        <td colspan="8" class="text-center py-4 text-muted">
+                                            <i class="bi bi-archive fs-2 d-block mb-2"></i> Todavía no hay documentos guardados en biblioratos.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MODAL UBICACIÓN FÍSICA (Dirección / Secretaría) -->
+    <div class="modal fade" id="modalUbicacion" tabindex="-1">
+        <div class="modal-dialog">
+            <form th:action="@{/documentos/ubicacion}" method="post">
+                <input type="hidden" name="documentoId" id="ubicacionDocId" />
+                <div class="modal-content">
+                    <div class="modal-header bg-secondary text-white">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-geo-alt me-2"></i>Ubicación física <span id="labelCutiUbicacion" class="text-warning"></span></h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Bibliorato <span class="text-danger">*</span></label>
+                            <select name="biblioratoId" class="form-select form-select-sm" required>
+                                <option value="" disabled selected>Seleccione...</option>
+                                <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion + ' (' + b.ubicacionFisica + ')'}"></option>
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col"><label class="form-label small fw-bold">Foja desde</label><input type="number" min="1" name="fojaDesde" class="form-control form-control-sm"></div>
+                            <div class="col"><label class="form-label small fw-bold">Foja hasta</label><input type="number" min="1" name="fojaHasta" class="form-control form-control-sm"></div>
+                        </div>
+                        <div id="bloqueMotivoUbicacion">
+                            <label class="form-label small fw-bold">Motivo del traslado <span class="text-danger">*</span></label>
+                            <input type="text" name="motivo" class="form-control form-control-sm" minlength="10" placeholder="Ej: Se reorganizó el archivo 2026">
+                            <div class="form-text">Obligatorio cuando el documento ya tenía ubicación: queda en la auditoría.</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm fw-bold">Guardar ubicación</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL CATÁLOGO DE BIBLIORATOS (Dirección / Secretaría) -->
+    <div class="modal fade" id="modalBiblioratos" tabindex="-1" sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-archive me-2"></i>Catálogo de biblioratos</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle small">
+                            <thead class="table-light">
+                                <tr><th>Código</th><th>Descripción</th><th>Dependencia</th><th>Año</th><th>Ubicación física</th><th>Uso</th><th>Estado</th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                <tr th:each="b : ${biblioratosTodos}" th:with="uso=${usoBiblioratos != null ? usoBiblioratos[b.id] : null}" th:classappend="${!b.activo} ? 'text-muted'">
+                                    <td class="fw-bold" th:text="${b.codigo}">BIB</td>
+                                    <td th:text="${b.descripcion}">Desc</td>
+                                    <td th:text="${b.dependencia.nombre}">Dep</td>
+                                    <td th:text="${b.anio}">2026</td>
+                                    <td th:text="${b.ubicacionFisica}">Armario</td>
+                                    <td th:text="${(uso != null ? uso[0] : 0) + ' doc. · última foja ' + (uso != null ? uso[1] : 0) + (b.capacidadFojas != null ? ' de ' + b.capacidadFojas : '')}">0 doc.</td>
+                                    <td><span th:class="${b.activo ? 'badge bg-success' : 'badge bg-secondary'}" th:text="${b.activo ? 'Abierto' : 'Cerrado'}">Abierto</span></td>
+                                    <td>
+                                        <form th:action="@{/biblioratos/{id}/estado(id=${b.id})}" method="post" class="m-0">
+                                            <input type="hidden" name="activo" th:value="${!b.activo}">
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm py-0" th:text="${b.activo ? 'Cerrar' : 'Reabrir'}">Cerrar</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <tr th:if="${biblioratosTodos == null || #lists.isEmpty(biblioratosTodos)}">
+                                    <td colspan="8" class="text-center text-muted py-3">Todavía no hay biblioratos registrados.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <form th:action="@{/biblioratos/guardar}" method="post" class="border rounded p-3 bg-light">
+                        <div class="fw-bold small mb-2"><i class="bi bi-plus-lg me-1"></i>Nuevo bibliorato</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><input type="text" name="codigo" class="form-control form-control-sm text-uppercase" required pattern="[A-Za-z0-9][A-Za-z0-9\-]{2,29}" placeholder="Código (BIB-DTIC-2026-001)"></div>
+                            <div class="col-md-5"><input type="text" name="descripcion" class="form-control form-control-sm" required maxlength="150" placeholder="Descripción (Circulares recibidas 2026 - Tomo 1)"></div>
+                            <div class="col-md-2"><input type="number" name="anio" class="form-control form-control-sm" required min="2000" max="2100" th:value="${#temporals.year(#temporals.createNow())}"></div>
+                            <div class="col-md-2"><input type="number" name="capacidadFojas" class="form-control form-control-sm" min="1" placeholder="Capacidad (fojas)"></div>
+                            <div class="col-md-5">
+                                <select name="dependenciaId" class="form-select form-select-sm" required>
+                                    <option value="" disabled selected>Dependencia responsable...</option>
+                                    <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
+                                </select>
+                            </div>
+                            <div class="col-md-5"><input type="text" name="ubicacionFisica" class="form-control form-control-sm" required maxlength="150" placeholder="Ubicación física (Archivo DTIC · Armario 2 · Estante 3)"></div>
+                            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Crear</button></div>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -825,6 +1048,117 @@
         </div>
     </div>
 
+    <!-- MODAL CIERRE EXCEPCIONAL DE INFORMES (Dirección / Secretaría) -->
+    <div class="modal fade" id="modalForzarCierre" tabindex="-1">
+        <div class="modal-dialog">
+            <form th:action="@{/documentos/forzar-cierre}" method="post">
+                <input type="hidden" name="documentoId" id="forzarCierreDocId" />
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-octagon me-2"></i>Cierre excepcional <span id="labelCutiForzar" class="text-warning"></span></h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-warning small py-2">
+                            El expediente pasará a <strong>PENDIENTE_SALIDA</strong> sin esperar los informes que falten.
+                            Las dependencias sin respuesta quedarán registradas en el historial y en la auditoría.
+                        </div>
+                        <label class="form-label small fw-bold">Justificación <span class="text-danger">*</span></label>
+                        <textarea name="justificacion" class="form-control" rows="3" required minlength="20"
+                                  placeholder="Ej: Plazo vencido según Res. N° ... / Instrucción de la Dirección del ..."></textarea>
+                        <div class="form-text">Mínimo 20 caracteres. Queda en la bitácora de auditoría.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger btn-sm fw-bold">Confirmar cierre excepcional</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL RETIRAR / RECHAZAR PASE -->
+    <div class="modal fade" id="modalAnularPase" tabindex="-1">
+        <div class="modal-dialog">
+            <form th:action="@{/documentos/actuaciones/anular-pase}" method="post">
+                <input type="hidden" name="actuacionId" id="anularPaseActuacionId" />
+                <input type="hidden" name="accion" id="anularPaseAccion" />
+                <div class="modal-content">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title fw-bold" id="anularPaseTitulo">Retirar pase</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="small text-muted" id="anularPaseAyuda"></p>
+                        <label class="form-label small fw-bold">Motivo <span class="text-danger">*</span></label>
+                        <textarea name="motivo" class="form-control" rows="3" required minlength="10"
+                                  placeholder="Ej: Derivado por error, corresponde al Dpto. de Redes"></textarea>
+                        <div class="form-text">El pase no se borra: queda tachado en el historial con este motivo.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-warning btn-sm fw-bold">Confirmar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL REEMPLAZAR PDF DE UNA ACTUACIÓN -->
+    <div class="modal fade" id="modalReemplazarPdf" tabindex="-1">
+        <div class="modal-dialog">
+            <form th:action="@{/documentos/actuaciones/reemplazar-pdf}" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="actuacionId" id="reemplazarPdfActuacionId" />
+                <div class="modal-content">
+                    <div class="modal-header bg-secondary text-white">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-arrow-repeat me-2"></i>Reemplazar PDF</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="small text-muted">La versión actual no se borra: queda en el historial marcada como <strong>reemplazada</strong>.</p>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Nuevo PDF <span class="text-danger">*</span></label>
+                            <input type="file" name="archivo" class="form-control form-control-sm" accept="application/pdf" required>
+                        </div>
+                        <label class="form-label small fw-bold">Motivo del reemplazo <span class="text-danger">*</span></label>
+                        <textarea name="motivo" class="form-control" rows="2" required minlength="10"
+                                  placeholder="Ej: Se escaneó la página equivocada"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm fw-bold">Subir nueva versión</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL VERSIONES DEL ACUSE / ADJUNTOS DEL EXPEDIENTE -->
+    <div class="modal fade" id="modalAdjuntos" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-files me-2"></i>Acuses y adjuntos <span id="labelCutiAdjuntos" class="text-warning"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="contenedorAdjuntos" class="mb-3"></div>
+                    <form sec:authorize="hasAnyRole('SECRETARIA_ADMIN', 'DIRECTOR')"
+                          th:action="@{/documentos/reemplazar-acuse}" method="post" enctype="multipart/form-data"
+                          class="border rounded p-3 bg-light">
+                        <input type="hidden" name="documentoId" id="adjuntosDocId" />
+                        <div class="fw-bold small mb-2"><i class="bi bi-arrow-repeat me-1"></i>Reemplazar el acuse vigente</div>
+                        <div class="row g-2">
+                            <div class="col-md-5"><input type="file" name="archivo" class="form-control form-control-sm" accept="application/pdf" required></div>
+                            <div class="col-md-5"><input type="text" name="motivo" class="form-control form-control-sm" required minlength="10" placeholder="Motivo del reemplazo"></div>
+                            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100">Subir</button></div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Confirmar Acuse Final -->
     <div class="modal fade" id="modalConfirmarAcuse" tabindex="-1">
         <div class="modal-dialog">
@@ -866,10 +1200,15 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Tipo de Documento</label>
-                                <select class="form-select form-select-sm" th:field="*{tipoDocumentoId}" required>
+                                <select class="form-select form-select-sm" th:field="*{tipoDocumentoId}" id="ingresoTipo" required onchange="ajustarIngresoPorTipo()">
                                     <option value="" disabled selected>Seleccione...</option>
-                                    <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}" th:text="${tipo.nombre}"></option>
+                                    <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}"
+                                            th:text="${tipo.nombre + (tipo.informativo ? ' (informativo)' : '')}"
+                                            th:attr="data-informativo=${tipo.informativo},data-requiere-bibliorato=${tipo.requiereBibliorato}"></option>
                                 </select>
+                                <div id="avisoInformativo" class="form-text text-primary d-none">
+                                    <i class="bi bi-info-circle"></i> Documento informativo: se registra y queda <strong>archivado</strong> directamente, sin circuito de derivaciones.
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">N° Documento Origen</label>
@@ -905,6 +1244,22 @@
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Asunto / Extracto del Documento</label>
                                 <textarea class="form-control form-control-sm" th:field="*{asunto}" rows="3" required placeholder="Resumen del documento..."></textarea>
+                            </div>
+                            <!-- 📚 Ubicación física -->
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Bibliorato <span id="biblioratoObligatorio" class="text-danger d-none">*</span></label>
+                                <select class="form-select form-select-sm" th:field="*{biblioratoId}" id="ingresoBibliorato">
+                                    <option value="">Sin archivar todavía</option>
+                                    <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion}"></option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Foja desde</label>
+                                <input type="number" min="1" class="form-control form-control-sm" th:field="*{fojaDesde}" placeholder="Ej: 12">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Foja hasta</label>
+                                <input type="number" min="1" class="form-control form-control-sm" th:field="*{fojaHasta}" placeholder="Ej: 14">
                             </div>
                         </div>
                     </div>
@@ -999,15 +1354,90 @@
             modalDevolver.show();
         }
 
+        // Ingreso: los tipos informativos se archivan directamente y pueden exigir bibliorato
+        function ajustarIngresoPorTipo() {
+            const sel = document.getElementById('ingresoTipo');
+            if (!sel) return;
+            const opcion = sel.selectedOptions[0];
+            const informativo = opcion && opcion.getAttribute('data-informativo') === 'true';
+            const requiere = opcion && opcion.getAttribute('data-requiere-bibliorato') === 'true';
+            document.getElementById('avisoInformativo').classList.toggle('d-none', !informativo);
+            document.getElementById('biblioratoObligatorio').classList.toggle('d-none', !requiere);
+            document.getElementById('ingresoBibliorato').required = requiere;
+        }
+
+        // Abre un modal desde el árbol de trazabilidad (cierra primero el árbol)
+        function abrirDesdeArbol(idModal) {
+            bootstrap.Modal.getInstance(document.getElementById('modalHistorial'))?.hide();
+            new bootstrap.Modal(document.getElementById(idModal)).show();
+        }
+
+        function abrirModalAnularPase(actuacionId, accion) {
+            document.getElementById('anularPaseActuacionId').value = actuacionId;
+            document.getElementById('anularPaseAccion').value = accion;
+            const retirar = accion === 'RETIRAR';
+            document.getElementById('anularPaseTitulo').textContent = retirar ? 'Retirar derivación' : 'Rechazar recepción';
+            document.getElementById('anularPaseAyuda').textContent = retirar
+                ? 'El pase se anula y el expediente deja de figurar en la bandeja de la dependencia destino.'
+                : 'Su dependencia no recibirá el expediente. La dependencia que lo envió verá el rechazo y el motivo.';
+            abrirDesdeArbol('modalAnularPase');
+        }
+
+        function abrirModalReemplazarPdf(actuacionId) {
+            document.getElementById('reemplazarPdfActuacionId').value = actuacionId;
+            abrirDesdeArbol('modalReemplazarPdf');
+        }
+
+        // 🔐 Verifica la integridad de un adjunto y muestra el resultado junto al botón
+        async function verificarIntegridad(adjuntoId, boton) {
+            boton.disabled = true;
+            boton.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            try {
+                const res = await fetch(`/api/adjuntos/${adjuntoId}/integridad`);
+                if (!res.ok) throw new Error(res.status === 403 ? 'Sin acceso' : 'Error ' + res.status);
+                const r = await res.json();
+                const estilos = {INTEGRO: ['bg-success', '✔ Íntegro'], ALTERADO: ['bg-danger', '✖ Alterado'],
+                                 FALTANTE: ['bg-danger', '✖ Falta el archivo'], SIN_HUELLA: ['bg-secondary', 'Sin huella']};
+                const [clase, texto] = estilos[r.estado] || ['bg-secondary', r.estado];
+                boton.outerHTML = `<span class="badge ${clase}" title="${esc(r.detalle)}">${texto}</span>`;
+            } catch (e) {
+                boton.outerHTML = `<span class="badge bg-warning text-dark">${esc(e.message)}</span>`;
+            }
+        }
+
+        function botonVerificar(adjuntoId) {
+            return `<button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" onclick="verificarIntegridad(${adjuntoId}, this)" title="Comprobar que el archivo no fue alterado"><i class="bi bi-shield-check"></i> Verificar</button>`;
+        }
+
+        // Lista de versiones de un PDF (vigente y reemplazadas)
+        function renderizarVersiones(versiones) {
+            if (!versiones || versiones.length === 0) return '';
+            const titulo = versiones.length === 1 ? 'Integridad del PDF' : `Historial del PDF (${versiones.length} versiones)`;
+            let html = `<details class="mt-2 small"><summary class="text-muted">${titulo}</summary><ul class="list-unstyled ms-2 mt-1 mb-0">`;
+            versiones.slice().reverse().forEach(v => {
+                html += `<li class="mb-1">
+                    <a href="/documentos/adjuntos/${v.id}/pdf" target="_blank"><i class="bi bi-file-pdf"></i> ${esc(v.nombre)}</a>
+                    <span class="badge ${v.vigente ? 'bg-success' : 'bg-secondary'} ms-1">${v.vigente ? 'Vigente' : 'Reemplazada'}</span>
+                    <span class="text-muted">· ${esc(v.fecha)} · ${esc(v.usuario)}</span>
+                    ${botonVerificar(v.id)}
+                    ${v.motivoReemplazo ? `<div class="text-muted fst-italic ms-3">Motivo: ${esc(v.motivoReemplazo)}</div>` : ''}
+                </li>`;
+            });
+            return html + '</ul></details>';
+        }
+
         // Función recursiva para dibujar los nodos del árbol
         function renderizarNodoArbol(nodo, docId) {
             const esPaseInterno = nodo.tipoActuacion === 'PASE_INTERNO' || nodo.tipoActuacion === 'PASE_PENDIENTE_ACUSE';
-            const esPendiente = esPaseInterno && !nodo.paseConfirmado;
+            const esPendiente = esPaseInterno && !nodo.paseConfirmado && !nodo.anulada;
 
             let badgeColor = 'bg-success';
             let estadoTexto = nodo.tipoActuacion;
 
-            if (esPendiente) {
+            if (nodo.anulada) {
+                badgeColor = 'bg-secondary text-decoration-line-through';
+                estadoTexto = nodo.tipoAnulacion === 'RECHAZADO' ? '✖ RECEPCIÓN RECHAZADA' : '✖ PASE RETIRADO';
+            } else if (esPendiente) {
                 badgeColor = 'bg-warning text-dark';
                 estadoTexto = '🟡 PASE EN TRÁNSITO (PENDIENTE DE ACUSE)';
             } else if (esPaseInterno) {
@@ -1022,11 +1452,37 @@
             } else if (nodo.tipoActuacion === 'DEVOLUCION') {
                 badgeColor = 'bg-warning text-dark';
                 estadoTexto = '↩️ DEVOLUCIÓN';
+            } else if (nodo.tipoActuacion === 'CIERRE_EXCEPCIONAL') {
+                badgeColor = 'bg-danger';
+                estadoTexto = '⚠️ CIERRE EXCEPCIONAL';
             }
+
+            // Acciones disponibles para el usuario actual (calculadas en el servidor)
+            let acciones = '';
+            if (nodo.pdf) {
+                acciones += `<a href="/documentos/actuaciones/${nodo.id}/pdf" target="_blank" class="btn btn-outline-danger btn-sm py-0"><i class="bi bi-file-pdf me-1"></i>Ver PDF</a>`;
+                if (nodo.puedeReemplazarPdf) {
+                    acciones += `<button type="button" class="btn btn-outline-secondary btn-sm py-0" onclick="abrirModalReemplazarPdf(${nodo.id})" title="Subir una versión corregida"><i class="bi bi-arrow-repeat"></i></button>`;
+                }
+            } else if (esPendiente) {
+                acciones += `<button type="button" class="btn btn-warning btn-sm py-0 fw-bold" onclick="abrirModalConfirmarPase(${nodo.id})"><i class="bi bi-upload me-1"></i>Subir Acuse</button>`;
+            } else {
+                acciones += '<span class="badge bg-light text-muted border">Sin PDF</span>';
+            }
+            if (nodo.puedeRetirar) {
+                acciones += `<button type="button" class="btn btn-outline-warning btn-sm py-0" onclick="abrirModalAnularPase(${nodo.id}, 'RETIRAR')" title="Retirar derivación enviada por error"><i class="bi bi-x-circle me-1"></i>Retirar</button>`;
+            }
+            if (nodo.puedeRechazar) {
+                acciones += `<button type="button" class="btn btn-outline-danger btn-sm py-0" onclick="abrirModalAnularPase(${nodo.id}, 'RECHAZAR')" title="No corresponde a su dependencia"><i class="bi bi-hand-thumbs-down me-1"></i>Rechazar</button>`;
+            }
+
+            const detalleAnulacion = nodo.anulada
+                ? `<div class="small text-danger mb-2"><i class="bi bi-info-circle me-1"></i>${nodo.tipoAnulacion === 'RECHAZADO' ? 'Rechazado' : 'Retirado'} el ${esc(nodo.fechaAnulacion)}: ${esc(nodo.motivoAnulacion)}</div>`
+                : '';
 
             let html = `
                 <div class="tree-node">
-                    <div class="tree-card p-3">
+                    <div class="tree-card p-3 ${nodo.anulada ? 'opacity-75 bg-light' : ''}">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <div>
                                 <span class="badge ${badgeColor} me-2">${esc(estadoTexto)} ${nodo.numeroActuacion && nodo.numeroActuacion !== 'S/N' ? 'N° ' + esc(nodo.numeroActuacion) : ''}</span>
@@ -1034,19 +1490,13 @@
                             </div>
                             <small class="text-muted"><i class="bi bi-clock me-1"></i>${esc(nodo.fecha)}</small>
                         </div>
-                        <p class="small text-secondary mb-2 mt-1">${esc(nodo.descripcion)}</p>
-                        <div class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
+                        <p class="small text-secondary mb-2 mt-1 ${nodo.anulada ? 'text-decoration-line-through' : ''}">${esc(nodo.descripcion)}</p>
+                        ${detalleAnulacion}
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 bg-light p-2 rounded">
                             <small class="text-muted"><i class="bi bi-journal-bookmark me-1"></i>Bibliorato: <strong>${esc(nodo.bibliorato)}</strong></small>
-                            
-                            <div class="btn-group">
-                                ${nodo.pdf 
-                                    ? `<a href="/documentos/actuaciones/${nodo.id}/pdf" target="_blank" class="btn btn-xs btn-outline-danger btn-sm py-0"><i class="bi bi-file-pdf me-1"></i>Ver PDF</a>` 
-                                    : (esPendiente 
-                                        ? `<button type="button" class="btn btn-xs btn-warning btn-sm py-0 fw-bold" onclick="abrirModalConfirmarPase(${nodo.id})"><i class="bi bi-upload me-1"></i>Subir Acuse</button>` 
-                                        : '<span class="badge bg-light text-muted border">Sin PDF</span>')
-                                }
-                            </div>
+                            <div class="btn-group">${acciones}</div>
                         </div>
+                        ${renderizarVersiones(nodo.versiones)}
                     </div>
             `;
 
@@ -1063,6 +1513,22 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+
+            // 📎 Validación inmediata de los PDF elegidos (tamaño y extensión), antes de subirlos
+            const TAMANIO_MAXIMO_PDF = 20 * 1024 * 1024;
+            document.querySelectorAll('input[type="file"]').forEach(input => {
+                input.addEventListener('change', function () {
+                    const archivo = this.files[0];
+                    this.setCustomValidity('');
+                    if (!archivo) return;
+                    if (!archivo.name.toLowerCase().endsWith('.pdf')) {
+                        this.setCustomValidity('Solo se aceptan archivos PDF.');
+                    } else if (archivo.size > TAMANIO_MAXIMO_PDF) {
+                        this.setCustomValidity(`El archivo pesa ${(archivo.size / 1048576).toFixed(1)} MB y el máximo es 20 MB. Reduzca la resolución del escaneo o divida el documento.`);
+                    }
+                    this.reportValidity();
+                });
+            });
 
             // PROTECCIÓN ANTI DOBLE-CLIC EN TODOS LOS FORMULARIOS
             document.querySelectorAll('form').forEach(form => {
@@ -1139,9 +1605,44 @@
                         document.getElementById('selectDestinoUnico').selectedIndex = 0;
                         modalDerivar.querySelectorAll('.check-dependencia').forEach(c => c.checked = false);
                         alternarModo('UNICO');
+
+                        // Difusión de un informativo: solo para conocimiento
+                        const esInformativo = button.getAttribute('data-informativo') === 'true';
+                        const selInforme = modalDerivar.querySelector('[name=requiereInforme]');
+                        selInforme.value = 'false';
+                        selInforme.querySelector('option[value="true"]').disabled = esInformativo;
                     }
                 });
             }
+
+            // Pestaña Archivo físico: filtro por bibliorato
+            const filtroBibliorato = document.getElementById('filtroBibliorato');
+            if (filtroBibliorato) {
+                filtroBibliorato.addEventListener('change', function () {
+                    const valor = this.value;
+                    document.querySelectorAll('#tablaArchivo tbody tr[data-bibliorato]').forEach(fila => {
+                        fila.style.display = (!valor || fila.getAttribute('data-bibliorato') === valor) ? '' : 'none';
+                    });
+                });
+            }
+
+            // Modal Ubicación física: el motivo solo se exige al trasladar
+            const modalUbicacion = document.getElementById('modalUbicacion');
+            if (modalUbicacion) {
+                modalUbicacion.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (!button) return;
+                    modalUbicacion.querySelector('#ubicacionDocId').value = button.getAttribute('data-doc-id');
+                    modalUbicacion.querySelector('#labelCutiUbicacion').textContent = `(${button.getAttribute('data-doc-cuti')})`;
+                    const traslado = button.getAttribute('data-tiene-ubicacion') === 'true';
+                    const motivo = modalUbicacion.querySelector('[name=motivo]');
+                    motivo.value = '';
+                    motivo.required = traslado;
+                    document.getElementById('bloqueMotivoUbicacion').classList.toggle('d-none', !traslado);
+                });
+            }
+
+            ajustarIngresoPorTipo();
 
             // Modal Salida: Carga de Informes Disponibles por API
             const modalSalida = document.getElementById('modalSalida');
@@ -1203,6 +1704,57 @@
                 });
             }
 
+            // Modal Cierre Excepcional
+            const modalForzar = document.getElementById('modalForzarCierre');
+            if (modalForzar) {
+                modalForzar.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (button) {
+                        modalForzar.querySelector('#forzarCierreDocId').value = button.getAttribute('data-doc-id');
+                        modalForzar.querySelector('#labelCutiForzar').textContent = `(${button.getAttribute('data-doc-cuti')})`;
+                        modalForzar.querySelector('textarea').value = '';
+                    }
+                });
+            }
+
+            // Modal Versiones de acuses/adjuntos del expediente
+            const modalAdjuntosBs = new bootstrap.Modal(document.getElementById('modalAdjuntos'));
+            document.querySelectorAll('.btn-ver-adjuntos').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const docId = this.getAttribute('data-doc-id');
+                    document.getElementById('labelCutiAdjuntos').textContent = `(${this.getAttribute('data-doc-cuti')})`;
+                    const campoDoc = document.getElementById('adjuntosDocId');
+                    if (campoDoc) campoDoc.value = docId;
+                    const contenedor = document.getElementById('contenedorAdjuntos');
+                    contenedor.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>';
+                    modalAdjuntosBs.show();
+
+                    fetch(`/api/documentos/${docId}/adjuntos`)
+                        .then(res => { if (!res.ok) throw new Error('Error ' + res.status); return res.json(); })
+                        .then(lista => {
+                            if (!lista.length) {
+                                contenedor.innerHTML = '<div class="alert alert-light border small mb-0">El expediente no tiene acuses cargados.</div>';
+                                return;
+                            }
+                            let html = '<table class="table table-sm small align-middle mb-0"><thead><tr><th>Archivo</th><th>Tipo</th><th>Estado</th><th>Subido</th><th>Integridad</th></tr></thead><tbody>';
+                            lista.slice().reverse().forEach(a => {
+                                html += `<tr class="${a.vigente ? '' : 'text-muted'}">
+                                    <td><a href="/documentos/adjuntos/${a.id}/pdf" target="_blank"><i class="bi bi-file-pdf text-danger"></i> ${esc(a.nombre)}</a>
+                                        ${a.motivoReemplazo ? `<div class="fst-italic">Motivo: ${esc(a.motivoReemplazo)}</div>` : ''}</td>
+                                    <td>${esc(a.tipo)}</td>
+                                    <td><span class="badge ${a.vigente ? 'bg-success' : 'bg-secondary'}">${a.vigente ? 'Vigente' : 'Reemplazado'}</span></td>
+                                    <td>${esc(a.fecha)}<div>${esc(a.usuario)}</div></td>
+                                    <td>${botonVerificar(a.id)}</td>
+                                </tr>`;
+                            });
+                            contenedor.innerHTML = html + '</tbody></table>';
+                        })
+                        .catch(err => {
+                            contenedor.innerHTML = `<div class="alert alert-danger small mb-0">No se pudieron cargar los adjuntos. ${esc(err.message)}</div>`;
+                        });
+                });
+            });
+
             // Modal Confirmar Acuse Final
             const modalAcuse = document.getElementById('modalConfirmarAcuse');
             if (modalAcuse) {
@@ -1253,7 +1805,8 @@
                                     raices.push(act);
                                 }
 
-                                if (act.dependenciaReceptoraId != null) {
+                                // Un pase retirado o rechazado nunca llegó: no es padre de nada
+                                if (act.dependenciaReceptoraId != null && !act.anulada) {
                                     ultimoRecibidoPorDependencia[act.dependenciaReceptoraId] = act;
                                 }
                             });

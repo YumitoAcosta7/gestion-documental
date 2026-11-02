@@ -1,6 +1,8 @@
 package py.gov.asuncion.tic.gestion_documental.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,20 +13,27 @@ import py.gov.asuncion.tic.gestion_documental.domain.Prioridad;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface DocumentoRepository extends JpaRepository<Documento, Long> {
 
     long countByEstadoActual(EstadoDocumento estado);
 
-    long countByPrioridadAndEstadoActualNot(Prioridad prioridad, EstadoDocumento estadoFinalizado);
+    long countByPrioridadAndEstadoActualNotIn(Prioridad prioridad, java.util.Collection<EstadoDocumento> estados);
 
     // Método para obtener los documentos emitidos/creados por tu propia dependencia
     List<Documento> findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
 
-    List<Documento> findByEstadoActualNotOrderByFechaHoraIngresoDesc(EstadoDocumento estado);
+    List<Documento> findByEstadoActualNotInOrderByFechaHoraIngresoDesc(java.util.Collection<EstadoDocumento> estados);
 
     boolean existsByCodigoCuti(String codigoCuti);
+
+    // 🔒 Bloquea la fila del expediente hasta el fin de la transacción (SELECT ... FOR UPDATE).
+    // Serializa las operaciones simultáneas sobre un mismo expediente (derivar, anular, confirmar...).
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d FROM Documento d WHERE d.id = :id")
+    Optional<Documento> findByIdParaActualizar(@Param("id") Long id);
 
     long countByAnio(Integer anio);
 
@@ -48,11 +57,11 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
         SELECT DISTINCT d FROM Documento d
         LEFT JOIN ActuacionDocumento a ON a.documento.id = d.id
         LEFT JOIN a.dependenciaReceptoraPase r
-        WHERE d.estadoActual <> 'FINALIZADO'
+        WHERE d.estadoActual NOT IN ('FINALIZADO', 'ARCHIVADO')
           AND (
                a.dependenciaEmisora.id = :dependenciaId
-               OR r.id = :dependenciaId
-               OR (r IS NULL AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
+               OR (r.id = :dependenciaId AND a.anulada = false)
+               OR (r IS NULL AND a.anulada = false AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
         ORDER BY d.fechaHoraIngreso DESC
     """)
@@ -66,22 +75,27 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
         WHERE d.estadoActual = 'FINALIZADO'
           AND (
                a.dependenciaEmisora.id = :dependenciaId
-               OR r.id = :dependenciaId
-               OR (r IS NULL AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
+               OR (r.id = :dependenciaId AND a.anulada = false)
+               OR (r IS NULL AND a.anulada = false AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
         ORDER BY d.fechaHoraSalida DESC
     """)
     List<Documento> findDocumentosFinalizadosPorDependencia(@Param("dependenciaId") Integer dependenciaId);
 
-    @Query("SELECT d FROM Documento d WHERE " +
+    // El texto también busca en el bibliorato (código, descripción o texto histórico)
+    @Query("SELECT d FROM Documento d LEFT JOIN d.bibliorato b WHERE " +
            "(CAST(:texto AS string) IS NULL OR " +
            " LOWER(d.codigoCuti) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
            " LOWER(d.asunto) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
            " LOWER(d.numeroDocumentoOrigen) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
-           " LOWER(d.nroNotaSalida) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%'))) AND " +
+           " LOWER(d.nroNotaSalida) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
+           " LOWER(d.ubicacionBibliorato) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
+           " LOWER(b.codigo) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
+           " LOWER(b.descripcion) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%'))) AND " +
            "(:dependenciaId IS NULL OR d.dependenciaOrigen.id = :dependenciaId) AND " +
            "(:tipoDocId IS NULL OR d.tipoDocumento.id = :tipoDocId) AND " +
            "(:estado IS NULL OR d.estadoActual = :estado) AND " +
+           "(:biblioratoId IS NULL OR b.id = :biblioratoId) AND " +
            "(CAST(:fechaDesde AS timestamp) IS NULL OR d.fechaHoraIngreso >= :fechaDesde) AND " +
            "(CAST(:fechaHasta AS timestamp) IS NULL OR d.fechaHoraIngreso <= :fechaHasta) " +
            "ORDER BY d.fechaHoraIngreso DESC")
@@ -90,7 +104,29 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
             @Param("dependenciaId") Integer dependenciaId,
             @Param("tipoDocId") Integer tipoDocId,
             @Param("estado") EstadoDocumento estado,
+            @Param("biblioratoId") Integer biblioratoId,
             @Param("fechaDesde") LocalDateTime fechaDesde,
             @Param("fechaHasta") LocalDateTime fechaHasta
     );
+
+    // 📚 Archivo físico: documentos con bibliorato asignado o archivados, ordenados por ubicación
+    @Query("""
+        SELECT d FROM Documento d LEFT JOIN d.bibliorato b
+        WHERE (b IS NOT NULL OR d.estadoActual = 'ARCHIVADO')
+          AND (:biblioratoId IS NULL OR b.id = :biblioratoId)
+        ORDER BY b.codigo, d.fojaDesde, d.fechaHoraIngreso DESC
+    """)
+    List<Documento> findDocumentosArchivo(@Param("biblioratoId") Integer biblioratoId);
+
+    // Documentos del bibliorato cuyas fojas se superponen con el rango indicado
+    @Query("""
+        SELECT d FROM Documento d
+        WHERE d.bibliorato.id = :biblioratoId AND d.fojaDesde IS NOT NULL
+          AND d.fojaDesde <= :hasta AND d.fojaHasta >= :desde
+          AND (:excluirId IS NULL OR d.id <> :excluirId)
+    """)
+    List<Documento> findFojasSuperpuestas(@Param("biblioratoId") Integer biblioratoId,
+                                         @Param("desde") Integer desde,
+                                         @Param("hasta") Integer hasta,
+                                         @Param("excluirId") Long excluirId);
 }

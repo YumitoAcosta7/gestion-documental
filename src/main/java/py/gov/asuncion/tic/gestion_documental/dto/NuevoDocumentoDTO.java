@@ -13,8 +13,18 @@ public class NuevoDocumentoDTO {
     private Integer nroOrdenLibro;
     private Integer nroPaginaLibro;
     private String asunto;
+    // Ubicación física (obligatoria para los tipos que la requieren, ej. circulares)
+    private Integer biblioratoId;
+    private Integer fojaDesde;
+    private Integer fojaHasta;
 
     // Getters y Setters
+    public Integer getBiblioratoId() { return biblioratoId; }
+    public void setBiblioratoId(Integer biblioratoId) { this.biblioratoId = biblioratoId; }
+    public Integer getFojaDesde() { return fojaDesde; }
+    public void setFojaDesde(Integer fojaDesde) { this.fojaDesde = fojaDesde; }
+    public Integer getFojaHasta() { return fojaHasta; }
+    public void setFojaHasta(Integer fojaHasta) { this.fojaHasta = fojaHasta; }
     public Integer getTipoDocumentoId() { return tipoDocumentoId; }
     public void setTipoDocumentoId(Integer tipoDocumentoId) { this.tipoDocumentoId = tipoDocumentoId; }
     public String getNumeroDocumentoOrigen() { return numeroDocumentoOrigen; }

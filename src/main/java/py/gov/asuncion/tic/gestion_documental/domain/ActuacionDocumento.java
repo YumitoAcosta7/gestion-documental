@@ -53,9 +53,14 @@ public class ActuacionDocumento {
     @JoinColumn(name = "usuario_id", nullable = false)
     private Usuario usuario;
 
-    @Column(name = "pase_confirmado")
+    @Column(name = "pase_confirmado", nullable = false)
     @Builder.Default
     private Boolean paseConfirmado = false;
+
+    // Pase que pide informe técnico o respuesta formal a la dependencia receptora
+    @Column(name = "requiere_informe", nullable = false)
+    @Builder.Default
+    private Boolean requiereInforme = false;
 
     // Relación para la vista en árbol (Jerarquía de Actuaciones)
     @ManyToOne(fetch = FetchType.LAZY)
@@ -69,4 +74,22 @@ public class ActuacionDocumento {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dependencia_receptora_pase_id")
     private Dependencia dependenciaReceptoraPase;
+
+    // --- ANULACIÓN LÓGICA (no se borra: queda en el historial) ---
+    @Column(name = "anulada", nullable = false)
+    @Builder.Default
+    private Boolean anulada = false;
+
+    @Column(name = "tipo_anulacion", length = 30)
+    private String tipoAnulacion; // RETIRADO, RECHAZADO
+
+    @Column(name = "motivo_anulacion", columnDefinition = "TEXT")
+    private String motivoAnulacion;
+
+    @Column(name = "fecha_hora_anulacion")
+    private LocalDateTime fechaHoraAnulacion;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "usuario_anulacion_id")
+    private Usuario usuarioAnulacion;
 }

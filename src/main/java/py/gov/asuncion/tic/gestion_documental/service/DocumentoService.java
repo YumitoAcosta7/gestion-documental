@@ -54,8 +54,30 @@ public class DocumentoService {
     @Autowired
     private AuditoriaService auditoriaService;
 
+    @Autowired
+    private ArchivoService archivoService;
+
+    @Autowired
+    private BiblioratoService biblioratoService;
+
+    // Estados que ya no forman parte de las bandejas de trabajo
+    private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
+
+    // ⏱️ Umbrales de demora (días hábiles sin movimiento), configurables en application.properties
+    @Value("${app.sla.dias-advertencia:5}")
+    private int slaDiasAdvertencia;
+
+    @Value("${app.sla.dias-critico:10}")
+    private int slaDiasCritico;
+
+    @Value("${app.sla.urgente.dias-advertencia:2}")
+    private int slaUrgenteDiasAdvertencia;
+
+    @Value("${app.sla.urgente.dias-critico:4}")
+    private int slaUrgenteDiasCritico;
+
     public List<Documento> obtenerDocumentosActivos() {
-        return documentoRepository.findByEstadoActualNotOrderByFechaHoraIngresoDesc(EstadoDocumento.FINALIZADO);
+        return documentoRepository.findByEstadoActualNotInOrderByFechaHoraIngresoDesc(ESTADOS_CERRADOS);
     }
 
     public List<Dependencia> obtenerDependenciasActivas() {
@@ -148,7 +170,7 @@ public class DocumentoService {
                                          + documentoRepository.countByEstadoActual(EstadoDocumento.EN_REVISION));
         metricas.put("enEsperaInforme", documentoRepository.countByEstadoActual(EstadoDocumento.EN_ESPERA_INFORME));
         metricas.put("pendienteSalida", documentoRepository.countByEstadoActual(EstadoDocumento.PENDIENTE_SALIDA));
-        metricas.put("urgentes", documentoRepository.countByPrioridadAndEstadoActualNot(Prioridad.URGENTE, EstadoDocumento.FINALIZADO));
+        metricas.put("urgentes", documentoRepository.countByPrioridadAndEstadoActualNotIn(Prioridad.URGENTE, ESTADOS_CERRADOS));
         return metricas;
     }
 
@@ -197,11 +219,20 @@ public class DocumentoService {
             throw new IllegalArgumentException("Debe ingresar el asunto del documento.");
         }
 
+        TipoDocumento tipo = tipoDocumentoRepository.findById(dto.getTipoDocumentoId())
+                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + dto.getTipoDocumentoId()));
+        if (!Boolean.TRUE.equals(tipo.getActivo())) {
+            throw new IllegalArgumentException("El tipo de documento '" + tipo.getNombre() + "' está dado de baja.");
+        }
+        Dependencia origen = dependenciaRepository.findById(dto.getDependenciaOrigenId())
+                .orElseThrow(() -> new IllegalArgumentException("Dependencia no encontrada: " + dto.getDependenciaOrigenId()));
+        if (Boolean.FALSE.equals(origen.getActivo())) {
+            throw new IllegalArgumentException("La dependencia '" + origen.getNombre() + "' está inactiva.");
+        }
+
         Documento documento = new Documento();
-        documento.setTipoDocumento(tipoDocumentoRepository.findById(dto.getTipoDocumentoId())
-                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + dto.getTipoDocumentoId())));
-        documento.setDependenciaOrigen(dependenciaRepository.findById(dto.getDependenciaOrigenId())
-                .orElseThrow(() -> new IllegalArgumentException("Dependencia no encontrada: " + dto.getDependenciaOrigenId())));
+        documento.setTipoDocumento(tipo);
+        documento.setDependenciaOrigen(origen);
         documento.setPrioridad(dto.getPrioridad() != null ? dto.getPrioridad() : Prioridad.NORMAL);
         documento.setNumeroDocumentoOrigen(dto.getNumeroDocumentoOrigen());
         documento.setPersonaEntrega(dto.getPersonaEntrega());
@@ -209,7 +240,70 @@ public class DocumentoService {
         documento.setNroPaginaLibro(dto.getNroPaginaLibro());
         documento.setAsunto(dto.getAsunto().trim());
 
-        return guardarNuevoDocumento(documento, usuarioSesion);
+        // 📚 Ubicación física: obligatoria para los tipos que la requieren (ej. circulares)
+        if (dto.getBiblioratoId() != null) {
+            biblioratoService.asignarUbicacion(documento, dto.getBiblioratoId(), dto.getFojaDesde(), dto.getFojaHasta());
+        } else if (Boolean.TRUE.equals(tipo.getRequiereBibliorato())) {
+            throw new IllegalArgumentException("Para '" + tipo.getNombre() + "' es obligatorio indicar el bibliorato donde se archiva.");
+        } else if (dto.getFojaDesde() != null || dto.getFojaHasta() != null) {
+            throw new IllegalArgumentException("Indicó fojas pero no el bibliorato.");
+        }
+
+        Documento guardado = guardarNuevoDocumento(documento, usuarioSesion);
+
+        // 🗄️ Los informativos no se tramitan: quedan archivados en el mismo acto
+        if (tipo.isInformativo()) {
+            guardado.setEstadoActual(EstadoDocumento.ARCHIVADO);
+            guardado.setArchivado(true);
+            guardado.setFechaHoraArchivado(LocalDateTime.now());
+            documentoRepository.save(guardado);
+            auditoriaService.registrarEvento(guardado, "ARCHIVO_INFORMATIVO", EstadoDocumento.INGRESADO, EstadoDocumento.ARCHIVADO,
+                    "Documento informativo archivado en " + guardado.getUbicacionTexto(), usuarioSesion, null);
+        }
+        return guardado;
+    }
+
+    // 📚 Asigna o cambia la ubicación física (bibliorato + fojas) de un documento. Solo Dirección/Secretaría.
+    @Transactional
+    public Documento cambiarUbicacion(Long documentoId, Integer biblioratoId, Integer fojaDesde, Integer fojaHasta,
+                                      String motivo, Usuario usuario) {
+        if (!esRolAdministrativo(usuario)) {
+            throw new AccessDeniedException("Solo Dirección o Secretaría registran la ubicación física de los documentos.");
+        }
+        if (biblioratoId == null) {
+            throw new IllegalArgumentException("Debe seleccionar el bibliorato.");
+        }
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+
+        String anterior = doc.getUbicacionTexto();
+        if (anterior != null) {
+            validarMotivo(motivo, 10, "el motivo del cambio de ubicación");
+        }
+        biblioratoService.asignarUbicacion(doc, biblioratoId, fojaDesde, fojaHasta);
+
+        // Un expediente concluido que se guarda en un bibliorato queda archivado físicamente
+        if ((doc.getEstadoActual() == EstadoDocumento.FINALIZADO || doc.getEstadoActual() == EstadoDocumento.ARCHIVADO)
+                && doc.getFechaHoraArchivado() == null) {
+            doc.setArchivado(true);
+            doc.setFechaHoraArchivado(LocalDateTime.now());
+        }
+        documentoRepository.save(doc);
+
+        auditoriaService.registrarEvento(doc, "CAMBIO_UBICACION", doc.getEstadoActual(), doc.getEstadoActual(),
+                (anterior == null ? "Ubicación física registrada: " : "Ubicación física cambiada de [" + anterior + "] a: ")
+                        + doc.getUbicacionTexto() + (motivo != null && !motivo.isBlank() ? ". Motivo: " + motivo.trim() : ""),
+                usuario, null);
+        return doc;
+    }
+
+    // 📚 Archivo físico visible para el usuario (Dirección/Secretaría: todo; resto: lo que le corresponde)
+    public List<Documento> obtenerDocumentosArchivoParaUsuario(Usuario usuario, Integer biblioratoId) {
+        List<Documento> docs = documentoRepository.findDocumentosArchivo(biblioratoId);
+        if (esRolAdministrativo(usuario)) {
+            return docs;
+        }
+        return docs.stream().filter(d -> puedeAccederDocumento(usuario, d.getId())).toList();
     }
 
     @Transactional
@@ -277,13 +371,14 @@ public class DocumentoService {
     @Transactional
     public void devolverDocumento(Long documentoId, String observacion, Usuario usuarioActual) {
         // 1. Buscar el documento
-        Documento documento = documentoRepository.findById(documentoId)
+        Documento documento = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new EntityNotFoundException("Documento no encontrado"));
 
         // 2. Validar estado operativo con getEstadoActual()
-        if (documento.getEstadoActual() == EstadoDocumento.FINALIZADO || 
-            documento.getEstadoActual() == EstadoDocumento.PENDIENTE_SALIDA) {
-            throw new IllegalStateException("No se puede devolver un documento que ya se encuentra finalizado o pendiente de salida.");
+        if (documento.getEstadoActual() == EstadoDocumento.FINALIZADO ||
+            documento.getEstadoActual() == EstadoDocumento.PENDIENTE_SALIDA ||
+            documento.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
+            throw new IllegalStateException("No se puede devolver un documento finalizado, pendiente de salida o archivado.");
         }
 
         if (usuarioActual == null || usuarioActual.getDependencia() == null) {
@@ -297,7 +392,7 @@ public class DocumentoService {
         // 3. Localizar el último pase recibido por la dependencia del usuario
         Dependencia depActual = usuarioActual.getDependencia();
         ActuacionDocumento ultimoPase = actuacionDocumentoRepository
-                .findTopByDocumentoIdAndDependenciaReceptoraPaseIdOrderByFechaHoraActuacionDesc(documentoId, depActual.getId());
+                .findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(documentoId, depActual.getId());
 
         if (ultimoPase == null || ultimoPase.getDependenciaEmisora() == null) {
             throw new IllegalStateException("Su dependencia no recibió ningún pase de este expediente, no hay a quién devolverlo.");
@@ -370,24 +465,52 @@ public class DocumentoService {
 
         verificarAccesoDocumento(usuario, documentoId);
 
+        // Un mismo destino repetido en la petición genera un solo pase
+        List<Integer> destinos = new ArrayList<>(new java.util.LinkedHashSet<>(dependenciasDestinoIds));
+        destinos.remove(null);
+
         // Solo se puede derivar a las dependencias que el usuario tiene habilitadas
         java.util.Set<Integer> destinosPermitidos = obtenerDependenciasHijas(usuario).stream()
                 .map(Dependencia::getId)
                 .collect(java.util.stream.Collectors.toSet());
-        for (Integer depId : dependenciasDestinoIds) {
+        for (Integer depId : destinos) {
             if (!destinosPermitidos.contains(depId)) {
                 throw new AccessDeniedException("No está habilitado para derivar a la dependencia seleccionada (ID " + depId + ").");
             }
         }
 
-        Documento doc = documentoRepository.findById(documentoId)
+        // Bloquea el expediente: dos derivaciones simultáneas se ejecutan una después de la otra
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "derivar");
 
-        EstadoDocumento estadoAnterior = doc.getEstadoActual();
         boolean esInformeRequerido = (requiereInforme != null && requiereInforme);
-        
-        if (esInformeRequerido) {
+        boolean esInformativo = doc.getTipoDocumento() != null && doc.getTipoDocumento().isInformativo();
+        if (esInformeRequerido && (esInformativo || doc.getEstadoActual() == EstadoDocumento.ARCHIVADO)) {
+            throw new IllegalArgumentException("Un documento informativo no se deriva para informe: solo puede difundirse para conocimiento.");
+        }
+
+        // No se duplica un pase que todavía espera el acuse de la misma dependencia
+        List<String> conPasePendiente = new ArrayList<>();
+        for (Integer depId : destinos) {
+            if (actuacionDocumentoRepository.existePasePendiente(documentoId, depId)) {
+                conPasePendiente.add(dependenciaRepository.findById(depId).map(Dependencia::getNombre).orElse("ID " + depId));
+            }
+        }
+        if (!conPasePendiente.isEmpty()) {
+            throw new IllegalStateException("Ya existe un pase pendiente de acuse para: " + String.join(", ", conPasePendiente)
+                    + ". Espere la confirmación o retire ese pase antes de volver a derivar.");
+        }
+
+        EstadoDocumento estadoAnterior = doc.getEstadoActual();
+
+        if (estadoAnterior == EstadoDocumento.ARCHIVADO) {
+            // Difusión de un informativo archivado: los pases son de conocimiento y el estado no cambia
+            doc.setEstadoActual(EstadoDocumento.ARCHIVADO);
+        } else if (esInformeRequerido) {
+            doc.setEstadoActual(EstadoDocumento.EN_ESPERA_INFORME);
+        } else if (estadoAnterior == EstadoDocumento.EN_ESPERA_INFORME && quedanPasesParaInformeVigentes(documentoId)) {
+            // Una derivación de conocimiento no interrumpe los informes que siguen pendientes
             doc.setEstadoActual(EstadoDocumento.EN_ESPERA_INFORME);
         } else {
             doc.setEstadoActual(EstadoDocumento.EN_REVISION);
@@ -402,7 +525,7 @@ public class DocumentoService {
                 ? usuario.getDependencia() 
                 : null;
 
-       for (Integer depId : dependenciasDestinoIds) {
+        for (Integer depId : destinos) {
             Dependencia destino = dependenciaRepository.findById(depId)
                     .orElseThrow(() -> new RuntimeException("Dependencia no encontrada: " + depId));
 
@@ -416,6 +539,7 @@ public class DocumentoService {
                     .ubicacionBibliorato(doc.getUbicacionBibliorato())
                     .fechaHoraActuacion(LocalDateTime.now())
                     .paseConfirmado(false)
+                    .requiereInforme(esInformeRequerido)
                     .usuario(usuario)
                     .build();
 
@@ -423,11 +547,11 @@ public class DocumentoService {
         }
         // 🛡️ REGISTRO DE AUDITORÍA
         auditoriaService.registrarEvento(
-            doc, 
-            "DERIVACION_MULTIPLE", 
-            estadoAnterior, 
-            doc.getEstadoActual(), 
-            "Derivado a " + dependenciasDestinoIds.size() + " áreas: " + observacion, 
+            doc,
+            "DERIVACION_MULTIPLE",
+            estadoAnterior,
+            doc.getEstadoActual(),
+            "Derivado a " + destinos.size() + " áreas" + (esInformeRequerido ? " para informe" : " para conocimiento") + ": " + observacion,
             usuario, 
             null
         );
@@ -496,34 +620,9 @@ public class DocumentoService {
 
         Documento docGuardado = documentoRepository.save(doc);
 
-        // 3. Manejo del archivo PDF de acuse
+        // 3. Manejo del archivo PDF de acuse (opcional)
         if (archivoAcuse != null && !archivoAcuse.isEmpty()) {
-            try {
-                File carpeta = new File(uploadDir);
-                if (!carpeta.exists()) carpeta.mkdirs();
-
-                String nombreOriginal = archivoAcuse.getOriginalFilename();
-                String extension = nombreOriginal != null && nombreOriginal.contains(".") 
-                        ? nombreOriginal.substring(nombreOriginal.lastIndexOf(".")) : ".pdf";
-                String nombreServidor = doc.getCodigoCuti() + "_SALIDA_" + System.currentTimeMillis() + extension;
-
-                Path rutaFinal = Paths.get(uploadDir, nombreServidor);
-                Files.copy(archivoAcuse.getInputStream(), rutaFinal, StandardCopyOption.REPLACE_EXISTING);
-
-                AdjuntoDocumento adjunto = AdjuntoDocumento.builder()
-                        .documento(docGuardado)
-                        .nombreArchivo(nombreOriginal)
-                        .rutaAlmacenamiento(rutaFinal.toString())
-                        .tipoAdjunto("ACUSE_SALIDA")
-                        .tamanioBytes(archivoAcuse.getSize())
-                        .fechaHoraSubida(ahora)
-                        .usuarioSubida(usuarioSesion)
-                        .build();
-
-                adjuntoDocumentoRepository.save(adjunto);
-            } catch (IOException e) {
-                throw new RuntimeException("Error al guardar el archivo PDF: " + e.getMessage(), e);
-            }
+            registrarAdjunto(docGuardado, null, archivoAcuse, "SALIDA", "ACUSE_SALIDA", usuarioSesion);
         }
 
         // 4. Auditoría
@@ -550,9 +649,12 @@ public class DocumentoService {
                                                String funcionarioEntrega, 
                                                MultipartFile archivoAcuse, 
                                                Usuario usuarioSesion) {
-        Documento doc = documentoRepository.findById(documentoId)
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "registrar la salida de");
+        if (doc.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
+            throw new IllegalStateException("Un documento informativo archivado no tiene salida exterior.");
+        }
         if (nroNotaSalida == null || nroNotaSalida.isBlank()) {
             throw new IllegalArgumentException("Debe ingresar el N° de nota o remisión de salida.");
         }
@@ -576,35 +678,7 @@ public class DocumentoService {
         Documento docGuardado = documentoRepository.save(doc);
 
         if (archivoAcuse != null && !archivoAcuse.isEmpty()) {
-            try {
-                File carpeta = new File(uploadDir);
-                if (!carpeta.exists()) {
-                    carpeta.mkdirs();
-                }
-
-                String nombreOriginal = archivoAcuse.getOriginalFilename();
-                String extension = nombreOriginal != null && nombreOriginal.contains(".") 
-                        ? nombreOriginal.substring(nombreOriginal.lastIndexOf(".")) : ".pdf";
-                String nombreServidor = doc.getCodigoCuti() + "_ACUSE_" + System.currentTimeMillis() + extension;
-
-                Path rutaFinal = Paths.get(uploadDir, nombreServidor);
-                Files.copy(archivoAcuse.getInputStream(), rutaFinal, StandardCopyOption.REPLACE_EXISTING);
-
-                AdjuntoDocumento adjunto = AdjuntoDocumento.builder()
-                        .documento(docGuardado)
-                        .nombreArchivo(nombreOriginal)
-                        .rutaAlmacenamiento(rutaFinal.toString())
-                        .tipoAdjunto("ACUSE_SALIDA")
-                        .tamanioBytes(archivoAcuse.getSize())
-                        .fechaHoraSubida(ahora)
-                        .usuarioSubida(usuarioSesion)
-                        .build();
-
-                adjuntoDocumentoRepository.save(adjunto);
-
-            } catch (IOException e) {
-                throw new RuntimeException("Error al guardar el archivo acuse PDF: " + e.getMessage(), e);
-            }
+            registrarAdjunto(docGuardado, null, archivoAcuse, "SALIDA", "ACUSE_SALIDA", usuarioSesion);
         }
 
         // 🛡️ REGISTRO DE AUDITORÍA
@@ -623,7 +697,7 @@ public class DocumentoService {
 
     @Transactional
     public Documento confirmarEntregaYAcuse(Long documentoId, MultipartFile archivoAcuse, Usuario usuarioSesion) {
-        Documento doc = documentoRepository.findById(documentoId)
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
 
         if (doc.getEstadoActual() != EstadoDocumento.PENDIENTE_SALIDA || doc.getFechaHoraSalida() == null) {
@@ -634,39 +708,8 @@ public class DocumentoService {
         }
 
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
-        LocalDateTime ahora = LocalDateTime.now();
 
-        if (archivoAcuse != null && !archivoAcuse.isEmpty()) {
-            try {
-                File carpeta = new File(uploadDir);
-                if (!carpeta.exists()) {
-                    carpeta.mkdirs();
-                }
-
-                String nombreOriginal = archivoAcuse.getOriginalFilename();
-                String extension = nombreOriginal != null && nombreOriginal.contains(".") 
-                        ? nombreOriginal.substring(nombreOriginal.lastIndexOf(".")) : ".pdf";
-                String nombreServidor = doc.getCodigoCuti() + "_ACUSE_CONFIRMADO_" + System.currentTimeMillis() + extension;
-
-                Path rutaFinal = Paths.get(uploadDir, nombreServidor);
-                Files.copy(archivoAcuse.getInputStream(), rutaFinal, StandardCopyOption.REPLACE_EXISTING);
-
-                AdjuntoDocumento adjunto = AdjuntoDocumento.builder()
-                        .documento(doc)
-                        .nombreArchivo(nombreOriginal)
-                        .rutaAlmacenamiento(rutaFinal.toString())
-                        .tipoAdjunto("ACUSE_ENTREGA")
-                        .tamanioBytes(archivoAcuse.getSize())
-                        .fechaHoraSubida(ahora)
-                        .usuarioSubida(usuarioSesion)
-                        .build();
-
-                adjuntoDocumentoRepository.save(adjunto);
-
-            } catch (IOException e) {
-                throw new RuntimeException("Error al guardar el archivo acuse PDF: " + e.getMessage(), e);
-            }
-        }
+        registrarAdjunto(doc, null, archivoAcuse, "ACUSE_CONFIRMADO", "ACUSE_ENTREGA", usuarioSesion);
 
         doc.setEstadoActual(EstadoDocumento.FINALIZADO);
 
@@ -689,7 +732,8 @@ public class DocumentoService {
     public List<Documento> buscarDocumentosMulticriterio(String texto, 
                                                         Integer dependenciaId, 
                                                         Integer tipoDocId, 
-                                                        String estadoStr, 
+                                                        String estadoStr,
+                                                        Integer biblioratoId,
                                                         LocalDate fechaDesde, 
                                                         LocalDate fechaHasta) {
 
@@ -705,7 +749,7 @@ public class DocumentoService {
 
         String textoLimpio = (texto != null && !texto.isBlank()) ? texto.trim() : null;
 
-        return documentoRepository.buscarMulticriterio(textoLimpio, dependenciaId, tipoDocId, estadoEnum, desde, hasta);
+        return documentoRepository.buscarMulticriterio(textoLimpio, dependenciaId, tipoDocId, estadoEnum, biblioratoId, desde, hasta);
     }
 
     @Transactional
@@ -719,7 +763,7 @@ public class DocumentoService {
                                                 Usuario usuarioSesion) {
         verificarAccesoDocumento(usuarioSesion, documentoId);
 
-        Documento doc = documentoRepository.findById(documentoId)
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "registrar actuaciones en");
 
@@ -731,19 +775,9 @@ public class DocumentoService {
         Dependencia depEmisora = dependenciaRepository.findById(dependenciaEmisoraId)
                 .orElseThrow(() -> new RuntimeException("Dependencia no encontrada: " + dependenciaEmisoraId));
 
-        String nombreArchivoPdf = null;
-        if (archivoCopiaSellada != null && !archivoCopiaSellada.isEmpty()) {
-            try {
-                String extension = ".pdf";
-                nombreArchivoPdf = "ACTUACION_" + doc.getCodigoCuti() + "_" + System.currentTimeMillis() + extension;
-                Path rutaDirectorio = Paths.get(uploadDir);
-                if (!Files.exists(rutaDirectorio)) {
-                    Files.createDirectories(rutaDirectorio);
-                }
-                Files.copy(archivoCopiaSellada.getInputStream(), rutaDirectorio.resolve(nombreArchivoPdf));
-            } catch (Exception e) {
-                throw new RuntimeException("Error al guardar la copia sellada en PDF: " + e.getMessage());
-            }
+        boolean tienePdf = archivoCopiaSellada != null && !archivoCopiaSellada.isEmpty();
+        if (tienePdf) {
+            archivoService.validarPdf(archivoCopiaSellada); // antes de grabar nada
         }
 
         ActuacionDocumento actuacion = ActuacionDocumento.builder()
@@ -753,7 +787,6 @@ public class DocumentoService {
                 .numeroActuacion(nroLimpio)
                 .descripcionResumen(descripcionResumen)
                 .ubicacionBibliorato(ubicacionBibliorato)
-                .rutaCopiaSelladaPdf(nombreArchivoPdf)
                 .fechaHoraActuacion(LocalDateTime.now())
                 .usuario(usuarioSesion)
                 .build();
@@ -764,6 +797,11 @@ public class DocumentoService {
         }
 
         ActuacionDocumento actuacionGuardada = actuacionDocumentoRepository.save(actuacion);
+
+        if (tienePdf) {
+            AdjuntoDocumento adjunto = registrarAdjunto(doc, actuacionGuardada, archivoCopiaSellada, "ACTUACION", "COPIA_SELLADA", usuarioSesion);
+            actuacionGuardada.setRutaCopiaSelladaPdf(adjunto.getRutaAlmacenamiento());
+        }
 
         // 🛡️ REGISTRO DE AUDITORÍA
         auditoriaService.registrarEvento(
@@ -790,15 +828,7 @@ public class DocumentoService {
             return null;
         }
         verificarAccesoDocumento(usuario, actuacion.getDocumento().getId());
-
-        // Solo el nombre del archivo, para evitar rutas manipuladas
-        Path nombre = Paths.get(actuacion.getRutaCopiaSelladaPdf()).getFileName();
-        for (Path candidato : List.of(Paths.get("uploads/acuses").resolve(nombre), Paths.get(uploadDir).resolve(nombre))) {
-            if (Files.isRegularFile(candidato)) {
-                return candidato;
-            }
-        }
-        return null;
+        return archivoService.resolver(actuacion.getRutaCopiaSelladaPdf());
     }
 
     public List<ActuacionDocumento> obtenerActuacionesPorDocumento(Long documentoId) {
@@ -813,10 +843,12 @@ public class DocumentoService {
             throw new IllegalArgumentException("Es OBLIGATORIO subir el PDF de la copia sellada y firmada para confirmar la recepción del pase.");
         }
 
-        ActuacionDocumento actuacion = actuacionDocumentoRepository.findById(actuacionId)
+        ActuacionDocumento actuacion = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
                 .orElseThrow(() -> new RuntimeException("Actuación no encontrada: " + actuacionId));
+        documentoRepository.findByIdParaActualizar(actuacion.getDocumento().getId()); // serializa con derivar/anular
 
-        if (!"PASE_INTERNO".equals(actuacion.getTipoActuacion()) || Boolean.TRUE.equals(actuacion.getPaseConfirmado())) {
+        if (!"PASE_INTERNO".equals(actuacion.getTipoActuacion()) || Boolean.TRUE.equals(actuacion.getPaseConfirmado())
+                || Boolean.TRUE.equals(actuacion.getAnulada())) {
             throw new IllegalStateException("La actuación no es un pase interno pendiente de confirmación.");
         }
 
@@ -832,22 +864,11 @@ public class DocumentoService {
             throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción.");
         }
 
-        try {
-            String extension = ".pdf";
-            String nombreArchivoPdf = "ACUSE_PASE_" + actuacion.getDocumento().getCodigoCuti() + "_" + System.currentTimeMillis() + extension;
-            Path rutaDirectorio = Paths.get(uploadDir);
-            if (!Files.exists(rutaDirectorio)) {
-                Files.createDirectories(rutaDirectorio);
-            }
-            Files.copy(archivoAcusePdf.getInputStream(), rutaDirectorio.resolve(nombreArchivoPdf));
-
-            actuacion.setRutaCopiaSelladaPdf(nombreArchivoPdf);
-            actuacion.setPaseConfirmado(true);
-            actuacion.setTipoActuacion("PASE_CONFIRMADO");
-
-        } catch (Exception e) {
-            throw new RuntimeException("Error al guardar la copia sellada del pase: " + e.getMessage());
-        }
+        AdjuntoDocumento adjunto = registrarAdjunto(actuacion.getDocumento(), actuacion, archivoAcusePdf,
+                "ACUSE_PASE", "ACUSE_PASE", usuarioSesion);
+        actuacion.setRutaCopiaSelladaPdf(adjunto.getRutaAlmacenamiento());
+        actuacion.setPaseConfirmado(true);
+        actuacion.setTipoActuacion("PASE_CONFIRMADO");
 
         ActuacionDocumento actuacionGuardada = actuacionDocumentoRepository.save(actuacion);
 
@@ -875,12 +896,14 @@ public class DocumentoService {
         Documento doc = documentoRepository.findById(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
 
-        List<ActuacionDocumento> actuaciones = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId);
+        // Los pases retirados o rechazados no cuentan
+        List<ActuacionDocumento> actuaciones = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)
+                .stream().filter(a -> !Boolean.TRUE.equals(a.getAnulada())).toList();
 
         // Al confirmar la recepción, un PASE_INTERNO pasa a PASE_CONFIRMADO: ambos cuentan como pase emitido
         List<ActuacionDocumento> pasesInforme = actuaciones.stream()
                 .filter(a -> ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
-                        && a.getDescripcionResumen() != null && a.getDescripcionResumen().contains("PARA INFORME"))
+                        && Boolean.TRUE.equals(a.getRequiereInforme()))
                 .toList();
 
         List<ActuacionDocumento> respuestas = actuaciones.stream()
@@ -934,7 +957,7 @@ public class DocumentoService {
 
         // 👑 Dirección de TIC y Secretaría Ven Todo
         if (usuario.getRol() == RolUsuario.DIRECTOR || usuario.getRol() == RolUsuario.SECRETARIA_ADMIN) {
-            return documentoRepository.findByEstadoActualNotOrderByFechaHoraIngresoDesc(EstadoDocumento.FINALIZADO);
+            return documentoRepository.findByEstadoActualNotInOrderByFechaHoraIngresoDesc(ESTADOS_CERRADOS);
         }
 
         // 🏢 Jefes de Departamento y Unidades Ven Solo lo derivado a su Dependencia
@@ -943,6 +966,400 @@ public class DocumentoService {
         }
 
         return new ArrayList<>();
+    }
+
+    // =====================================================================
+    // 📎 ADJUNTOS: cada PDF es una versión; nunca se sobrescribe ni se borra
+    // =====================================================================
+
+    private AdjuntoDocumento registrarAdjunto(Documento doc, ActuacionDocumento actuacion, MultipartFile archivo,
+                                              String prefijo, String tipoAdjunto, Usuario usuario) {
+        ArchivoService.ArchivoGuardado guardado = archivoService.guardarPdf(archivo, prefijo, doc.getCodigoCuti());
+        return adjuntoDocumentoRepository.save(AdjuntoDocumento.builder()
+                .documento(doc)
+                .actuacion(actuacion)
+                .nombreArchivo(archivo.getOriginalFilename() != null ? archivo.getOriginalFilename() : guardado.ruta().getFileName().toString())
+                .rutaAlmacenamiento(guardado.ruta().toString())
+                .tipoAdjunto(tipoAdjunto)
+                .tamanioBytes(guardado.tamanio())
+                .hashSha256(guardado.sha256())
+                .tipoMime(guardado.tipoMime())
+                .fechaHoraSubida(LocalDateTime.now())
+                .usuarioSubida(usuario)
+                .vigente(true)
+                .build());
+    }
+
+    // Dependencia responsable del PDF de una actuación: la receptora si es el acuse de un pase,
+    // la emisora en el resto (informes, memos, actas).
+    private Integer dependenciaResponsablePdf(ActuacionDocumento act) {
+        if ("PASE_CONFIRMADO".equals(act.getTipoActuacion()) && act.getDependenciaReceptoraPase() != null) {
+            return act.getDependenciaReceptoraPase().getId();
+        }
+        return act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getId() : null;
+    }
+
+    public boolean puedeReemplazarPdf(ActuacionDocumento act, Usuario usuario) {
+        if (act == null || usuario == null || act.getRutaCopiaSelladaPdf() == null || Boolean.TRUE.equals(act.getAnulada())) {
+            return false;
+        }
+        if (esRolAdministrativo(usuario)) {
+            return true;
+        }
+        Integer responsable = dependenciaResponsablePdf(act);
+        return responsable != null && usuario.getDependencia() != null && responsable.equals(usuario.getDependencia().getId());
+    }
+
+    // Reemplaza el PDF de una actuación: la versión anterior queda como "reemplazada" con su motivo
+    @Transactional
+    public AdjuntoDocumento reemplazarPdfActuacion(Long actuacionId, MultipartFile archivo, String motivo, Usuario usuario) {
+        ActuacionDocumento act = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
+                .orElseThrow(() -> new IllegalArgumentException("Actuación no encontrada: " + actuacionId));
+        Documento doc = documentoRepository.findByIdParaActualizar(act.getDocumento().getId()).orElseThrow();
+        verificarAccesoDocumento(usuario, doc.getId());
+        validarMotivo(motivo, 10, "el motivo del reemplazo");
+
+        if (act.getRutaCopiaSelladaPdf() == null) {
+            throw new IllegalStateException("La actuación no tiene un PDF cargado para reemplazar.");
+        }
+        if (!puedeReemplazarPdf(act, usuario)) {
+            throw new AccessDeniedException("Solo la dependencia que cargó el PDF (o Dirección/Secretaría) puede reemplazarlo.");
+        }
+
+        AdjuntoDocumento previo = adjuntoDocumentoRepository.findByActuacionIdOrderByFechaHoraSubidaAsc(actuacionId).stream()
+                .filter(a -> Boolean.TRUE.equals(a.getVigente()))
+                .reduce((a, b) -> b)
+                .orElseGet(() -> registrarVersionHistorica(act)); // PDF anterior a esta versión del sistema
+
+        AdjuntoDocumento nuevo = registrarAdjunto(doc, act, archivo, "ACTUACION_V", previo.getTipoAdjunto(), usuario);
+        marcarReemplazado(previo, nuevo, motivo);
+
+        act.setRutaCopiaSelladaPdf(nuevo.getRutaAlmacenamiento());
+        actuacionDocumentoRepository.save(act);
+
+        auditoriaService.registrarEvento(doc, "REEMPLAZO_PDF", doc.getEstadoActual(), doc.getEstadoActual(),
+                "PDF de la actuación " + act.getTipoActuacion() + " (" + act.getId() + ") reemplazado. Archivo anterior: "
+                        + previo.getNombreArchivo() + ". Motivo: " + motivo.trim(),
+                usuario, null);
+        return nuevo;
+    }
+
+    // Reemplaza el acuse/adjunto principal del documento (salida o acuse final). Solo Dirección/Secretaría.
+    @Transactional
+    public AdjuntoDocumento reemplazarAdjuntoDocumento(Long documentoId, MultipartFile archivo, String motivo, Usuario usuario) {
+        if (!esRolAdministrativo(usuario)) {
+            throw new AccessDeniedException("Solo Dirección o Secretaría pueden reemplazar el acuse del expediente.");
+        }
+        validarMotivo(motivo, 10, "el motivo del reemplazo");
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+
+        AdjuntoDocumento previo = obtenerAdjuntoVigenteDocumento(documentoId);
+        if (previo == null) {
+            throw new IllegalStateException("El expediente no tiene un acuse cargado para reemplazar.");
+        }
+
+        AdjuntoDocumento nuevo = registrarAdjunto(doc, null, archivo, "ACUSE_V", previo.getTipoAdjunto(), usuario);
+        marcarReemplazado(previo, nuevo, motivo);
+
+        auditoriaService.registrarEvento(doc, "REEMPLAZO_ACUSE", doc.getEstadoActual(), doc.getEstadoActual(),
+                "Acuse " + previo.getTipoAdjunto() + " reemplazado. Archivo anterior: " + previo.getNombreArchivo()
+                        + ". Motivo: " + motivo.trim(),
+                usuario, null);
+        return nuevo;
+    }
+
+    private void marcarReemplazado(AdjuntoDocumento previo, AdjuntoDocumento nuevo, String motivo) {
+        previo.setVigente(false);
+        previo.setReemplazadoPor(nuevo);
+        previo.setMotivoReemplazo(motivo.trim());
+        adjuntoDocumentoRepository.save(previo);
+    }
+
+    // Crea el registro de un PDF que existía solo como ruta en la actuación (antes del versionado)
+    private AdjuntoDocumento registrarVersionHistorica(ActuacionDocumento act) {
+        Path ruta = archivoService.resolver(act.getRutaCopiaSelladaPdf());
+        long tamanio = 0;
+        try {
+            if (ruta != null) tamanio = Files.size(ruta);
+        } catch (IOException ignored) {}
+        return adjuntoDocumentoRepository.save(AdjuntoDocumento.builder()
+                .documento(act.getDocumento())
+                .actuacion(act)
+                .nombreArchivo(Paths.get(act.getRutaCopiaSelladaPdf()).getFileName().toString())
+                .rutaAlmacenamiento(ruta != null ? ruta.toString() : act.getRutaCopiaSelladaPdf())
+                .tipoAdjunto("PASE_CONFIRMADO".equals(act.getTipoActuacion()) ? "ACUSE_PASE" : "COPIA_SELLADA")
+                .tamanioBytes(tamanio)
+                .fechaHoraSubida(act.getFechaHoraActuacion() != null ? act.getFechaHoraActuacion() : LocalDateTime.now())
+                .usuarioSubida(act.getUsuario())
+                .vigente(true)
+                .build());
+    }
+
+    // Acuse vigente del documento: prioriza el acuse final de entrega sobre el de salida
+    public AdjuntoDocumento obtenerAdjuntoVigenteDocumento(Long documentoId) {
+        List<AdjuntoDocumento> vigentes = adjuntoDocumentoRepository.findByDocumentoIdAndActuacionIsNullOrderByFechaHoraSubidaAsc(documentoId)
+                .stream().filter(a -> Boolean.TRUE.equals(a.getVigente())).toList();
+        return vigentes.stream().filter(a -> "ACUSE_ENTREGA".equals(a.getTipoAdjunto())).reduce((a, b) -> b)
+                .orElse(vigentes.isEmpty() ? null : vigentes.get(vigentes.size() - 1));
+    }
+
+    public List<AdjuntoDocumento> obtenerAdjuntosDocumento(Long documentoId) {
+        return adjuntoDocumentoRepository.findByDocumentoIdAndActuacionIsNullOrderByFechaHoraSubidaAsc(documentoId);
+    }
+
+    public List<AdjuntoDocumento> obtenerVersionesPdfActuaciones(List<Long> actuacionIds) {
+        return actuacionIds.isEmpty() ? List.of() : adjuntoDocumentoRepository.findByActuacionIdInOrderByFechaHoraSubidaAsc(actuacionIds);
+    }
+
+    // 🔐 Verificación de integridad: compara la huella registrada con el archivo actual en disco
+    public record ResultadoIntegridad(String estado, String detalle) {
+        public static final String INTEGRO = "INTEGRO";
+        public static final String ALTERADO = "ALTERADO";
+        public static final String FALTANTE = "FALTANTE";
+        public static final String SIN_HUELLA = "SIN_HUELLA";
+    }
+
+    public ResultadoIntegridad verificarIntegridadAdjunto(Long adjuntoId, Usuario usuario) {
+        AdjuntoDocumento adj = adjuntoDocumentoRepository.findById(adjuntoId)
+                .orElseThrow(() -> new IllegalArgumentException("Adjunto no encontrado: " + adjuntoId));
+        verificarAccesoDocumento(usuario, adj.getDocumento().getId());
+
+        Path ruta = archivoService.resolver(adj.getRutaAlmacenamiento());
+        if (ruta == null) {
+            return new ResultadoIntegridad(ResultadoIntegridad.FALTANTE, "El archivo no está en el servidor.");
+        }
+        if (adj.getHashSha256() == null) {
+            return new ResultadoIntegridad(ResultadoIntegridad.SIN_HUELLA, "Adjunto anterior al registro de huellas: no se puede verificar.");
+        }
+        String actual = archivoService.calcularSha256(ruta);
+        return actual.equals(adj.getHashSha256())
+                ? new ResultadoIntegridad(ResultadoIntegridad.INTEGRO, "El archivo coincide con el original (SHA-256 " + actual.substring(0, 12) + "…).")
+                : new ResultadoIntegridad(ResultadoIntegridad.ALTERADO, "¡El archivo en disco NO coincide con el que se subió!");
+    }
+
+    // Descarga de cualquier versión (vigente o reemplazada) con control de acceso
+    public Path resolverAdjunto(Long adjuntoId, Usuario usuario) {
+        AdjuntoDocumento adj = adjuntoDocumentoRepository.findById(adjuntoId).orElse(null);
+        if (adj == null) {
+            return null;
+        }
+        verificarAccesoDocumento(usuario, adj.getDocumento().getId());
+        return archivoService.resolver(adj.getRutaAlmacenamiento());
+    }
+
+    // =====================================================================
+    // ↩️ RETIRAR / RECHAZAR PASES (antes de la confirmación con copia sellada)
+    // =====================================================================
+
+    public static final String ANULACION_RETIRADO = "RETIRADO";
+    public static final String ANULACION_RECHAZADO = "RECHAZADO";
+
+    private boolean esPasePendiente(ActuacionDocumento act) {
+        return act != null && "PASE_INTERNO".equals(act.getTipoActuacion())
+                && !Boolean.TRUE.equals(act.getPaseConfirmado()) && !Boolean.TRUE.equals(act.getAnulada());
+    }
+
+    // Retira el pase la dependencia que lo emitió (o Dirección/Secretaría)
+    public boolean puedeRetirarPase(ActuacionDocumento act, Usuario usuario) {
+        if (!esPasePendiente(act) || usuario == null) {
+            return false;
+        }
+        if (esRolAdministrativo(usuario)) {
+            return true;
+        }
+        return usuario.getDependencia() != null && act.getDependenciaEmisora() != null
+                && act.getDependenciaEmisora().getId().equals(usuario.getDependencia().getId());
+    }
+
+    // Rechaza la recepción únicamente la dependencia receptora
+    public boolean puedeRechazarPase(ActuacionDocumento act, Usuario usuario) {
+        if (!esPasePendiente(act) || usuario == null || usuario.getDependencia() == null) {
+            return false;
+        }
+        Dependencia receptora = act.getDependenciaReceptoraPase();
+        return receptora != null
+                ? receptora.getId().equals(usuario.getDependencia().getId())
+                : act.getDescripcionResumen() != null
+                    && act.getDescripcionResumen().contains("➔ " + usuario.getDependencia().getNombre() + ":");
+    }
+
+    @Transactional
+    public ActuacionDocumento anularPase(Long actuacionId, String accion, String motivo, Usuario usuario) {
+        ActuacionDocumento pase = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
+                .orElseThrow(() -> new IllegalArgumentException("Pase no encontrado: " + actuacionId));
+        Documento doc = documentoRepository.findByIdParaActualizar(pase.getDocumento().getId()).orElseThrow();
+        validarNoFinalizado(doc, "modificar pases de");
+        validarMotivo(motivo, 10, "el motivo");
+
+        if (!esPasePendiente(pase)) {
+            throw new IllegalStateException("Solo se puede retirar o rechazar un pase pendiente: este ya fue confirmado con copia sellada o anulado.");
+        }
+
+        String tipoAnulacion;
+        if ("RETIRAR".equals(accion)) {
+            if (!puedeRetirarPase(pase, usuario)) {
+                throw new AccessDeniedException("Solo la dependencia que emitió el pase (o Dirección/Secretaría) puede retirarlo.");
+            }
+            tipoAnulacion = ANULACION_RETIRADO;
+        } else if ("RECHAZAR".equals(accion)) {
+            if (!puedeRechazarPase(pase, usuario)) {
+                throw new AccessDeniedException("Solo la dependencia receptora puede rechazar la recepción del pase.");
+            }
+            tipoAnulacion = ANULACION_RECHAZADO;
+        } else {
+            throw new IllegalArgumentException("Acción no válida: " + accion);
+        }
+
+        pase.setAnulada(true);
+        pase.setTipoAnulacion(tipoAnulacion);
+        pase.setMotivoAnulacion(motivo.trim());
+        pase.setFechaHoraAnulacion(LocalDateTime.now());
+        pase.setUsuarioAnulacion(usuario);
+        actuacionDocumentoRepository.save(pase);
+
+        // Si ya no queda ningún pase vigente pidiendo informe, el expediente deja de esperar informes
+        EstadoDocumento estadoAnterior = doc.getEstadoActual();
+        if (doc.getEstadoActual() == EstadoDocumento.EN_ESPERA_INFORME && !quedanPasesParaInformeVigentes(doc.getId())) {
+            doc.setEstadoActual(EstadoDocumento.EN_REVISION);
+            documentoRepository.save(doc);
+        }
+
+        String receptora = pase.getDependenciaReceptoraPase() != null ? pase.getDependenciaReceptoraPase().getNombre() : "dependencia receptora";
+        auditoriaService.registrarEvento(doc,
+                ANULACION_RETIRADO.equals(tipoAnulacion) ? "PASE_RETIRADO" : "PASE_RECHAZADO",
+                estadoAnterior, doc.getEstadoActual(),
+                (ANULACION_RETIRADO.equals(tipoAnulacion) ? "Pase retirado" : "Recepción rechazada")
+                        + " (" + pase.getDependenciaEmisora().getNombre() + " ➔ " + receptora + "). Motivo: " + motivo.trim(),
+                usuario, null);
+
+        // Las demás dependencias pueden haber respondido ya todos los informes vigentes
+        verificarYActualizarEstadoGlobal(doc.getId());
+        return pase;
+    }
+
+    private boolean quedanPasesParaInformeVigentes(Long documentoId) {
+        return actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
+                .anyMatch(a -> !Boolean.TRUE.equals(a.getAnulada())
+                        && ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
+                        && Boolean.TRUE.equals(a.getRequiereInforme()));
+    }
+
+    // =====================================================================
+    // ⚠️ CIERRE FORZADO / SALIDA EXCEPCIONAL (solo Dirección y Secretaría)
+    // =====================================================================
+
+    @Transactional
+    public Documento forzarCierreInformes(Long documentoId, String justificacion, Usuario usuario) {
+        if (!esRolAdministrativo(usuario)) {
+            throw new AccessDeniedException("Solo Dirección o Secretaría pueden forzar el cierre de informes.");
+        }
+        validarMotivo(justificacion, 20, "la justificación");
+
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+        EstadoDocumento estadoAnterior = doc.getEstadoActual();
+        if (estadoAnterior == EstadoDocumento.PENDIENTE_SALIDA || estadoAnterior == EstadoDocumento.FINALIZADO
+                || estadoAnterior == EstadoDocumento.ARCHIVADO) {
+            throw new IllegalStateException("El expediente ya está en " + estadoAnterior + ": no corresponde forzar el cierre.");
+        }
+
+        // Dependencias a las que se pidió informe y todavía no respondieron (queda constancia)
+        List<ActuacionDocumento> vigentes = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)
+                .stream().filter(a -> !Boolean.TRUE.equals(a.getAnulada())).toList();
+        java.util.Set<Integer> respondieron = vigentes.stream()
+                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
+                .filter(a -> a.getDependenciaEmisora() != null)
+                .map(a -> a.getDependenciaEmisora().getId())
+                .collect(java.util.stream.Collectors.toSet());
+        List<String> sinRespuesta = vigentes.stream()
+                .filter(a -> ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
+                        && Boolean.TRUE.equals(a.getRequiereInforme())
+                        && a.getDependenciaReceptoraPase() != null
+                        && !respondieron.contains(a.getDependenciaReceptoraPase().getId()))
+                .map(a -> a.getDependenciaReceptoraPase().getNombre())
+                .distinct().toList();
+
+        doc.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
+        documentoRepository.save(doc);
+
+        String detalle = "CIERRE EXCEPCIONAL DE INFORMES: " + justificacion.trim()
+                + (sinRespuesta.isEmpty() ? "" : " | Sin respuesta de: " + String.join(", ", sinRespuesta));
+
+        // Queda visible en el árbol de trazabilidad, no solo en la bitácora
+        actuacionDocumentoRepository.save(ActuacionDocumento.builder()
+                .documento(doc)
+                .dependenciaEmisora(usuario.getDependencia())
+                .tipoActuacion("CIERRE_EXCEPCIONAL")
+                .numeroActuacion("S/N")
+                .descripcionResumen(detalle)
+                .ubicacionBibliorato(doc.getUbicacionBibliorato())
+                .fechaHoraActuacion(LocalDateTime.now())
+                .usuario(usuario)
+                .build());
+
+        auditoriaService.registrarEvento(doc, "CIERRE_FORZADO", estadoAnterior, doc.getEstadoActual(), detalle, usuario, null);
+        return doc;
+    }
+
+    private void validarMotivo(String motivo, int minimo, String nombre) {
+        if (motivo == null || motivo.trim().length() < minimo) {
+            throw new IllegalArgumentException("Debe ingresar " + nombre + " (mínimo " + minimo + " caracteres).");
+        }
+    }
+
+    // =====================================================================
+    // ⏱️ SLA: días hábiles sin movimiento y nivel de alerta por expediente
+    // =====================================================================
+
+    public record IndicadorSla(long diasHabiles, String nivel) {
+        public static final String OK = "OK";
+        public static final String ADVERTENCIA = "ADVERTENCIA";
+        public static final String CRITICO = "CRITICO";
+    }
+
+    // Una sola consulta para toda la bandeja. "Movimiento" = última actuación vigente o el ingreso.
+    public Map<Long, IndicadorSla> calcularSla(List<Documento> documentos) {
+        Map<Long, IndicadorSla> resultado = new HashMap<>();
+        List<Documento> activos = documentos.stream()
+                .filter(d -> !ESTADOS_CERRADOS.contains(d.getEstadoActual())).toList();
+        if (activos.isEmpty()) {
+            return resultado;
+        }
+
+        Map<Long, LocalDateTime> ultimoMovimiento = new HashMap<>();
+        for (Object[] fila : actuacionDocumentoRepository.obtenerUltimoMovimientoPorDocumento(
+                activos.stream().map(Documento::getId).toList())) {
+            ultimoMovimiento.put((Long) fila[0], (LocalDateTime) fila[1]);
+        }
+
+        LocalDate hoy = LocalDate.now();
+        for (Documento d : activos) {
+            LocalDateTime base = d.getFechaHoraIngreso();
+            LocalDateTime mov = ultimoMovimiento.get(d.getId());
+            if (mov != null && (base == null || mov.isAfter(base))) {
+                base = mov;
+            }
+            long dias = base != null ? diasHabilesEntre(base.toLocalDate(), hoy) : 0;
+
+            boolean urgente = d.getPrioridad() == Prioridad.URGENTE;
+            int advertencia = urgente ? slaUrgenteDiasAdvertencia : slaDiasAdvertencia;
+            int critico = urgente ? slaUrgenteDiasCritico : slaDiasCritico;
+            String nivel = dias >= critico ? IndicadorSla.CRITICO : dias >= advertencia ? IndicadorSla.ADVERTENCIA : IndicadorSla.OK;
+            resultado.put(d.getId(), new IndicadorSla(dias, nivel));
+        }
+        return resultado;
+    }
+
+    // Días hábiles (lunes a viernes) transcurridos. No contempla feriados.
+    static long diasHabilesEntre(LocalDate desde, LocalDate hasta) {
+        long dias = 0;
+        for (LocalDate f = desde.plusDays(1); !f.isAfter(hasta); f = f.plusDays(1)) {
+            if (f.getDayOfWeek() != java.time.DayOfWeek.SATURDAY && f.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
+                dias++;
+            }
+        }
+        return dias;
     }
 
     // 🏆 Carga segmentada de Documentos Finalizados por Rol/Dependencia
