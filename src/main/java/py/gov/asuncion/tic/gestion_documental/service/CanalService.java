@@ -56,6 +56,17 @@ public class CanalService {
         return usuario.getDependencia();
     }
 
+    // Dirección (o cabecera) en la que trabaja el usuario: la de su mesa o la de su dependencia.
+    // Es la que se muestra como título de la pantalla.
+    public Organigrama.Nodo cabeceraDelUsuario(Usuario usuario) {
+        Dependencia trabajo = dependenciaDeRegistro(usuario);
+        if (trabajo == null) {
+            return null;
+        }
+        Organigrama org = organigrama();
+        return org.cabecera(org.nodo(trabajo.getId()));
+    }
+
     // El usuario actúa en nombre de su dependencia y de las que abarcan sus asignaciones de trámite
     public boolean puedeActuarPor(Usuario usuario, Dependencia dependencia) {
         if (usuario == null || dependencia == null) {

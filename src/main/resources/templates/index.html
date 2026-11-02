@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mesa de Entrada - Dirección de TIC</title>
+    <title th:text="${'Gestión Documental' + (areaUsuario != null && areaUsuario.sigla() != null ? ' - ' + areaUsuario.sigla() : '')}">Gestión Documental</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
@@ -38,7 +38,8 @@
         <!-- Header con Identificación de Sesión Minimalista y Botón de Salir -->
         <div class="d-flex justify-content-between align-items-center mb-3 bg-white px-3 py-2 rounded-3 shadow-sm border">
             <div>
-                <h4 class="fw-bold m-0"><i class="bi bi-journal-bookmark-fill text-primary me-2"></i>Mesa de Entrada - TIC</h4>
+                <h4 class="fw-bold m-0"><i class="bi bi-journal-bookmark-fill text-primary me-2"></i>Gestión Documental</h4>
+                <div class="small text-muted" th:if="${areaUsuario != null}" th:text="${areaUsuario.nombre()}">Dirección</div>
             </div>
 
             <div class="d-flex align-items-center gap-2">
@@ -257,7 +258,7 @@
                                         <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</td>
                                         <td><span class="badge bg-light text-dark border" th:text="${doc.numeroDocumentoOrigen != null ? doc.numeroDocumentoOrigen : 'S/N'}">S/N</span></td>
                                         <td><span class="badge bg-secondary" th:text="${doc.tipoDocumento?.nombre}">Nota</span></td>
-                                        <td th:text="${doc.dependenciaOrigen?.nombre}">Origen</td>
+                                        <td th:text="${doc.dependenciaOrigen?.nombreVisible}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
                                         <td th:with="ind=${sla != null ? sla[doc.id] : null}">
@@ -333,7 +334,7 @@
                                             <span th:if="${doc.prioridad?.name() == 'IMPORTANTE'}" class="badge bg-warning text-dark">IMPORTANTE</span>
                                             <span th:if="${doc.prioridad?.name() == 'NORMAL'}" class="badge bg-info text-white">NORMAL</span>
                                         </td>
-                                        <td th:text="${doc.dependenciaOrigen?.nombre}">Origen</td>
+                                        <td th:text="${doc.dependenciaOrigen?.nombreVisible}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
                                         <td th:with="ind=${sla != null ? sla[doc.id] : null}">
@@ -450,7 +451,7 @@
                                         <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">CUTI</td>
                                         <td><span class="badge bg-dark" th:text="${doc.nroNotaSalida != null ? doc.nroNotaSalida : 'S/N'}">N°</span></td>
                                         <td th:text="${doc.asunto}">Asunto</td>
-                                        <td th:text="${doc.dependenciaDestinoSalida != null ? doc.dependenciaDestinoSalida.nombre : 'Externo'}">Destino</td>
+                                        <td th:text="${doc.dependenciaDestinoSalida != null ? doc.dependenciaDestinoSalida.nombreVisible : 'Externo'}">Destino</td>
                                         <td><span class="badge bg-info text-dark" th:text="${doc.estadoActual}">ESTADO</span></td>
                                         <td th:text="${doc.fechaHoraSalida != null ? #temporals.format(doc.fechaHoraSalida, 'dd/MM/yyyy HH:mm') : '-'}">-</td>
                                         <td class="text-center">
@@ -500,7 +501,7 @@
                                         <td class="fw-bold text-success" th:text="${doc.codigoCuti}">TIC-2026-000001</td>
                                         <td><span class="badge bg-light text-dark border" th:text="${doc.numeroDocumentoOrigen != null ? doc.numeroDocumentoOrigen : 'S/N'}">S/N</span></td>
                                         <td><span class="badge bg-success" th:text="${doc.nroNotaSalida != null ? doc.nroNotaSalida : 'S/N'}">120/2026</span></td>
-                                        <td th:text="${doc.dependenciaOrigen.nombre}">Origen</td>
+                                        <td th:text="${doc.dependenciaOrigen.nombreVisible}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td>
                                             <span th:if="${doc.ubicacionTexto != null}" class="small" th:text="${doc.ubicacionTexto}">BIB-2026</span>
@@ -665,7 +666,7 @@
                                 <tr th:each="b : ${biblioratosTodos}" th:with="uso=${usoBiblioratos != null ? usoBiblioratos[b.id] : null}" th:classappend="${!b.activo} ? 'text-muted'">
                                     <td class="fw-bold" th:text="${b.codigo}">BIB</td>
                                     <td th:text="${b.descripcion}">Desc</td>
-                                    <td th:text="${b.dependencia.nombre}">Dep</td>
+                                    <td th:text="${b.dependencia.nombreVisible}">Dep</td>
                                     <td th:text="${b.anio}">2026</td>
                                     <td th:text="${b.ubicacionFisica}">Armario</td>
                                     <td th:text="${(uso != null ? uso[0] : 0) + ' doc. · última foja ' + (uso != null ? uso[1] : 0) + (b.capacidadFojas != null ? ' de ' + b.capacidadFojas : '')}">0 doc.</td>
@@ -760,7 +761,7 @@
                                 <label class="form-label small fw-bold">Dependencia que registra</label>
                                 <div class="alert alert-info py-2 px-3 m-0 small">
                                     <i class="bi bi-building me-1"></i> 
-                                    <span th:text="${usuarioLogueado != null && usuarioLogueado.dependencia != null ? usuarioLogueado.dependencia.nombre : 'Sin dependencia'}">Nombre de tu Área</span>
+                                    <span th:text="${usuarioLogueado != null && usuarioLogueado.dependencia != null ? usuarioLogueado.dependencia.nombreVisible : 'Sin dependencia'}">Nombre de tu Área</span>
                                 </div>
                             </div>
 

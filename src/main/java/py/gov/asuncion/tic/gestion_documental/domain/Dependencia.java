@@ -61,4 +61,13 @@ public class Dependencia {
 
     @OneToMany(mappedBy = "dependenciaPadre")
     private List<Dependencia> dependenciasHijas;
+
+    // Nombre para mostrar: las mesas de entrada se llaman igual en todas las direcciones
+    // ("Unidad de Secretaría Administrativa"), así que llevan la sigla de su dirección
+    public String getNombreVisible() {
+        if (Boolean.TRUE.equals(esMesaEntrada) && dependenciaPadre != null && dependenciaPadre.getSigla() != null) {
+            return nombre + " (" + dependenciaPadre.getSigla() + ")";
+        }
+        return nombre;
+    }
 }
