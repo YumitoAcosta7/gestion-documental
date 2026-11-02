@@ -30,7 +30,7 @@
 | H2 | ✅ | Una derivación de conocimiento conserva `EN_ESPERA_INFORME` si quedan pases vigentes con `requiere_informe` |
 | H5 | ✅ | Destinos sin repetir, rechazo de pase pendiente duplicado en el servicio e índice único parcial `uq_pase_pendiente_por_receptora` |
 | H6 | ✅ | Bloqueo pesimista (`SELECT … FOR UPDATE`) del expediente y del pase en derivar, anular, confirmar, devolver, salida, acuse, actuaciones y cierre. Se eligió en lugar de `@Version` porque serializa las operaciones sin obligar al usuario a reintentar. |
-| H7 | ⚠️ | `CHECK` de estado, prioridad, tipo de actuación y coherencia de anulación. **Falta el de rol:** hay dos usuarios con roles heredados (`JEFA_SECRETARIA`, `OPERADOR_MESA_ENTRADA`) que no pueden iniciar sesión y deben reasignarse. |
+| H7 | ✅ | `CHECK` de estado, prioridad, tipo de actuación y coherencia de anulación (V3). `CHECK` de rol en V4, después de reasignar a `SECRETARIA_ADMIN` los dos usuarios con roles heredados (`zlobo`, `griveros`), que antes no podían iniciar sesión. |
 | H8 | ✅ | Columna `requiere_informe` (9 pases existentes migrados desde la descripción) |
 | H11 | ✅ | `dependencia_emisora_id` y `usuario_id` a `INTEGER`, `fecha_hora_ingreso NOT NULL`, índice redundante eliminado, índice por estado |
 | H3, H4, H9, H10 | ❌ | Pasos 3 y 4 del plan |
