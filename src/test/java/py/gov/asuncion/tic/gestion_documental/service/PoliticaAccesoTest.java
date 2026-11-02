@@ -31,8 +31,9 @@ class PoliticaAccesoTest {
     }
 
     @Test
-    void mesaDeEntradaPuedeTodo() {
-        assertEquals(EnumSet.allOf(Accion.class), politica.acciones(usuarioCon(RolAsignacion.MESA_ENTRADA)));
+    void mesaDeEntradaHaceTodoElTramiteSinAdministrarElSistema() {
+        assertEquals(EnumSet.complementOf(EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
+                politica.acciones(usuarioCon(RolAsignacion.MESA_ENTRADA)));
     }
 
     @Test
@@ -47,8 +48,16 @@ class PoliticaAccesoTest {
 
     @Test
     void variasAsignacionesSumanAcciones() {
-        Usuario u = usuarioCon(RolAsignacion.OPERADOR, RolAsignacion.ADMIN_SISTEMA);
-        assertEquals(EnumSet.of(Accion.REGISTRAR_ACTUACION, Accion.GESTIONAR_ARCHIVO, Accion.VER_AUDITORIA), politica.acciones(u));
+        Usuario u = usuarioCon(RolAsignacion.RESPONSABLE, RolAsignacion.ADMIN_SISTEMA);
+        assertEquals(EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION, Accion.FORZAR_CIERRE, Accion.VER_AUDITORIA,
+                Accion.ADMINISTRAR_SISTEMA), politica.acciones(u));
+    }
+
+    @Test
+    void elAdministradorDelSistemaNoTramitaPorEsaAsignacion() {
+        // Solo con ADMIN_SISTEMA: administra y trabaja como operador de su propia dependencia
+        assertEquals(EnumSet.of(Accion.ADMINISTRAR_SISTEMA, Accion.REGISTRAR_ACTUACION),
+                politica.acciones(usuarioCon(RolAsignacion.ADMIN_SISTEMA)));
     }
 
     @Test

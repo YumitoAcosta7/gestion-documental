@@ -24,11 +24,13 @@ import java.util.Set;
 public class PoliticaAcceso {
 
     private static final Map<RolAsignacion, Set<Accion>> ACCIONES_POR_ROL = Map.of(
-            RolAsignacion.MESA_ENTRADA, EnumSet.allOf(Accion.class),
+            // La mesa de entrada hace todo el trámite, pero no administra el sistema
+            RolAsignacion.MESA_ENTRADA, EnumSet.complementOf(EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             RolAsignacion.RESPONSABLE, EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION,
                     Accion.FORZAR_CIERRE, Accion.VER_AUDITORIA),
             RolAsignacion.OPERADOR, EnumSet.of(Accion.REGISTRAR_ACTUACION),
-            RolAsignacion.ADMIN_SISTEMA, EnumSet.of(Accion.GESTIONAR_ARCHIVO, Accion.VER_AUDITORIA),
+            // Administra usuarios y catálogos; no ve expedientes por esta asignación
+            RolAsignacion.ADMIN_SISTEMA, EnumSet.of(Accion.ADMINISTRAR_SISTEMA),
             RolAsignacion.CONSULTA, EnumSet.noneOf(Accion.class));
 
     // Sin asignaciones vigentes trabaja como operador de su propia dependencia
@@ -45,11 +47,13 @@ public class PoliticaAcceso {
             return EnumSet.noneOf(Accion.class);
         }
         List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
-        if (vigentes.isEmpty()) {
-            return EnumSet.copyOf(SIN_ASIGNACIONES);
-        }
         Set<Accion> acciones = EnumSet.noneOf(Accion.class);
         vigentes.forEach(a -> acciones.addAll(ACCIONES_POR_ROL.get(a.getRol())));
+        // Sin asignaciones de trámite (ninguna, o solo ADMIN_SISTEMA), trabaja como operador de su
+        // dependencia: lo mismo que considera el ámbito de visibilidad (DocumentoRepository.CTE_AMBITO)
+        if (vigentes.stream().allMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA)) {
+            acciones.addAll(SIN_ASIGNACIONES);
+        }
         return acciones;
     }
 

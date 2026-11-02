@@ -10,7 +10,8 @@ public enum Accion {
     GESTIONAR_ARCHIVO,     // biblioratos y ubicación física
     FORZAR_CIERRE,
     VER_AUDITORIA,
-    SUPERVISAR_PASES;      // confirmar, retirar o reemplazar PDF de pases de otras dependencias del ámbito
+    SUPERVISAR_PASES,      // confirmar, retirar o reemplazar PDF de pases de otras dependencias del ámbito
+    ADMINISTRAR_SISTEMA;   // usuarios, asignaciones, suplencias y feriados (solo ADMIN_SISTEMA)
 
     public String autoridad() {
         return "PERMISO_" + name();
