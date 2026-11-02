@@ -101,7 +101,7 @@ public class HomeController {
         model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuario));
 
         model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
-        model.addAttribute("dependencias", documentoService.obtenerDependenciasActivas());
+        model.addAttribute("dependenciasAgrupadas", documentoService.obtenerDependenciasAgrupadas());
         model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
     }
 

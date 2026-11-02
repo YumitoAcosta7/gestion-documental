@@ -102,7 +102,7 @@
                             <label class="form-label small fw-bold">Dependencia (Origen o Destino)</label>
                             <select class="form-select form-select-sm" name="dependenciaId">
                                 <option value="">Todas las dependencias...</option>
-                                <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}" th:selected="${paramDependenciaId == dep.id}"></option>
+                                <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}" th:selected="${paramDependenciaId == op.id}"></option></optgroup>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -664,7 +664,7 @@
                             <div class="col-md-5">
                                 <select name="dependenciaId" class="form-select form-select-sm" required>
                                     <option value="" disabled selected>Dependencia responsable...</option>
-                                    <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
+                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
                                 </select>
                             </div>
                             <div class="col-md-5"><input type="text" name="ubicacionFisica" class="form-control form-control-sm" required maxlength="150" placeholder="Ubicación física (Archivo DTIC · Armario 2 · Estante 3)"></div>
@@ -821,7 +821,7 @@
                                 <select name="dependenciaDestinoId" class="form-select" required>
                                     <option value="" selected disabled>Seleccione dependencia destino...</option>
                                     <!-- Iterar sobre las dependencias disponibles en tu modelo -->
-                                    <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
+                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
                                 </select>
                             </div>
 
@@ -1022,7 +1022,7 @@
                                 <label class="form-label small fw-bold">Dependencia Destino Exterior <span class="text-danger">*</span></label>
                                 <select class="form-select form-select-sm" name="dependenciaDestinoId" required>
                                     <option value="" disabled selected>Seleccione destino exterior...</option>
-                                    <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
+                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
                                 </select>
                             </div>
                             <div class="col-md-6 mb-2">
@@ -1226,7 +1226,7 @@
                                 <label class="form-label small fw-bold">Dependencia de Origen</label>
                                 <select class="form-select form-select-sm" th:field="*{dependenciaOrigenId}" required>
                                     <option value="" disabled selected>Seleccione área...</option>
-                                    <option th:each="dep : ${dependencias}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
+                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
                                 </select>
                             </div>
                             <div class="col-md-6">

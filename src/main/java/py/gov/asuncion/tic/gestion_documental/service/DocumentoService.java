@@ -79,8 +79,69 @@ public class DocumentoService {
     @Value("${app.sla.urgente.dias-critico:4}")
     private int slaUrgenteDiasCritico;
 
-    public List<Dependencia> obtenerDependenciasActivas() {
-        return dependenciaRepository.findByActivoTrueOrderByNombreAsc();
+    // 🏛️ Selectores de dependencias: con todo el organigrama hay muchos nombres repetidos
+    // ("Unidad de Secretaría Administrativa", "Departamento Administrativo"...), así que se
+    // agrupan por dirección, en orden jerárquico, y cada opción lleva la sigla de su dirección.
+    public record OpcionDependencia(Integer id, String texto) {}
+
+    public record GrupoDependencias(String etiqueta, List<OpcionDependencia> opciones) {}
+
+    public List<GrupoDependencias> obtenerDependenciasAgrupadas() {
+        Map<Integer, Integer> ordenPorNivel = new HashMap<>();
+        dependenciaRepository.findNiveles().forEach(n -> ordenPorNivel.put(n.getId(), n.getOrdenNivel()));
+        Map<Integer, Dependencia> porId = new HashMap<>();
+        dependenciaRepository.findAll().forEach(d -> porId.put(d.getId(), d));
+
+        // Clave de orden: nombres desde la raíz, así cada dependencia queda debajo de su superior
+        Map<Integer, String> clave = new HashMap<>();
+        java.util.function.Function<Dependencia, String> claveDe = new java.util.function.Function<>() {
+            public String apply(Dependencia d) {
+                String c = clave.get(d.getId());
+                if (c == null) {
+                    Dependencia padre = d.getDependenciaPadreId() == null ? null : porId.get(d.getDependenciaPadreId());
+                    c = (padre == null ? "" : apply(padre) + "\u0001") + d.getNombre();
+                    clave.put(d.getId(), c);
+                }
+                return c;
+            }
+        };
+
+        // Dirección de referencia: la propia dependencia o su primer superior de nivel Dirección o mayor
+        Map<Dependencia, List<Dependencia>> porDireccion = new java.util.TreeMap<>(java.util.Comparator.comparing(claveDe));
+        for (Dependencia d : porId.values()) {
+            if (!Boolean.TRUE.equals(d.getActivo())) {
+                continue;
+            }
+            Dependencia dir = d;
+            while (ordenPorNivel.getOrDefault(dir.getNivelJerarquicoId(), 99) > 4 && porId.get(dir.getDependenciaPadreId()) != null) {
+                dir = porId.get(dir.getDependenciaPadreId());
+            }
+            porDireccion.computeIfAbsent(dir, k -> new ArrayList<>()).add(d);
+        }
+
+        List<GrupoDependencias> grupos = new ArrayList<>();
+        porDireccion.forEach((dir, deps) -> {
+            deps.sort(java.util.Comparator.comparing(claveDe));
+            int profundidadDir = claveDe.apply(dir).split("\u0001").length;
+            String sigla = dir.getSigla() != null ? dir.getSigla() : "";
+            // Nombres que se repiten dentro de la misma dirección (las unidades de cada Centro Municipal):
+            // se aclara con el nombre de su superior en lugar de la sigla
+            Map<String, Long> repeticiones = deps.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(Dependencia::getNombre, java.util.stream.Collectors.counting()));
+            List<OpcionDependencia> opciones = deps.stream().map(d -> {
+                int nivel = claveDe.apply(d).split("\u0001").length - profundidadDir;
+                String aclaracion = d == dir ? ""
+                        : repeticiones.get(d.getNombre()) > 1 && porId.get(d.getDependenciaPadreId()) != null
+                            ? " (" + porId.get(d.getDependenciaPadreId()).getNombre() + ")"
+                            : sigla.isEmpty() ? "" : " (" + sigla + ")";
+                return new OpcionDependencia(d.getId(), "   ".repeat(nivel) + d.getNombre() + aclaracion);
+            }).toList();
+            Dependencia superior = porId.get(dir.getDependenciaPadreId());
+            String etiqueta = (sigla.isEmpty() ? "" : sigla + " · ") + dir.getNombre()
+                    + (superior != null && superior.getDependenciaPadreId() != null && superior.getSigla() != null ? " (" + superior.getSigla() + ")" : "");
+            grupos.add(new GrupoDependencias(etiqueta, opciones));
+        });
+        return grupos;
     }
 
     // 🛡️ CONTROL DE ACCESO POR DEPENDENCIA
