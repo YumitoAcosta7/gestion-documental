@@ -62,6 +62,11 @@ public class ActuacionDocumento {
     @Builder.Default
     private Boolean requiereInforme = false;
 
+    // Solo en pases: TRAMITE transfiere la custodia; INFORME espera respuesta; CONOCIMIENTO es copia
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_pase", length = 20)
+    private TipoPase tipoPase;
+
     // Relación para la vista en árbol (Jerarquía de Actuaciones)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "actuacion_padre_id")

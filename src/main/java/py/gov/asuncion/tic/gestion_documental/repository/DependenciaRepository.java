@@ -19,4 +19,8 @@ public interface DependenciaRepository extends JpaRepository<Dependencia, Intege
 
     @Query("SELECT n FROM NivelJerarquico n")
     List<NivelJerarquico> findNiveles();
+
+    // Atajos habilitados fuera del canal jerárquico: [origen_id, destino_id]
+    @Query(value = "SELECT origen_id, destino_id FROM reglas_derivacion WHERE activa", nativeQuery = true)
+    List<Object[]> findAtajosActivos();
 }

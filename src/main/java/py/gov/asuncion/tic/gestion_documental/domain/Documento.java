@@ -39,6 +39,16 @@ public class Documento {
     @JoinColumn(name = "dependencia_origen_id", nullable = false)
     private Dependencia dependenciaOrigen;
 
+    // Mesa o dependencia que registró el expediente en el sistema
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "dependencia_registro_id")
+    private Dependencia dependenciaRegistro;
+
+    // Dependencia que tiene el original: cambia solo con un pase de TRAMITE confirmado o una devolución
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "dependencia_custodia_id")
+    private Dependencia dependenciaCustodia;
+
     @Column(name = "persona_entrega", length = 150)
     private String personaEntrega;
 

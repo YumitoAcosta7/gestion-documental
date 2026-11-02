@@ -934,40 +934,29 @@
                     <input type="hidden" id="derivarDocId" name="documentoId" />
 
                     <div class="modal-body">
+                        <!-- 🧭 Canal jerárquico: los destinos dependen de quién tiene el original -->
+                        <div class="small text-muted mb-2" id="derivarDesde"></div>
+                        <div class="alert alert-warning small py-2 d-none" id="derivarSinPermiso"></div>
+
                         <div class="mb-3">
-                            <label class="form-label fw-bold small">Modo de Derivación</label>
-                            <select class="form-select form-select-sm" id="selectModoDerivacion" onchange="alternarModo(this.value)">
-                                <option value="UNICO">Derivar a una sola dependencia</option>
-                                <option value="MULTIPLE">Derivar a múltiples dependencias (Copias)</option>
+                            <label class="form-label fw-bold small">Tipo de pase</label>
+                            <select class="form-select form-select-sm" name="tipoPase" id="selectTipoPase" onchange="alternarTipoPase(this.value)" required>
+                                <option value="TRAMITE">📦 Trámite: entrega el original (una sola dependencia)</option>
+                                <option value="INFORME">📝 Para informe: se espera respuesta (una o varias)</option>
+                                <option value="CONOCIMIENTO">👁️ Para conocimiento: copia (una o varias)</option>
                             </select>
                         </div>
 
-                        <!-- Selección Única (Select) -->
+                        <!-- Trámite: un solo destino -->
                         <div class="mb-3" id="contenedorUnico">
-                            <label class="form-label fw-bold small">Dependencia Destino</label>
-                            <select class="form-select form-select-sm" name="dependenciaDestinoId" id="selectDestinoUnico">
-                                <option value="" selected disabled>Seleccione área...</option>
-                                <option th:each="dep : ${dependenciasHijas}" th:value="${dep.id}" th:text="${dep.nombre}"></option>
-                            </select>
+                            <label class="form-label fw-bold small">Dependencia destino</label>
+                            <select class="form-select form-select-sm" name="dependenciaDestinoId" id="selectDestinoUnico"></select>
                         </div>
 
-                        <!-- Selección Múltiple (Checkbox) -->
+                        <!-- Informe o conocimiento: uno o varios destinos -->
                         <div class="mb-3 d-none" id="contenedorMultiple">
-                            <label class="form-label fw-bold small">Dependencias Destino (Copias)</label>
-                            <div class="card p-2 bg-light" style="max-height: 150px; overflow-y: auto;">
-                                <div th:each="dep : ${dependenciasHijas}" class="form-check">
-                                    <input class="form-check-input check-dependencia" type="checkbox" name="dependenciaDestinoId" th:value="${dep.id}" th:id="${'check_' + dep.id}">
-                                    <label class="form-check-label small" th:for="${'check_' + dep.id}" th:text="${dep.nombre}"></label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label fw-bold small">Tipo / Alcance de la Derivación</label>
-                            <select class="form-select form-select-sm" name="requiereInforme" required>
-                                <option value="false">👁️ Para Conocimiento / Tramitación Simple</option>
-                                <option value="true">📝 Requiere Elaboración de Informe Técnico / Respuesta Formal</option>
-                            </select>
+                            <label class="form-label fw-bold small">Dependencias destino</label>
+                            <div class="card p-2 bg-light" style="max-height: 180px; overflow-y: auto;" id="listaDestinosMultiple"></div>
                         </div>
 
                         <div class="mb-3">
@@ -1286,21 +1275,63 @@
                 .replace(/'/g, "&#39;");
         }
 
-        // Función para alternar entre Derivación Única y Múltiple
-        function alternarModo(modo) {
+        // Trámite va a un solo destino; informe y conocimiento, a uno o varios
+        function alternarTipoPase(tipo) {
             const unico = document.getElementById('contenedorUnico');
             const multiple = document.getElementById('contenedorMultiple');
             const selectUnico = document.getElementById('selectDestinoUnico');
             const checks = multiple.querySelectorAll('.check-dependencia');
-            const esMultiple = modo === 'MULTIPLE';
+            const esMultiple = tipo !== 'TRAMITE';
 
             unico.classList.toggle('d-none', esMultiple);
             multiple.classList.toggle('d-none', !esMultiple);
 
-            // Los campos deshabilitados no se envían: así solo viaja el modo elegido
+            // Los campos deshabilitados no se envían: así solo viaja la selección del tipo elegido
             selectUnico.disabled = esMultiple;
             selectUnico.required = !esMultiple;
             checks.forEach(c => c.disabled = !esMultiple);
+        }
+
+        const ETIQUETA_MOVIMIENTO = { SUBIR: '⬆ Superior', BAJAR: '⬇ Subordinada', CABECERA: '↔ Otra dirección', ATAJO: '⤳ Atajo habilitado' };
+
+        // Carga los destinos que permite el canal desde quien tiene el original del expediente
+        async function cargarDestinosDerivacion(docId) {
+            const desde = document.getElementById('derivarDesde');
+            const aviso = document.getElementById('derivarSinPermiso');
+            const selectUnico = document.getElementById('selectDestinoUnico');
+            const lista = document.getElementById('listaDestinosMultiple');
+            const enviar = document.querySelector('#formDerivar [type=submit]');
+            desde.textContent = 'Cargando destinos...';
+            aviso.classList.add('d-none');
+            selectUnico.innerHTML = '';
+            lista.innerHTML = '';
+            enviar.disabled = true;
+            try {
+                const res = await fetch(`/api/documentos/${docId}/destinos`);
+                if (!res.ok) throw new Error(res.status);
+                const datos = await res.json();
+                desde.innerHTML = `El original está en <strong>${esc(datos.custodia)}</strong>.`;
+                if (!datos.puedeDerivar || datos.destinos.length === 0) {
+                    aviso.textContent = datos.puedeDerivar
+                        ? 'No hay destinos habilitados desde esta dependencia.'
+                        : `Solo ${datos.custodia} (o quien actúe por ella) puede derivar este expediente.`;
+                    aviso.classList.remove('d-none');
+                    return;
+                }
+                selectUnico.innerHTML = '<option value="" selected disabled>Seleccione dependencia...</option>'
+                    + datos.destinos.map(d => `<option value="${d.id}">${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''} · ${ETIQUETA_MOVIMIENTO[d.movimiento] || ''}</option>`).join('');
+                lista.innerHTML = datos.destinos.map(d => `
+                    <div class="form-check">
+                        <input class="form-check-input check-dependencia" type="checkbox" name="dependenciaDestinoId" value="${d.id}" id="check_${d.id}">
+                        <label class="form-check-label small" for="check_${d.id}">${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''} <span class="text-muted">· ${ETIQUETA_MOVIMIENTO[d.movimiento] || ''}</span></label>
+                    </div>`).join('');
+                alternarTipoPase(document.getElementById('selectTipoPase').value);
+                enviar.disabled = false;
+            } catch (e) {
+                desde.textContent = '';
+                aviso.textContent = 'No se pudieron cargar los destinos del expediente.';
+                aviso.classList.remove('d-none');
+            }
         }
 
         // Alternar visualización y comportamiento según modalidad en Modal de Salida
@@ -1549,8 +1580,8 @@
             const formDerivar = document.getElementById('formDerivar');
             if (formDerivar) {
                 formDerivar.addEventListener('submit', function(e) {
-                    const modo = document.getElementById('selectModoDerivacion').value;
-                    if (modo === 'MULTIPLE') {
+                    const tipo = document.getElementById('selectTipoPase').value;
+                    if (tipo !== 'TRAMITE') {
                         const checkboxes = this.querySelectorAll('.check-dependencia:checked');
                         if (checkboxes.length === 0) {
                             e.preventDefault();
@@ -1600,17 +1631,15 @@
                         modalDerivar.querySelector('#derivarDocId').value = button.getAttribute('data-doc-id');
                         modalDerivar.querySelector('#labelCuti').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
 
-                        // Cada apertura empieza en modo único y sin selecciones previas
-                        document.getElementById('selectModoDerivacion').value = 'UNICO';
-                        document.getElementById('selectDestinoUnico').selectedIndex = 0;
-                        modalDerivar.querySelectorAll('.check-dependencia').forEach(c => c.checked = false);
-                        alternarModo('UNICO');
-
-                        // Difusión de un informativo: solo para conocimiento
+                        // Difusión de un informativo: solo para conocimiento; el resto empieza en trámite
                         const esInformativo = button.getAttribute('data-informativo') === 'true';
-                        const selInforme = modalDerivar.querySelector('[name=requiereInforme]');
-                        selInforme.value = 'false';
-                        selInforme.querySelector('option[value="true"]').disabled = esInformativo;
+                        const selTipo = document.getElementById('selectTipoPase');
+                        selTipo.querySelector('option[value="TRAMITE"]').disabled = esInformativo;
+                        selTipo.querySelector('option[value="INFORME"]').disabled = esInformativo;
+                        selTipo.value = esInformativo ? 'CONOCIMIENTO' : 'TRAMITE';
+                        alternarTipoPase(selTipo.value);
+
+                        cargarDestinosDerivacion(button.getAttribute('data-doc-id'));
                     }
                 });
             }

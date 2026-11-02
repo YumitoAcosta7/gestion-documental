@@ -30,6 +30,7 @@ import py.gov.asuncion.tic.gestion_documental.domain.ActuacionDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AdjuntoDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.Documento;
+import py.gov.asuncion.tic.gestion_documental.domain.TipoPase;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
 import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.AdjuntoDocumentoRepository;
@@ -103,7 +104,6 @@ public class HomeController {
         model.addAttribute("documentosSalida", conDependencia
                 ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
                 : List.of());
-        model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuario));
 
         model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
         model.addAttribute("dependenciasAgrupadas", documentoService.obtenerDependenciasAgrupadas());
@@ -153,10 +153,10 @@ public class HomeController {
     public String derivarDocumento(@RequestParam("documentoId") Long documentoId,
                                    @RequestParam("dependenciaDestinoId") List<Integer> dependenciasDestinoIds,
                                    @RequestParam("observacion") String observacion,
-                                   @RequestParam(value = "requiereInforme", defaultValue = "false") Boolean requiereInforme,
+                                   @RequestParam("tipoPase") TipoPase tipoPase,
                                    RedirectAttributes redirectAttributes) {
         try {
-            documentoService.derivarDocumento(documentoId, dependenciasDestinoIds, observacion, requiereInforme, getUsuarioAutenticadoObligatorio());
+            documentoService.derivarDocumento(documentoId, dependenciasDestinoIds, observacion, tipoPase, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Expediente derivado correctamente.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error al derivar: " + mensajeError(e));
@@ -591,6 +591,19 @@ public class HomeController {
             listaJson.add(map);
         }
         return ResponseEntity.ok(listaJson);
+    }
+
+    /**
+     * 🧭 API JSON: DESTINOS QUE PERMITE EL CANAL DESDE QUIEN TIENE EL ORIGINAL
+     */
+    @GetMapping("/api/documentos/{id}/destinos")
+    @ResponseBody
+    public ResponseEntity<DocumentoService.OpcionesDerivacion> obtenerDestinosJson(@PathVariable("id") Long id) {
+        try {
+            return ResponseEntity.ok(documentoService.obtenerOpcionesDerivacion(id, getUsuarioAutenticadoObligatorio()));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
     }
 
     /**

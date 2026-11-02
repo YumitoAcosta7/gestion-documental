@@ -47,6 +47,14 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
     """)
     boolean existePasePendiente(@Param("documentoId") Long documentoId, @Param("dependenciaId") Integer dependenciaId);
 
+    // ¿Hay un pase de trámite (entrega del original) esperando acuse?
+    @Query("""
+        SELECT COUNT(a) > 0 FROM ActuacionDocumento a
+        WHERE a.documento.id = :documentoId AND a.tipoPase = py.gov.asuncion.tic.gestion_documental.domain.TipoPase.TRAMITE
+          AND a.tipoActuacion = 'PASE_INTERNO' AND a.anulada = false AND a.paseConfirmado = false
+    """)
+    boolean existePaseTramitePendiente(@Param("documentoId") Long documentoId);
+
     // Último pase vigente (no anulado) recibido por la dependencia: base de la devolución
     ActuacionDocumento findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(
             Long documentoId, Integer dependenciaReceptoraId);
