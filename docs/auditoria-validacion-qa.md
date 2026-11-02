@@ -35,14 +35,17 @@
 | H11 | ✅ | `dependencia_emisora_id` y `usuario_id` a `INTEGER`, `fecha_hora_ingreso NOT NULL`, índice redundante eliminado, índice por estado |
 | H3 | ✅ (V5) | `tipos_documentos.categoria` (`TRAMITE`/`INFORMATIVO`) y `requiere_bibliorato`; Circular = informativo. Los informativos se registran como `ARCHIVADO`, no se derivan para informe (solo difusión de conocimiento) y quedan fuera de bandejas, alertas de demora y KPI. |
 | H4 | ✅ (V5) | Catálogo `biblioratos` (código, descripción, dependencia, año, ubicación física, capacidad, abierto/cerrado), `documentos.bibliorato_id` + fojas con validación de rango, capacidad y superposición. Pestaña *Archivo físico*, filtro y búsqueda por bibliorato, traslado auditado (`CAMBIO_UBICACION`). |
-| H9, H10 | ❌ | Paso 4 del plan |
+| H9 | ✅ | Límite técnico de recepción de 50 MB (Tomcat) mayor que el de la aplicación (20 MB): el PDF llega al servicio y el usuario recibe un mensaje claro. Antes, el filtro CSRF provocaba un 413 sin mensaje. En el navegador, validación inmediata de tamaño y extensión antes de subir. |
+| H10 | ✅ (V6) | `adjuntos_documento.hash_sha256` y `tipo_mime`. Verificación de integridad desde la interfaz (Íntegro / Alterado / Falta / Sin huella). Borrado automático del archivo si la transacción se revierte. Se exige el cierre `%%EOF` (PDF completo) y los nombres de archivo llevan un sufijo aleatorio. |
 
 Pruebas ejecutadas:
 - Base de datos: BD-01 a BD-05, en una transacción revertida.
 - Derivaciones: DV-03, DV-04 y DV-07.
 - Informativos y biblioratos: BI-01, BI-02, BI-04, BI-05, BI-06, BI-07, BI-08, BI-09, BI-10 y BI-11, más el rechazo por capacidad.
 
-Todas correctas. No quedan pruebas pendientes de los pasos 1 a 3.
+- Carga: CD-09 (21 MB), CD-10, CD-12 (PDF truncado), CD-14 (rollback) y CD-15 (huella), en la app y en `ArchivoServiceTest`.
+
+Todas correctas. **Los 11 hallazgos de la auditoría están resueltos.**
 
 **Lo que ya está bien (verificado):**
 - CUTI único con bloqueo transaccional.

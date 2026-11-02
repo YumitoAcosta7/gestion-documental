@@ -47,6 +47,15 @@ Los PDF antiguos que quedaron en `./uploads/acuses` se siguen encontrando; los n
 | `V3__integridad_y_derivaciones.sql` | Historial no borrable (`RESTRICT`), `CHECK` de dominios, `requiere_informe`, unicidad de pases pendientes, tipos de clave corregidos |
 | `V4__roles_usuarios.sql` | Reasigna roles heredados (`JEFA_SECRETARIA`, `OPERADOR_MESA_ENTRADA`) a `SECRETARIA_ADMIN` y agrega el `CHECK` de rol |
 | `V5__biblioratos_informativos.sql` | Categoría del tipo documental (trámite/informativo), catálogo `biblioratos`, ubicación de cada documento (bibliorato + fojas) |
+| `V6__integridad_adjuntos.sql` | Huella SHA-256 y tipo MIME de cada adjunto |
+
+**Integridad de archivos (V6):** cada PDF guarda su huella SHA-256 al subirse. El botón *Verificar* (historial del PDF y modal *Versiones*) la compara con el archivo en disco. Se rechazan los PDF incompletos (sin `%%EOF`). Si la operación falla, el archivo escrito se elimina.
+
+Hay dos límites de tamaño:
+- `spring.servlet.multipart.max-file-size=50MB`: lo que Tomcat acepta recibir.
+- `app.upload.max-pdf-size=20MB`: lo que acepta la aplicación, con un mensaje claro para el usuario.
+
+El primero debe ser mayor que el segundo; si no, el filtro CSRF hace que Tomcat responda 413 sin mensaje.
 
 **Documentos informativos y archivo físico (V5):**
 - **Tipos informativos** (hoy: Circular): se registran directamente como `ARCHIVADO`, con bibliorato obligatorio. No se derivan para informe; solo se difunden para conocimiento, sin cambiar su estado. Quedan fuera de las bandejas de trabajo, de las alertas de demora y de los indicadores.

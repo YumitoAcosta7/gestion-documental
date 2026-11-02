@@ -368,9 +368,26 @@ public class HomeController {
         return ResponseEntity.ok(documentoService.obtenerAdjuntosDocumento(id).stream().map(this::adjuntoJson).toList());
     }
 
+    /**
+     * 🔐 API JSON: VERIFICAR LA INTEGRIDAD DE UN ADJUNTO (huella SHA-256 vs. archivo en disco)
+     */
+    @GetMapping("/api/adjuntos/{adjuntoId}/integridad")
+    @ResponseBody
+    public ResponseEntity<Map<String, String>> verificarIntegridad(@PathVariable Long adjuntoId) {
+        try {
+            var r = documentoService.verificarIntegridadAdjunto(adjuntoId, getUsuarioAutenticado());
+            return ResponseEntity.ok(Map.of("estado", r.estado(), "detalle", r.detalle()));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     private Map<String, Object> adjuntoJson(AdjuntoDocumento a) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", a.getId());
+        map.put("tieneHuella", a.getHashSha256() != null);
         map.put("nombre", a.getNombreArchivo());
         map.put("tipo", a.getTipoAdjunto());
         map.put("vigente", Boolean.TRUE.equals(a.getVigente()));

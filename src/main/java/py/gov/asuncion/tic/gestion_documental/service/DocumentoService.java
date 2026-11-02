@@ -974,14 +974,16 @@ public class DocumentoService {
 
     private AdjuntoDocumento registrarAdjunto(Documento doc, ActuacionDocumento actuacion, MultipartFile archivo,
                                               String prefijo, String tipoAdjunto, Usuario usuario) {
-        Path ruta = archivoService.guardarPdf(archivo, prefijo, doc.getCodigoCuti());
+        ArchivoService.ArchivoGuardado guardado = archivoService.guardarPdf(archivo, prefijo, doc.getCodigoCuti());
         return adjuntoDocumentoRepository.save(AdjuntoDocumento.builder()
                 .documento(doc)
                 .actuacion(actuacion)
-                .nombreArchivo(archivo.getOriginalFilename() != null ? archivo.getOriginalFilename() : ruta.getFileName().toString())
-                .rutaAlmacenamiento(ruta.toString())
+                .nombreArchivo(archivo.getOriginalFilename() != null ? archivo.getOriginalFilename() : guardado.ruta().getFileName().toString())
+                .rutaAlmacenamiento(guardado.ruta().toString())
                 .tipoAdjunto(tipoAdjunto)
-                .tamanioBytes(archivo.getSize())
+                .tamanioBytes(guardado.tamanio())
+                .hashSha256(guardado.sha256())
+                .tipoMime(guardado.tipoMime())
                 .fechaHoraSubida(LocalDateTime.now())
                 .usuarioSubida(usuario)
                 .vigente(true)
@@ -1108,6 +1110,32 @@ public class DocumentoService {
 
     public List<AdjuntoDocumento> obtenerVersionesPdfActuaciones(List<Long> actuacionIds) {
         return actuacionIds.isEmpty() ? List.of() : adjuntoDocumentoRepository.findByActuacionIdInOrderByFechaHoraSubidaAsc(actuacionIds);
+    }
+
+    // 🔐 Verificación de integridad: compara la huella registrada con el archivo actual en disco
+    public record ResultadoIntegridad(String estado, String detalle) {
+        public static final String INTEGRO = "INTEGRO";
+        public static final String ALTERADO = "ALTERADO";
+        public static final String FALTANTE = "FALTANTE";
+        public static final String SIN_HUELLA = "SIN_HUELLA";
+    }
+
+    public ResultadoIntegridad verificarIntegridadAdjunto(Long adjuntoId, Usuario usuario) {
+        AdjuntoDocumento adj = adjuntoDocumentoRepository.findById(adjuntoId)
+                .orElseThrow(() -> new IllegalArgumentException("Adjunto no encontrado: " + adjuntoId));
+        verificarAccesoDocumento(usuario, adj.getDocumento().getId());
+
+        Path ruta = archivoService.resolver(adj.getRutaAlmacenamiento());
+        if (ruta == null) {
+            return new ResultadoIntegridad(ResultadoIntegridad.FALTANTE, "El archivo no está en el servidor.");
+        }
+        if (adj.getHashSha256() == null) {
+            return new ResultadoIntegridad(ResultadoIntegridad.SIN_HUELLA, "Adjunto anterior al registro de huellas: no se puede verificar.");
+        }
+        String actual = archivoService.calcularSha256(ruta);
+        return actual.equals(adj.getHashSha256())
+                ? new ResultadoIntegridad(ResultadoIntegridad.INTEGRO, "El archivo coincide con el original (SHA-256 " + actual.substring(0, 12) + "…).")
+                : new ResultadoIntegridad(ResultadoIntegridad.ALTERADO, "¡El archivo en disco NO coincide con el que se subió!");
     }
 
     // Descarga de cualquier versión (vigente o reemplazada) con control de acceso

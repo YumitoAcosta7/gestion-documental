@@ -56,4 +56,11 @@ public class AdjuntoDocumento {
 
     @Column(name = "motivo_reemplazo", columnDefinition = "TEXT")
     private String motivoReemplazo;
+
+    // --- INTEGRIDAD: huella del archivo al momento de subirlo ---
+    @Column(name = "hash_sha256", length = 64)
+    private String hashSha256;
+
+    @Column(name = "tipo_mime", length = 100)
+    private String tipoMime;
 }

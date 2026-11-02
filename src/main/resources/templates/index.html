@@ -1388,15 +1388,38 @@
             abrirDesdeArbol('modalReemplazarPdf');
         }
 
+        // 🔐 Verifica la integridad de un adjunto y muestra el resultado junto al botón
+        async function verificarIntegridad(adjuntoId, boton) {
+            boton.disabled = true;
+            boton.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            try {
+                const res = await fetch(`/api/adjuntos/${adjuntoId}/integridad`);
+                if (!res.ok) throw new Error(res.status === 403 ? 'Sin acceso' : 'Error ' + res.status);
+                const r = await res.json();
+                const estilos = {INTEGRO: ['bg-success', '✔ Íntegro'], ALTERADO: ['bg-danger', '✖ Alterado'],
+                                 FALTANTE: ['bg-danger', '✖ Falta el archivo'], SIN_HUELLA: ['bg-secondary', 'Sin huella']};
+                const [clase, texto] = estilos[r.estado] || ['bg-secondary', r.estado];
+                boton.outerHTML = `<span class="badge ${clase}" title="${esc(r.detalle)}">${texto}</span>`;
+            } catch (e) {
+                boton.outerHTML = `<span class="badge bg-warning text-dark">${esc(e.message)}</span>`;
+            }
+        }
+
+        function botonVerificar(adjuntoId) {
+            return `<button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" onclick="verificarIntegridad(${adjuntoId}, this)" title="Comprobar que el archivo no fue alterado"><i class="bi bi-shield-check"></i> Verificar</button>`;
+        }
+
         // Lista de versiones de un PDF (vigente y reemplazadas)
         function renderizarVersiones(versiones) {
-            if (!versiones || versiones.length < 2) return '';
-            let html = `<details class="mt-2 small"><summary class="text-muted">Historial del PDF (${versiones.length} versiones)</summary><ul class="list-unstyled ms-2 mt-1 mb-0">`;
+            if (!versiones || versiones.length === 0) return '';
+            const titulo = versiones.length === 1 ? 'Integridad del PDF' : `Historial del PDF (${versiones.length} versiones)`;
+            let html = `<details class="mt-2 small"><summary class="text-muted">${titulo}</summary><ul class="list-unstyled ms-2 mt-1 mb-0">`;
             versiones.slice().reverse().forEach(v => {
                 html += `<li class="mb-1">
                     <a href="/documentos/adjuntos/${v.id}/pdf" target="_blank"><i class="bi bi-file-pdf"></i> ${esc(v.nombre)}</a>
                     <span class="badge ${v.vigente ? 'bg-success' : 'bg-secondary'} ms-1">${v.vigente ? 'Vigente' : 'Reemplazada'}</span>
                     <span class="text-muted">· ${esc(v.fecha)} · ${esc(v.usuario)}</span>
+                    ${botonVerificar(v.id)}
                     ${v.motivoReemplazo ? `<div class="text-muted fst-italic ms-3">Motivo: ${esc(v.motivoReemplazo)}</div>` : ''}
                 </li>`;
             });
@@ -1490,6 +1513,22 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+
+            // 📎 Validación inmediata de los PDF elegidos (tamaño y extensión), antes de subirlos
+            const TAMANIO_MAXIMO_PDF = 20 * 1024 * 1024;
+            document.querySelectorAll('input[type="file"]').forEach(input => {
+                input.addEventListener('change', function () {
+                    const archivo = this.files[0];
+                    this.setCustomValidity('');
+                    if (!archivo) return;
+                    if (!archivo.name.toLowerCase().endsWith('.pdf')) {
+                        this.setCustomValidity('Solo se aceptan archivos PDF.');
+                    } else if (archivo.size > TAMANIO_MAXIMO_PDF) {
+                        this.setCustomValidity(`El archivo pesa ${(archivo.size / 1048576).toFixed(1)} MB y el máximo es 20 MB. Reduzca la resolución del escaneo o divida el documento.`);
+                    }
+                    this.reportValidity();
+                });
+            });
 
             // PROTECCIÓN ANTI DOBLE-CLIC EN TODOS LOS FORMULARIOS
             document.querySelectorAll('form').forEach(form => {
@@ -1697,7 +1736,7 @@
                                 contenedor.innerHTML = '<div class="alert alert-light border small mb-0">El expediente no tiene acuses cargados.</div>';
                                 return;
                             }
-                            let html = '<table class="table table-sm small align-middle mb-0"><thead><tr><th>Archivo</th><th>Tipo</th><th>Estado</th><th>Subido</th></tr></thead><tbody>';
+                            let html = '<table class="table table-sm small align-middle mb-0"><thead><tr><th>Archivo</th><th>Tipo</th><th>Estado</th><th>Subido</th><th>Integridad</th></tr></thead><tbody>';
                             lista.slice().reverse().forEach(a => {
                                 html += `<tr class="${a.vigente ? '' : 'text-muted'}">
                                     <td><a href="/documentos/adjuntos/${a.id}/pdf" target="_blank"><i class="bi bi-file-pdf text-danger"></i> ${esc(a.nombre)}</a>
@@ -1705,6 +1744,7 @@
                                     <td>${esc(a.tipo)}</td>
                                     <td><span class="badge ${a.vigente ? 'bg-success' : 'bg-secondary'}">${a.vigente ? 'Vigente' : 'Reemplazado'}</span></td>
                                     <td>${esc(a.fecha)}<div>${esc(a.usuario)}</div></td>
+                                    <td>${botonVerificar(a.id)}</td>
                                 </tr>`;
                             });
                             contenedor.innerHTML = html + '</tbody></table>';
