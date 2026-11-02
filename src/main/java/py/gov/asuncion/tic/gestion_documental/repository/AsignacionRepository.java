@@ -19,4 +19,21 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Long> {
           AND a.vigenteDesde <= :fecha AND (a.vigenteHasta IS NULL OR a.vigenteHasta >= :fecha)
     """)
     List<Asignacion> findVigentes(@Param("usuarioId") Integer usuarioId, @Param("fecha") LocalDate fecha);
+
+    // Todas las asignaciones del usuario (vigentes, futuras, vencidas y dadas de baja), las activas primero
+    @Query("""
+        SELECT a FROM Asignacion a JOIN FETCH a.dependenciaAmbito LEFT JOIN FETCH a.titular
+        WHERE a.usuario.id = :usuarioId
+        ORDER BY a.activa DESC, a.vigenteDesde DESC, a.id DESC
+    """)
+    List<Asignacion> findHistorial(@Param("usuarioId") Integer usuarioId);
+
+    // Cuántos usuarios activos tienen hoy el rol ADMIN_SISTEMA: nunca debe quedar en cero
+    @Query("""
+        SELECT COUNT(DISTINCT a.usuario.id) FROM Asignacion a
+        WHERE a.rol = py.gov.asuncion.tic.gestion_documental.domain.RolAsignacion.ADMIN_SISTEMA
+          AND a.activa = true AND a.usuario.activo = true
+          AND a.vigenteDesde <= :fecha AND (a.vigenteHasta IS NULL OR a.vigenteHasta >= :fecha)
+    """)
+    long contarAdministradoresVigentes(@Param("fecha") LocalDate fecha);
 }

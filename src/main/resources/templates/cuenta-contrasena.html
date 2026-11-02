@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cambiar contraseña - Gestión Documental</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center vh-100">
+
+    <div class="card border-0 shadow-lg p-4" style="width: 100%; max-width: 440px; border-radius: 12px;">
+        <div class="text-center mb-3">
+            <i class="bi bi-key-fill text-primary display-5"></i>
+            <h4 class="fw-bold mt-2">Cambiar contraseña</h4>
+            <p class="text-muted small mb-0" th:text="${usuario.nombreCompleto + ' (' + usuario.username + ')'}">Usuario</p>
+        </div>
+
+        <div th:if="${usuario.debeCambiarContrasena}" class="alert alert-warning small py-2">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            Está usando una contraseña temporal. Defina la suya para continuar.
+        </div>
+        <div th:if="${error}" class="alert alert-danger small py-2" th:text="${error}">Error</div>
+
+        <form th:action="@{/cuenta/contrasena}" method="post" autocomplete="off">
+            <div class="mb-3">
+                <label class="form-label small fw-bold" for="actual">Contraseña actual</label>
+                <input type="password" class="form-control" id="actual" name="actual" required autofocus autocomplete="current-password">
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold" for="nueva">Contraseña nueva</label>
+                <input type="password" class="form-control" id="nueva" name="nueva" required minlength="10" autocomplete="new-password">
+                <div class="form-text" th:text="${'Debe tener ' + reglas + '.'}">Reglas</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold" for="repetida">Repita la contraseña nueva</label>
+                <input type="password" class="form-control" id="repetida" name="repetida" required minlength="10" autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn btn-primary w-100 fw-bold py-2">
+                <i class="bi bi-check-lg me-1"></i> Guardar contraseña
+            </button>
+        </form>
+
+        <div class="d-flex justify-content-between mt-3 small">
+            <a th:unless="${usuario.debeCambiarContrasena}" th:href="@{/}" class="text-decoration-none">← Volver</a>
+            <form th:action="@{/logout}" method="post" class="m-0 ms-auto">
+                <button type="submit" class="btn btn-link btn-sm p-0 text-danger text-decoration-none">Cerrar sesión</button>
+            </form>
+        </div>
+    </div>
+
+</body>
+</html>

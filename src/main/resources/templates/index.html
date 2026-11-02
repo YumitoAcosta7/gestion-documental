@@ -73,6 +73,16 @@
                     <i class="bi bi-archive me-1"></i>Biblioratos
                 </button>
 
+                <!-- Administración de usuarios y asignaciones -->
+                <a sec:authorize="hasAuthority('PERMISO_ADMINISTRAR_SISTEMA')" th:href="@{/admin/usuarios}" class="btn btn-outline-dark btn-sm rounded-pill px-3 fw-semibold">
+                    <i class="bi bi-people me-1"></i>Administración
+                </a>
+
+                <!-- Cambio de la propia contraseña -->
+                <a th:href="@{/cuenta/contrasena}" class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Cambiar mi contraseña">
+                    <i class="bi bi-key"></i>
+                </a>
+
                 <!-- Botón de Cerrar Sesión Compacto -->
                 <form th:action="@{/logout}" method="post" class="m-0">
                     <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-semibold" title="Cerrar Sesión">

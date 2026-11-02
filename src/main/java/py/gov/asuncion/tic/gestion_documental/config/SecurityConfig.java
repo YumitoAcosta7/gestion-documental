@@ -41,6 +41,7 @@ public class SecurityConfig {
             // 🔐 Reglas de autorización por acción (PoliticaAcceso: rol × ámbito × vigencia)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/css/**", "/js/**", "/images/**", "/login").permitAll()
+                .requestMatchers("/admin/**").hasAuthority(Accion.ADMINISTRAR_SISTEMA.autoridad())
                 .requestMatchers("/documentos/guardar").hasAuthority(Accion.REGISTRAR_INGRESO.autoridad())
                 .requestMatchers("/documentos/salida", "/documentos/salida-directa", "/documentos/confirmar-acuse", "/documentos/reemplazar-acuse")
                     .hasAuthority(Accion.REGISTRAR_SALIDA.autoridad())

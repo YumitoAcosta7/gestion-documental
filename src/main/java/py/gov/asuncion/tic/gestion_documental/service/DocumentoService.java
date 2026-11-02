@@ -193,6 +193,28 @@ public class DocumentoService {
         return doc.getDependenciaRegistro() != null ? doc.getDependenciaRegistro() : doc.getDependenciaOrigen();
     }
 
+    // 🛡️ Operaciones sobre el original (salida, acuse final, cierre forzado, ubicación, reemplazo del acuse):
+    // además del permiso, el expediente tiene que estar en el ámbito del usuario y el usuario tiene que
+    // actuar por quien tiene el original. Bloquea el expediente hasta el fin de la transacción.
+    private Documento exigirCustodia(Long documentoId, Usuario usuario, String accion) {
+        verificarAccesoDocumento(usuario, documentoId);
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+        Dependencia custodia = custodiaDe(doc);
+        if (!canalService.puedeActuarPor(usuario, custodia)) {
+            throw new AccessDeniedException("Solo " + custodia.getNombreVisible() + ", que tiene el original, puede " + accion + " este expediente.");
+        }
+        return doc;
+    }
+
+    // 🛡️ La supervisión de pases (mesa de entrada) vale solo para los pases de su ámbito:
+    // tiene que poder actuar por la dependencia emisora o por la receptora
+    private boolean supervisaPase(Usuario usuario, ActuacionDocumento pase) {
+        return politicaAcceso.puede(usuario, Accion.SUPERVISAR_PASES)
+                && (canalService.puedeActuarPor(usuario, pase.getDependenciaEmisora())
+                    || canalService.puedeActuarPor(usuario, pase.getDependenciaReceptoraPase()));
+    }
+
     // 🧭 Lo que muestra el modal de derivación: desde dónde se deriva y a dónde permite el canal
     public record DestinoPase(Integer id, String nombre, String sigla, String movimiento) {}
 
@@ -327,8 +349,7 @@ public class DocumentoService {
         if (biblioratoId == null) {
             throw new IllegalArgumentException("Debe seleccionar el bibliorato.");
         }
-        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
-                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+        Documento doc = exigirCustodia(documentoId, usuario, "registrar la ubicación física de");
 
         String anterior = doc.getUbicacionTexto();
         if (anterior != null) {
@@ -778,8 +799,7 @@ public class DocumentoService {
                                                String funcionarioEntrega, 
                                                MultipartFile archivoAcuse, 
                                                Usuario usuarioSesion) {
-        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
-                .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
+        Documento doc = exigirCustodia(documentoId, usuarioSesion, "registrar la salida de");
         validarNoFinalizado(doc, "registrar la salida de");
         if (doc.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("Un documento informativo archivado no tiene salida exterior.");
@@ -826,8 +846,7 @@ public class DocumentoService {
 
     @Transactional
     public Documento confirmarEntregaYAcuse(Long documentoId, MultipartFile archivoAcuse, Usuario usuarioSesion) {
-        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
-                .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
+        Documento doc = exigirCustodia(documentoId, usuarioSesion, "confirmar el acuse final de");
 
         if (doc.getEstadoActual() != EstadoDocumento.PENDIENTE_SALIDA || doc.getFechaHoraSalida() == null) {
             throw new IllegalStateException("Solo se puede confirmar el acuse de un expediente en PENDIENTE_SALIDA con la salida física ya registrada.");
@@ -974,6 +993,7 @@ public class DocumentoService {
 
         ActuacionDocumento actuacion = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
                 .orElseThrow(() -> new RuntimeException("Actuación no encontrada: " + actuacionId));
+        verificarAccesoDocumento(usuarioSesion, actuacion.getDocumento().getId());
         documentoRepository.findByIdParaActualizar(actuacion.getDocumento().getId()); // serializa con derivar/anular
 
         if (!"PASE_INTERNO".equals(actuacion.getTipoActuacion()) || Boolean.TRUE.equals(actuacion.getPaseConfirmado())
@@ -991,7 +1011,7 @@ public class DocumentoService {
                     && actuacion.getDescripcionResumen().contains("➔ " + depUsuario.getNombre() + ":"));
         // La mesa de una dirección recibe en su nombre: cuenta como receptora quien actúa por ella
         esReceptora = esReceptora || (receptora != null && canalService.puedeActuarPor(usuarioSesion, receptora));
-        if (!esReceptora && !politicaAcceso.puede(usuarioSesion, Accion.SUPERVISAR_PASES)) {
+        if (!esReceptora && !supervisaPase(usuarioSesion, actuacion)) {
             throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción.");
         }
 
@@ -1150,7 +1170,7 @@ public class DocumentoService {
         if (act == null || usuario == null || act.getRutaCopiaSelladaPdf() == null || Boolean.TRUE.equals(act.getAnulada())) {
             return false;
         }
-        if (politicaAcceso.puede(usuario, Accion.SUPERVISAR_PASES)) {
+        if (supervisaPase(usuario, act)) {
             return true;
         }
         Integer responsable = dependenciaResponsablePdf(act);
@@ -1196,8 +1216,7 @@ public class DocumentoService {
     public AdjuntoDocumento reemplazarAdjuntoDocumento(Long documentoId, MultipartFile archivo, String motivo, Usuario usuario) {
         politicaAcceso.exigir(usuario, Accion.REGISTRAR_SALIDA, "No está habilitado para reemplazar el acuse del expediente.");
         validarMotivo(motivo, 10, "el motivo del reemplazo");
-        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
-                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+        Documento doc = exigirCustodia(documentoId, usuario, "reemplazar el acuse de");
 
         AdjuntoDocumento previo = obtenerAdjuntoVigenteDocumento(documentoId);
         if (previo == null) {
@@ -1310,11 +1329,8 @@ public class DocumentoService {
         if (!esPasePendiente(act) || usuario == null) {
             return false;
         }
-        if (politicaAcceso.puede(usuario, Accion.SUPERVISAR_PASES)) {
-            return true;
-        }
-        return usuario.getDependencia() != null && act.getDependenciaEmisora() != null
-                && act.getDependenciaEmisora().getId().equals(usuario.getDependencia().getId());
+        // Retira quien actúa por la emisora (su mesa, su responsable) o quien supervisa los pases del ámbito
+        return canalService.puedeActuarPor(usuario, act.getDependenciaEmisora()) || supervisaPase(usuario, act);
     }
 
     // Rechaza la recepción únicamente la dependencia receptora
@@ -1324,7 +1340,7 @@ public class DocumentoService {
         }
         Dependencia receptora = act.getDependenciaReceptoraPase();
         return receptora != null
-                ? receptora.getId().equals(usuario.getDependencia().getId())
+                ? canalService.puedeActuarPor(usuario, receptora)
                 : act.getDescripcionResumen() != null
                     && act.getDescripcionResumen().contains("➔ " + usuario.getDependencia().getNombre() + ":");
     }
@@ -1333,6 +1349,7 @@ public class DocumentoService {
     public ActuacionDocumento anularPase(Long actuacionId, String accion, String motivo, Usuario usuario) {
         ActuacionDocumento pase = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
                 .orElseThrow(() -> new IllegalArgumentException("Pase no encontrado: " + actuacionId));
+        verificarAccesoDocumento(usuario, pase.getDocumento().getId());
         Documento doc = documentoRepository.findByIdParaActualizar(pase.getDocumento().getId()).orElseThrow();
         validarNoFinalizado(doc, "modificar pases de");
         validarMotivo(motivo, 10, "el motivo");
@@ -1399,8 +1416,7 @@ public class DocumentoService {
         politicaAcceso.exigir(usuario, Accion.FORZAR_CIERRE, "No está habilitado para forzar el cierre de informes.");
         validarMotivo(justificacion, 20, "la justificación");
 
-        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
-                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+        Documento doc = exigirCustodia(documentoId, usuario, "forzar el cierre de informes de");
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
         if (estadoAnterior == EstadoDocumento.PENDIENTE_SALIDA || estadoAnterior == EstadoDocumento.FINALIZADO
                 || estadoAnterior == EstadoDocumento.ARCHIVADO) {
