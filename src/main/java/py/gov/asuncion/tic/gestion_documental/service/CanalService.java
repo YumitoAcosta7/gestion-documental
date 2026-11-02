@@ -80,8 +80,11 @@ public class CanalService {
                 continue;
             }
             Dependencia ambito = a.getDependenciaAmbito();
+            // Auditoría M5: el OPERADOR trabaja en su dependencia; recibir o devolver por las subordinadas
+            // es de la mesa de entrada o del responsable
+            boolean abarcaSubordinadas = Boolean.TRUE.equals(a.getIncluyeSubordinadas()) && a.getRol() != RolAsignacion.OPERADOR;
             if (ambito.getId().equals(dependencia.getId())
-                    || (Boolean.TRUE.equals(a.getIncluyeSubordinadas()) && dependencia.getRuta() != null
+                    || (abarcaSubordinadas && dependencia.getRuta() != null
                         && dependencia.getRuta().startsWith(ambito.getRuta()))) {
                 return true;
             }
