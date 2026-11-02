@@ -1,6 +1,6 @@
 # Ambiente de pruebas
 
-Una base aparte en el mismo servidor PostgreSQL (192.168.129.73), con su propio usuario, su carpeta de PDF y su serie de CUTI (`PRU-AAAA-NNNNNN`). Sirve para probar versiones nuevas y capacitar sin tocar los expedientes reales.
+Una base aparte en el mismo servidor PostgreSQL (192.168.129.73), con su propio usuario y su carpeta de PDF. Sirve para probar versiones nuevas y capacitar sin tocar los expedientes reales.
 
 | | Producción | Pruebas |
 |---|---|---|
@@ -8,7 +8,6 @@ Una base aparte en el mismo servidor PostgreSQL (192.168.129.73), con su propio 
 | Usuario de la base | `gestion_documental` | `gestion_documental_pruebas` |
 | Contraseña | `application-local.properties` o `DB_PASSWORD` | variable `DB_PASSWORD_PRUEBAS` |
 | PDF | `C:/gestion-documental-uploads/acuses` | `C:/gestion-documental-uploads-pruebas/acuses` |
-| CUTI | `TIC-2026-…` | `PRU-2026-…` |
 | Configuración | `application.properties` | además `application-pruebas.properties` |
 
 ## 1. Crear la base (administrador de PostgreSQL, una sola vez)

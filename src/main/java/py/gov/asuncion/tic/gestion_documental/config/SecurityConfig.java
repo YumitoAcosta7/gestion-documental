@@ -49,7 +49,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/documentos/*/auditoria").hasAuthority(Accion.VER_AUDITORIA.autoridad())
                 .requestMatchers("/documentos/derivar").hasAuthority(Accion.DERIVAR.autoridad())
                 // Ver los PDF de las actuaciones (GET) queda para todo usuario con acceso al expediente
-                .requestMatchers(HttpMethod.POST, "/documentos/actuaciones/**", "/documentos/devolver")
+                .requestMatchers(HttpMethod.POST, "/documentos/actuaciones/**", "/documentos/devolver", "/documentos/propio")
                     .hasAuthority(Accion.REGISTRAR_ACTUACION.autoridad())
                 .anyRequest().authenticated()
             )

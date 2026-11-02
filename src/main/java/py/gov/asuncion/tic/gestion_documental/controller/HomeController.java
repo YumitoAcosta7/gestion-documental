@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.data.domain.Page;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -30,12 +31,15 @@ import py.gov.asuncion.tic.gestion_documental.domain.ActuacionDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AdjuntoDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.Documento;
+import py.gov.asuncion.tic.gestion_documental.domain.Prioridad;
+import py.gov.asuncion.tic.gestion_documental.domain.TipoPase;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
 import py.gov.asuncion.tic.gestion_documental.dto.NuevoDocumentoDTO;
 import py.gov.asuncion.tic.gestion_documental.repository.AdjuntoDocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.DocumentoRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 import py.gov.asuncion.tic.gestion_documental.service.ArchivoService;
+import py.gov.asuncion.tic.gestion_documental.service.BandejaService;
 import py.gov.asuncion.tic.gestion_documental.service.AuditoriaService;
 import py.gov.asuncion.tic.gestion_documental.service.BiblioratoService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
@@ -76,6 +80,9 @@ public class HomeController {
 
     @Autowired
     private BiblioratoService biblioratoService;
+
+    @Autowired
+    private BandejaService bandejaService;
     
 
     /**
@@ -83,17 +90,32 @@ public class HomeController {
      */
 
     @GetMapping("/")
-    public String index(Model model) {
-        cargarPantallaPrincipal(model, getUsuarioAutenticado(), List.of());
+    public String index(@RequestParam(value = "bandeja", defaultValue = "TODOS") BandejaService.Bandeja bandeja,
+                        @RequestParam(value = "pagina", defaultValue = "0") int pagina,
+                        Model model) {
+        cargarPantallaPrincipal(model, getUsuarioAutenticado(), List.of(), bandeja, pagina);
         return "index";
     }
 
     // Datos comunes de la pantalla principal (bandejas, KPI, catálogos), para el inicio y la búsqueda
-    private void cargarPantallaPrincipal(Model model, Usuario usuario, List<Documento> resultadosBusqueda) {
+    private void cargarPantallaPrincipal(Model model, Usuario usuario, List<Documento> resultadosBusqueda,
+                                         BandejaService.Bandeja bandeja, int pagina) {
         model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
         model.addAttribute("usuarioLogueado", usuario);
+        model.addAttribute("rolesUsuario", politicaAcceso.descripcionRoles(usuario));
 
-        List<Documento> activos = documentoService.obtenerDocumentosActivosParaUsuario(usuario);
+        // 📥 Bandejas: "Todos" es la lista completa de antes; el resto, paginadas por ámbito
+        List<Documento> activos;
+        if (bandeja == BandejaService.Bandeja.TODOS || usuario == null) {
+            activos = documentoService.obtenerDocumentosActivosParaUsuario(usuario);
+        } else {
+            Page<Documento> paginaBandeja = bandejaService.listar(usuario, bandeja, pagina);
+            activos = paginaBandeja.getContent();
+            model.addAttribute("paginaBandeja", paginaBandeja);
+        }
+        model.addAttribute("bandejas", BandejaService.Bandeja.values());
+        model.addAttribute("bandejaActual", bandeja);
+        model.addAttribute("contadoresBandejas", usuario != null ? bandejaService.contadores(usuario) : java.util.Map.of());
         model.addAttribute("documentos", activos);
         agregarIndicadoresSla(model, activos, resultadosBusqueda);
         agregarDatosArchivo(model, usuario);
@@ -103,7 +125,6 @@ public class HomeController {
         model.addAttribute("documentosSalida", conDependencia
                 ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
                 : List.of());
-        model.addAttribute("dependenciasHijas", documentoService.obtenerDependenciasHijas(usuario));
 
         model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
         model.addAttribute("dependenciasAgrupadas", documentoService.obtenerDependenciasAgrupadas());
@@ -147,16 +168,39 @@ public class HomeController {
     }
 
     /**
+     * ✍️ DOCUMENTO PROPIO: lo inicia cualquier dependencia y puede salir hacia su superior
+     */
+    @PostMapping("/documentos/propio")
+    public String iniciarDocumentoPropio(@RequestParam("tipoDocumentoId") Integer tipoDocumentoId,
+                                         @RequestParam(value = "numeroDocumento", required = false) String numeroDocumento,
+                                         @RequestParam("asunto") String asunto,
+                                         @RequestParam(value = "prioridad", required = false) Prioridad prioridad,
+                                         @RequestParam(value = "observacion", required = false) String observacion,
+                                         @RequestParam(value = "enviarAlSuperior", defaultValue = "false") boolean enviarAlSuperior,
+                                         @RequestParam(value = "archivo", required = false) MultipartFile archivo,
+                                         RedirectAttributes redirectAttributes) {
+        try {
+            Documento doc = documentoService.iniciarDocumentoPropio(tipoDocumentoId, numeroDocumento, asunto, prioridad,
+                    observacion, enviarAlSuperior, archivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Documento " + doc.getCodigoCuti()
+                    + (enviarAlSuperior ? " creado y enviado a su dependencia superior." : " creado."));
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al crear el documento: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
      * ↗️ DERIVAR EXPEDIENTE
      */
     @PostMapping("/documentos/derivar")
     public String derivarDocumento(@RequestParam("documentoId") Long documentoId,
                                    @RequestParam("dependenciaDestinoId") List<Integer> dependenciasDestinoIds,
                                    @RequestParam("observacion") String observacion,
-                                   @RequestParam(value = "requiereInforme", defaultValue = "false") Boolean requiereInforme,
+                                   @RequestParam("tipoPase") TipoPase tipoPase,
                                    RedirectAttributes redirectAttributes) {
         try {
-            documentoService.derivarDocumento(documentoId, dependenciasDestinoIds, observacion, requiereInforme, getUsuarioAutenticadoObligatorio());
+            documentoService.derivarDocumento(documentoId, dependenciasDestinoIds, observacion, tipoPase, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Expediente derivado correctamente.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error al derivar: " + mensajeError(e));
@@ -488,7 +532,7 @@ public class HomeController {
         model.addAttribute("paramFechaDesde", fechaDesde);
         model.addAttribute("paramFechaHasta", fechaHasta);
 
-        cargarPantallaPrincipal(model, usuarioLogueado, resultados);
+        cargarPantallaPrincipal(model, usuarioLogueado, resultados, BandejaService.Bandeja.TODOS, 0);
         return "index";
     }
 
@@ -591,6 +635,19 @@ public class HomeController {
             listaJson.add(map);
         }
         return ResponseEntity.ok(listaJson);
+    }
+
+    /**
+     * 🧭 API JSON: DESTINOS QUE PERMITE EL CANAL DESDE QUIEN TIENE EL ORIGINAL
+     */
+    @GetMapping("/api/documentos/{id}/destinos")
+    @ResponseBody
+    public ResponseEntity<DocumentoService.OpcionesDerivacion> obtenerDestinosJson(@PathVariable("id") Long id) {
+        try {
+            return ResponseEntity.ok(documentoService.obtenerOpcionesDerivacion(id, getUsuarioAutenticadoObligatorio()));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
     }
 
     /**

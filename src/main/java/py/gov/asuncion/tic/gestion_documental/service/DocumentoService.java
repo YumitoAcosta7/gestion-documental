@@ -66,6 +66,9 @@ public class DocumentoService {
     @Autowired
     private PoliticaAcceso politicaAcceso;
 
+    @Autowired
+    private CanalService canalService;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
 
@@ -181,24 +184,39 @@ public class DocumentoService {
         return tipoDocumentoRepository.findByActivoTrueOrderByNombreAsc();
     }
 
-    public List<Dependencia> obtenerDependenciasHijas(Usuario usuario) {
-        if (usuario == null || usuario.getDependencia() == null) {
-            return new ArrayList<>();
+    // Quién tiene el original. Los expedientes anteriores a la V11 que no la tengan cargada
+    // quedan en la dependencia que los registró o, en último caso, en la de origen.
+    private Dependencia custodiaDe(Documento doc) {
+        if (doc.getDependenciaCustodia() != null) {
+            return doc.getDependenciaCustodia();
         }
+        return doc.getDependenciaRegistro() != null ? doc.getDependenciaRegistro() : doc.getDependenciaOrigen();
+    }
 
-        // Se deriva a las dependencias que cuelgan directamente de cada ámbito de gestión del usuario
-        // (Mesa de Entrada o Responsable). Así la secretaría de una dirección deriva a toda su dirección.
-        java.util.Set<Integer> raices = new java.util.LinkedHashSet<>();
-        for (Asignacion a : asignacionRepository.findVigentes(usuario.getId(), LocalDate.now())) {
-            if (a.getRol() == RolAsignacion.MESA_ENTRADA || a.getRol() == RolAsignacion.RESPONSABLE) {
-                raices.add(a.getDependenciaAmbito().getId());
-            }
-        }
-        // Sin asignaciones de gestión: las unidades hijas directas de su propia dependencia
-        if (raices.isEmpty()) {
-            raices.add(usuario.getDependencia().getId());
-        }
-        return dependenciaRepository.findByDependenciaPadreIdInAndActivoTrueOrderByNombreAsc(raices);
+    // 🧭 Lo que muestra el modal de derivación: desde dónde se deriva y a dónde permite el canal
+    public record DestinoPase(Integer id, String nombre, String sigla, String movimiento) {}
+
+    public record OpcionesDerivacion(String custodia, boolean puedeDerivar, List<DestinoPase> destinos) {}
+
+    public OpcionesDerivacion obtenerOpcionesDerivacion(Long documentoId, Usuario usuario) {
+        verificarAccesoDocumento(usuario, documentoId);
+        Documento doc = documentoRepository.findById(documentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+        Dependencia custodia = custodiaDe(doc);
+        boolean puede = canalService.puedeActuarPor(usuario, custodia);
+        Organigrama organigrama = canalService.organigrama();
+        // Un pase a otra dirección llega a su mesa de entrada: se muestra el nombre de la dirección,
+        // no el de su "Unidad de Secretaría Administrativa", que se repite en todas
+        List<DestinoPase> destinos = !puede ? List.of() : organigrama.destinos(custodia.getId()).stream()
+                .map(d -> {
+                    Organigrama.Nodo efectivo = organigrama.nodoEfectivo(d.nodo());
+                    boolean esMesa = !efectivo.id().equals(d.nodo().id());
+                    return new DestinoPase(d.nodo().id(),
+                            esMesa ? efectivo.nombre() + " (mesa de entrada)" : d.nodo().nombre(),
+                            esMesa ? efectivo.sigla() : d.nodo().sigla(), d.movimiento().name());
+                })
+                .toList();
+        return new OpcionesDerivacion(custodia.getNombre(), puede, destinos);
     }
 
     public Map<String, Long> obtenerMetricasDashboard() {
@@ -211,20 +229,17 @@ public class DocumentoService {
         return metricas;
     }
 
-    // Prefijo del CUTI (TIC-2026-000001). Para la serie municipal única: app.cuti.prefijo=MCA
-    @Value("${app.cuti.prefijo:TIC}")
-    private String prefijoCuti;
-
-    // Clave base del bloqueo de PostgreSQL para el correlativo del CUTI (se le suma el año)
-    private static final long CLAVE_BLOQUEO_CUTI = 7_384_000_000L;
-
-    // Debe llamarse dentro de una transacción: el bloqueo dura hasta el commit,
+    // 🔢 CUTI por cabecera (docs/diseno-fase2-multiarea.md §5): DTIC-2026-000001, DHAC-2026-000001...
+    // El número sale de la serie de la cabecera (Dirección, Dirección General o Intendencia) de la
+    // dependencia que registra el expediente. La fila de series_cuti queda bloqueada hasta el commit,
     // así dos registros simultáneos no obtienen el mismo número.
-    private String generarCodigoCuti(int anio) {
-        documentoRepository.bloquearCorrelativoCuti(CLAVE_BLOQUEO_CUTI + anio);
-        String prefijo = String.format("%s-%d-", prefijoCuti, anio);
-        int ultimo = documentoRepository.obtenerUltimoCorrelativoCuti(prefijo + "%");
-        return String.format("%s%06d", prefijo, ultimo + 1);
+    private String generarCodigoCuti(Dependencia registro, int anio) {
+        Organigrama organigrama = canalService.organigrama();
+        Organigrama.Nodo cabecera = organigrama.cabecera(organigrama.nodo(registro.getId()));
+        String sigla = cabecera.sigla() != null ? cabecera.sigla() : "MCA";
+        String prefijo = String.format("%s-%d-", sigla, anio);
+        int numero = documentoRepository.siguienteCorrelativoCuti(cabecera.id(), anio, prefijo + "%");
+        return String.format("%s%06d", prefijo, numero);
     }
 
     private void validarNoFinalizado(Documento doc, String accion) {
@@ -342,6 +357,63 @@ public class DocumentoService {
         return docs.stream().filter(d -> puedeAccederDocumento(usuario, d.getId())).toList();
     }
 
+    // ✍️ DOCUMENTO PROPIO (§4.3): cualquier dependencia (unidad, departamento, dirección) inicia un
+    // expediente con su documento. Queda en su custodia, con el CUTI de su cabecera, y puede salir
+    // en el mismo acto hacia su superior con un pase de trámite.
+    @Transactional
+    public Documento iniciarDocumentoPropio(Integer tipoDocumentoId, String numeroDocumento, String asunto,
+                                           Prioridad prioridad, String observacion, boolean enviarAlSuperior,
+                                           MultipartFile archivo, Usuario usuarioSesion) {
+        if (usuarioSesion == null || usuarioSesion.getDependencia() == null) {
+            throw new IllegalStateException("El usuario actual no tiene una dependencia asignada para emitir documentos.");
+        }
+        if (tipoDocumentoId == null) {
+            throw new IllegalArgumentException("Debe seleccionar el tipo de documento.");
+        }
+        if (asunto == null || asunto.isBlank()) {
+            throw new IllegalArgumentException("Debe ingresar el asunto del documento.");
+        }
+        TipoDocumento tipo = tipoDocumentoRepository.findById(tipoDocumentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + tipoDocumentoId));
+        if (!Boolean.TRUE.equals(tipo.getActivo())) {
+            throw new IllegalArgumentException("El tipo de documento '" + tipo.getNombre() + "' está dado de baja.");
+        }
+        if (archivo != null && !archivo.isEmpty()) {
+            archivoService.validarPdf(archivo); // antes de grabar nada
+        }
+
+        // Emite la dependencia por la que actúa el usuario: su mesa si es mesa de entrada, si no la propia
+        Dependencia emisora = canalService.dependenciaDeRegistro(usuarioSesion);
+        Organigrama.Destino superior = null;
+        if (enviarAlSuperior) {
+            superior = canalService.organigrama().destinos(emisora.getId()).stream()
+                    .filter(d -> d.movimiento() == Organigrama.Movimiento.SUBIR)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(emisora.getNombre() + " no tiene una dependencia superior a la que dar salida."));
+        }
+
+        Documento doc = new Documento();
+        doc.setTipoDocumento(tipo);
+        doc.setAsunto(asunto.trim());
+        doc.setPrioridad(prioridad != null ? prioridad : Prioridad.NORMAL);
+        doc.setNumeroDocumentoOrigen(numeroDocumento);
+        doc.setDependenciaOrigen(emisora);
+        doc.setDependenciaRegistro(emisora);
+        doc.setDependenciaCustodia(emisora);
+        Documento guardado = guardarNuevoDocumento(doc, usuarioSesion);
+        auditoriaService.registrarEvento(guardado, "DOCUMENTO_PROPIO", guardado.getEstadoActual(), guardado.getEstadoActual(),
+                "Documento propio iniciado por " + emisora.getNombre(), usuarioSesion, null);
+
+        if (archivo != null && !archivo.isEmpty()) {
+            registrarAdjunto(guardado, null, archivo, "DOCUMENTO", "DOCUMENTO_PROPIO", usuarioSesion);
+        }
+        if (superior != null) {
+            String motivo = observacion != null && observacion.trim().length() >= 5 ? observacion.trim() : "Se eleva para su consideración";
+            derivarDocumento(guardado.getId(), List.of(superior.nodo().id()), motivo, TipoPase.TRAMITE, usuarioSesion);
+        }
+        return guardado;
+    }
+
     @Transactional
     public Documento guardarNuevoDocumento(Documento documento, Usuario usuarioSesion) {
         LocalDateTime ahora = LocalDateTime.now();
@@ -358,12 +430,19 @@ public class DocumentoService {
         documento.setEstadoActual(EstadoDocumento.INGRESADO);
         documento.setAnio(anioActual);
 
-        if (documento.getCodigoCuti() == null || documento.getCodigoCuti().isBlank()) {
-            documento.setCodigoCuti(generarCodigoCuti(anioActual));
-        }
-
         documento.setFechaHoraCargaIngreso(ahora);
         documento.setUsuarioCargaIngreso(usuarioSesion);
+
+        // El original queda en la mesa (o dependencia) que lo registra, y el CUTI sale de la serie de su cabecera
+        if (documento.getDependenciaRegistro() == null) {
+            documento.setDependenciaRegistro(canalService.dependenciaDeRegistro(usuarioSesion));
+        }
+        if (documento.getCodigoCuti() == null || documento.getCodigoCuti().isBlank()) {
+            documento.setCodigoCuti(generarCodigoCuti(documento.getDependenciaRegistro(), anioActual));
+        }
+        if (documento.getDependenciaCustodia() == null) {
+            documento.setDependenciaCustodia(documento.getDependenciaRegistro());
+        }
 
         if (documento.getFuncionarioRecibeFisico() == null || documento.getFuncionarioRecibeFisico().isBlank()) {
             documento.setFuncionarioRecibeFisico(usuarioSesion.getNombreCompleto());
@@ -416,8 +495,10 @@ public class DocumentoService {
             throw new IllegalArgumentException("Debe ingresar el motivo de la devolución (mínimo 5 caracteres).");
         }
 
-        // 3. Localizar el último pase recibido por la dependencia del usuario
-        Dependencia depActual = usuarioActual.getDependencia();
+        // 3. Localizar el último pase recibido: por quien tiene el original si el usuario actúa por ella
+        //    (la mesa de su dirección, por ejemplo); si no, por la dependencia del usuario
+        Dependencia custodia = custodiaDe(documento);
+        Dependencia depActual = canalService.puedeActuarPor(usuarioActual, custodia) ? custodia : usuarioActual.getDependencia();
         ActuacionDocumento ultimoPase = actuacionDocumentoRepository
                 .findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(documentoId, depActual.getId());
 
@@ -444,6 +525,10 @@ public class DocumentoService {
 
         // 4. Actualizar estado del documento con setEstadoActual()
         documento.setEstadoActual(EstadoDocumento.EN_REVISION);
+        // Si quien devuelve tenía el original, el original vuelve a quien lo envió
+        if (depActual.getId().equals(custodia.getId())) {
+            documento.setDependenciaCustodia(depDestino);
+        }
         documentoRepository.save(documento);
 
         // 5. Registrar la nueva actuación de devolución (retorna a quien nos envió)
@@ -476,14 +561,17 @@ public class DocumentoService {
     
 
     @Transactional
-    public Documento derivarDocumento(Long documentoId, 
-                                      List<Integer> dependenciasDestinoIds, 
-                                      String observacion, 
-                                      Boolean requiereInforme, 
+    public Documento derivarDocumento(Long documentoId,
+                                      List<Integer> dependenciasDestinoIds,
+                                      String observacion,
+                                      TipoPase tipoPase,
                                       Usuario usuario) {
-        
+
         if (dependenciasDestinoIds == null || dependenciasDestinoIds.isEmpty()) {
             throw new IllegalArgumentException("Debe seleccionar al menos una dependencia destino para derivar.");
+        }
+        if (tipoPase == null) {
+            throw new IllegalArgumentException("Debe indicar el tipo de pase: trámite, informe o conocimiento.");
         }
 
         if (observacion == null || observacion.trim().length() < 5) {
@@ -495,15 +583,8 @@ public class DocumentoService {
         // Un mismo destino repetido en la petición genera un solo pase
         List<Integer> destinos = new ArrayList<>(new java.util.LinkedHashSet<>(dependenciasDestinoIds));
         destinos.remove(null);
-
-        // Solo se puede derivar a las dependencias que el usuario tiene habilitadas
-        java.util.Set<Integer> destinosPermitidos = obtenerDependenciasHijas(usuario).stream()
-                .map(Dependencia::getId)
-                .collect(java.util.stream.Collectors.toSet());
-        for (Integer depId : destinos) {
-            if (!destinosPermitidos.contains(depId)) {
-                throw new AccessDeniedException("No está habilitado para derivar a la dependencia seleccionada (ID " + depId + ").");
-            }
+        if (tipoPase == TipoPase.TRAMITE && destinos.size() != 1) {
+            throw new IllegalArgumentException("Un pase de trámite entrega el original: va a una sola dependencia. Para varias, use informe o conocimiento.");
         }
 
         // Bloquea el expediente: dos derivaciones simultáneas se ejecutan una después de la otra
@@ -511,10 +592,26 @@ public class DocumentoService {
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "derivar");
 
-        boolean esInformeRequerido = (requiereInforme != null && requiereInforme);
+        // 🧭 Canal jerárquico: se deriva desde quien tiene el original y solo a los destinos que permite el organigrama
+        Dependencia custodia = custodiaDe(doc);
+        if (!canalService.puedeActuarPor(usuario, custodia)) {
+            throw new AccessDeniedException("El expediente está en " + custodia.getNombre() + ": solo esa dependencia puede derivarlo.");
+        }
+        Organigrama organigrama = canalService.organigrama();
+        for (Integer depId : destinos) {
+            if (!organigrama.puedePasar(custodia.getId(), depId)) {
+                throw new AccessDeniedException("El canal no permite pasar de " + custodia.getNombre() + " a la dependencia seleccionada (ID "
+                        + depId + "): el expediente sube por su dependencia superior y pasa entre direcciones por sus mesas de entrada.");
+            }
+        }
+        if (tipoPase == TipoPase.TRAMITE && actuacionDocumentoRepository.existePaseTramitePendiente(documentoId)) {
+            throw new IllegalStateException("Ya hay un pase de trámite esperando acuse: el original no puede entregarse dos veces. Espere la confirmación o retire ese pase.");
+        }
+
+        boolean esInformeRequerido = tipoPase == TipoPase.INFORME;
         boolean esInformativo = doc.getTipoDocumento() != null && doc.getTipoDocumento().isInformativo();
-        if (esInformeRequerido && (esInformativo || doc.getEstadoActual() == EstadoDocumento.ARCHIVADO)) {
-            throw new IllegalArgumentException("Un documento informativo no se deriva para informe: solo puede difundirse para conocimiento.");
+        if (tipoPase != TipoPase.CONOCIMIENTO && (esInformativo || doc.getEstadoActual() == EstadoDocumento.ARCHIVADO)) {
+            throw new IllegalArgumentException("Un documento informativo no se tramita ni se deriva para informe: solo puede difundirse para conocimiento.");
         }
 
         // No se duplica un pase que todavía espera el acuse de la misma dependencia
@@ -544,22 +641,22 @@ public class DocumentoService {
         }
         documentoRepository.save(doc);
 
-        String tipoPaseStr = esInformeRequerido ? "PASE MÚLTIPLE PARA INFORME" : "PASE MÚLTIPLE DE CONOCIMIENTO/TRÁMITE";
+        String tipoPaseStr = switch (tipoPase) {
+            case TRAMITE -> "PASE DE TRÁMITE";
+            case INFORME -> "PASE PARA INFORME";
+            case CONOCIMIENTO -> "PASE PARA CONOCIMIENTO";
+        };
         String detalleObservacion = observacion.trim();
-
-        // Identifica la dependencia del usuario que emite el pase
-        Dependencia dependenciaEmisoraReal = (usuario != null && usuario.getDependencia() != null) 
-                ? usuario.getDependencia() 
-                : null;
 
         for (Integer depId : destinos) {
             Dependencia destino = dependenciaRepository.findById(depId)
                     .orElseThrow(() -> new RuntimeException("Dependencia no encontrada: " + depId));
 
+            // Emite el pase la dependencia que tiene el original, aunque lo cargue un usuario de su ámbito
             ActuacionDocumento paseInterno = ActuacionDocumento.builder()
                     .documento(doc)
-                    .dependenciaEmisora(dependenciaEmisoraReal != null ? dependenciaEmisoraReal : destino)
-                    .dependenciaReceptoraPase(destino) // 🎯 ESTA ES LA LÍNEA CLAVE QUE FALTABA
+                    .dependenciaEmisora(custodia)
+                    .dependenciaReceptoraPase(destino)
                     .tipoActuacion("PASE_INTERNO")
                     .numeroActuacion("S/N")
                     .descripcionResumen(tipoPaseStr + " ➔ " + destino.getNombre() + ": " + detalleObservacion)
@@ -567,6 +664,7 @@ public class DocumentoService {
                     .fechaHoraActuacion(LocalDateTime.now())
                     .paseConfirmado(false)
                     .requiereInforme(esInformeRequerido)
+                    .tipoPase(tipoPase)
                     .usuario(usuario)
                     .build();
 
@@ -578,7 +676,8 @@ public class DocumentoService {
             "DERIVACION_MULTIPLE",
             estadoAnterior,
             doc.getEstadoActual(),
-            "Derivado a " + destinos.size() + " áreas" + (esInformeRequerido ? " para informe" : " para conocimiento") + ": " + observacion,
+            "Pase de " + tipoPase.name().toLowerCase() + " desde " + custodia.getNombre() + " a " + destinos.size()
+                    + (destinos.size() == 1 ? " dependencia" : " dependencias") + ": " + observacion,
             usuario, 
             null
         );
@@ -616,15 +715,18 @@ public class DocumentoService {
         // 1. Crear el documento nativo de la dependencia
         Documento doc = new Documento();
 
-        // Generación oficial del CUTI
+        // Generación oficial del CUTI, de la serie de la cabecera que registra
+        Dependencia registro = canalService.dependenciaDeRegistro(usuarioSesion);
         doc.setAnio(anioActual);
-        doc.setCodigoCuti(generarCodigoCuti(anioActual));
+        doc.setCodigoCuti(generarCodigoCuti(registro, anioActual));
 
         doc.setAsunto(asunto.trim());
         doc.setTipoDocumento(tipoDoc);
         doc.setPrioridad(Prioridad.NORMAL);
         doc.setNumeroDocumentoOrigen("S/N");
         doc.setDependenciaOrigen(usuarioSesion.getDependencia());
+        doc.setDependenciaRegistro(registro);
+        doc.setDependenciaCustodia(doc.getDependenciaRegistro());
         doc.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
         doc.setFechaHoraIngreso(ahora);
         doc.setUsuarioCargaIngreso(usuarioSesion);
@@ -887,6 +989,8 @@ public class DocumentoService {
                 // Pases antiguos sin receptora: se identifica por la descripción "➔ <dependencia>"
                 : actuacion.getDescripcionResumen() != null
                     && actuacion.getDescripcionResumen().contains("➔ " + depUsuario.getNombre() + ":"));
+        // La mesa de una dirección recibe en su nombre: cuenta como receptora quien actúa por ella
+        esReceptora = esReceptora || (receptora != null && canalService.puedeActuarPor(usuarioSesion, receptora));
         if (!esReceptora && !politicaAcceso.puede(usuarioSesion, Accion.SUPERVISAR_PASES)) {
             throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción.");
         }
@@ -898,6 +1002,16 @@ public class DocumentoService {
         actuacion.setTipoActuacion("PASE_CONFIRMADO");
 
         ActuacionDocumento actuacionGuardada = actuacionDocumentoRepository.save(actuacion);
+
+        // 📦 Un pase de trámite confirmado entrega el original: la custodia pasa al receptor
+        if (actuacion.getTipoPase() == TipoPase.TRAMITE && receptora != null) {
+            Documento doc = actuacionGuardada.getDocumento();
+            String anterior = custodiaDe(doc).getNombre();
+            doc.setDependenciaCustodia(receptora);
+            documentoRepository.save(doc);
+            auditoriaService.registrarEvento(doc, "CAMBIO_CUSTODIA", doc.getEstadoActual(), doc.getEstadoActual(),
+                    "El original pasa de " + anterior + " a " + receptora.getNombre(), usuarioSesion, null);
+        }
 
         // 🛡️ REGISTRO DE AUDITORÍA
         auditoriaService.registrarEvento(

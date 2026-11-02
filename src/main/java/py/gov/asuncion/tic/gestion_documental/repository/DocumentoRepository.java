@@ -31,16 +31,20 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     @Query("SELECT d FROM Documento d WHERE d.id = :id")
     Optional<Documento> findByIdParaActualizar(@Param("id") Long id);
 
-    // 🔢 CORRELATIVO DEL CUTI
-    // Bloqueo transaccional de PostgreSQL: dos ingresos simultáneos no pueden calcular el mismo número.
-    // Se libera solo al terminar la transacción (no requiere crear objetos en la BD).
-    @Query(value = "SELECT 1 FROM (SELECT pg_advisory_xact_lock(:clave)) AS bloqueo", nativeQuery = true)
-    Integer bloquearCorrelativoCuti(@Param("clave") long clave);
-
-    // Último número usado en el año (toma el sufijo numérico del CUTI, no la cantidad de filas)
-    @Query(value = "SELECT COALESCE(MAX(CAST(SUBSTRING(codigo_cuti FROM '[0-9]+$') AS INTEGER)), 0) "
-                 + "FROM documentos WHERE codigo_cuti LIKE :prefijo", nativeQuery = true)
-    Integer obtenerUltimoCorrelativoCuti(@Param("prefijo") String prefijo);
+    // 🔢 CORRELATIVO DEL CUTI DE UNA CABECERA
+    // Incrementa la serie (cabecera, año) en una sola sentencia: la fila queda bloqueada hasta el commit,
+    // así dos registros simultáneos no obtienen el mismo número. La primera vez arranca desde el mayor
+    // número ya usado con ese prefijo, por si hubiera expedientes cargados antes de la serie.
+    @Query(value = """
+        INSERT INTO series_cuti (dependencia_id, anio, ultimo)
+        VALUES (:cabeceraId, :anio,
+                (SELECT COALESCE(MAX(CAST(SUBSTRING(codigo_cuti FROM '[0-9]+$') AS INTEGER)), 0)
+                   FROM documentos WHERE codigo_cuti LIKE :prefijo) + 1)
+        ON CONFLICT (dependencia_id, anio) DO UPDATE SET ultimo = series_cuti.ultimo + 1
+        RETURNING ultimo
+        """, nativeQuery = true)
+    Integer siguienteCorrelativoCuti(@Param("cabeceraId") Integer cabeceraId, @Param("anio") int anio,
+                                     @Param("prefijo") String prefijo);
 
     // 🧭 ÁMBITO DEL USUARIO (docs/diseno-fase2-multiarea.md §3.2)
     // Dependencias abarcadas por sus asignaciones vigentes hoy, por la ruta del organigrama.
