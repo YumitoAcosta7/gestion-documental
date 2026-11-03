@@ -40,6 +40,34 @@ class LimiteIntentosServiceTest {
     }
 
     @Test
+    void unaIpQueFallaConMuchosUsuariosSeBloquea() {
+        LimiteIntentosService porIp = new LimiteIntentosService(5, 20, Duration.ofMinutes(15), reloj);
+        for (int i = 0; i < 19; i++) {
+            porIp.registrarFallo("usuario" + i);     // un fallo por usuario: ninguno se bloquea solo
+            porIp.registrarFalloIp("10.0.0.7");
+        }
+        assertFalse(porIp.ipBloqueada("10.0.0.7"));
+        porIp.registrarFalloIp("10.0.0.7");
+        assertTrue(porIp.ipBloqueada("10.0.0.7"));
+        assertFalse(porIp.ipBloqueada("10.0.0.8"), "otra dirección sigue entrando");
+        assertFalse(porIp.estaBloqueado("usuario1"));
+
+        ahora.set(ahora.get().plus(Duration.ofMinutes(16)));
+        assertFalse(porIp.ipBloqueada("10.0.0.7"), "el bloqueo vence solo");
+    }
+
+    @Test
+    void losFallosDispersosEnElTiempoNoBloqueanLaIp() {
+        // Una oficina con muchos usuarios equivocándose a lo largo del día no queda bloqueada
+        LimiteIntentosService porIp = new LimiteIntentosService(5, 20, Duration.ofMinutes(15), reloj);
+        for (int i = 0; i < 60; i++) {
+            porIp.registrarFalloIp("10.0.0.7");
+            ahora.set(ahora.get().plus(Duration.ofMinutes(2)));
+        }
+        assertFalse(porIp.ipBloqueada("10.0.0.7"));
+    }
+
+    @Test
     void unIngresoCorrectoReiniciaElConteo() {
         for (int i = 0; i < 4; i++) {
             limite.registrarFallo("ana");

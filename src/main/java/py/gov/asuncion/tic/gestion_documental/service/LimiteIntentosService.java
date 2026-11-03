@@ -27,20 +27,32 @@ public class LimiteIntentosService {
 
     private record Registro(int fallidos, Instant bloqueadoHasta) {}
 
+    // Por dirección IP: fallos dentro de una ventana de tiempo, sumando todos los usuarios. Frena a quien prueba
+    // una misma contraseña con muchos usuarios distintos (el bloqueo por usuario no lo detecta).
+    private record RegistroIp(int fallidos, Instant inicioVentana, Instant bloqueadoHasta) {}
+
     private final Map<String, Registro> registros = new ConcurrentHashMap<>();
+    private final Map<String, RegistroIp> registrosIp = new ConcurrentHashMap<>();
     private final int maximoIntentos;
+    private final int maximoIntentosIp;
     private final Duration bloqueo;
     private final Clock reloj;
 
-    // Con dos constructores, Spring necesita saber cuál usar: este (el otro es para las pruebas)
+    // Con varios constructores, Spring necesita saber cuál usar: este (los otros son para las pruebas)
     @Autowired
     public LimiteIntentosService(@Value("${app.login.intentos-maximos:5}") int maximoIntentos,
+                                 @Value("${app.login.intentos-maximos-ip:20}") int maximoIntentosIp,
                                  @Value("${app.login.minutos-bloqueo:15}") int minutosBloqueo) {
-        this(maximoIntentos, Duration.ofMinutes(minutosBloqueo), Clock.systemUTC());
+        this(maximoIntentos, maximoIntentosIp, Duration.ofMinutes(minutosBloqueo), Clock.systemUTC());
     }
 
     LimiteIntentosService(int maximoIntentos, Duration bloqueo, Clock reloj) {
+        this(maximoIntentos, 20, bloqueo, reloj);
+    }
+
+    LimiteIntentosService(int maximoIntentos, int maximoIntentosIp, Duration bloqueo, Clock reloj) {
         this.maximoIntentos = maximoIntentos;
+        this.maximoIntentosIp = maximoIntentosIp;
         this.bloqueo = bloqueo;
         this.reloj = reloj;
     }
@@ -50,9 +62,37 @@ public class LimiteIntentosService {
         return r != null && r.bloqueadoHasta() != null && reloj.instant().isBefore(r.bloqueadoHasta());
     }
 
+    public boolean ipBloqueada(String ip) {
+        RegistroIp r = ip == null ? null : registrosIp.get(ip);
+        return r != null && r.bloqueadoHasta() != null && reloj.instant().isBefore(r.bloqueadoHasta());
+    }
+
     @EventListener
     public void alFallar(AuthenticationFailureBadCredentialsEvent evento) {
         registrarFallo(String.valueOf(evento.getAuthentication().getName()));
+        if (evento.getAuthentication().getDetails() instanceof org.springframework.security.web.authentication.WebAuthenticationDetails d) {
+            registrarFalloIp(d.getRemoteAddress());
+        }
+    }
+
+    // Un inicio de sesión correcto no borra el conteo de la IP: si no, con una cuenta propia válida se
+    // podría seguir probando contraseñas ajenas desde la misma dirección
+    void registrarFalloIp(String ip) {
+        if (ip == null) {
+            return;
+        }
+        Instant ahora = reloj.instant();
+        RegistroIp nuevo = registrosIp.compute(ip, (k, r) -> {
+            boolean ventanaVencida = r == null || !ahora.isBefore(r.inicioVentana().plus(bloqueo))
+                    || (r.bloqueadoHasta() != null && !ahora.isBefore(r.bloqueadoHasta()));
+            int fallidos = ventanaVencida ? 1 : r.fallidos() + 1;
+            Instant inicio = ventanaVencida ? ahora : r.inicioVentana();
+            return new RegistroIp(fallidos, inicio, fallidos >= maximoIntentosIp ? ahora.plus(bloqueo) : null);
+        });
+        if (nuevo.bloqueadoHasta() != null && nuevo.fallidos() == maximoIntentosIp) {
+            log.warn("Dirección {} bloqueada {} minutos tras {} intentos fallidos de inicio de sesión (varios usuarios)",
+                    ip, bloqueo.toMinutes(), maximoIntentosIp);
+        }
     }
 
     @EventListener

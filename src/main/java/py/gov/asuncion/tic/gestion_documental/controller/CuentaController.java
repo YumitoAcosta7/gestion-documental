@@ -36,11 +36,13 @@ public class CuentaController {
     public String cambiar(@RequestParam("actual") String actual,
                           @RequestParam("nueva") String nueva,
                           @RequestParam("repetida") String repetida,
-                          Authentication auth, RedirectAttributes redirectAttributes) {
+                          Authentication auth, jakarta.servlet.http.HttpSession sesion,
+                          RedirectAttributes redirectAttributes) {
         Usuario usuario = usuarioRepository.findByUsernameAndActivoTrue(auth.getName()).orElseThrow();
         try {
-            administracionService.cambiarContrasenaPropia(usuario, actual, nueva, repetida);
-            redirectAttributes.addFlashAttribute("mensajeExito", "Contraseña actualizada.");
+            // Esta sesión sigue; las abiertas en otros equipos se cierran
+            administracionService.cambiarContrasenaPropia(usuario, actual, nueva, repetida, sesion.getId());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Contraseña actualizada. Si tenía sesiones abiertas en otros equipos, se cerraron.");
             return "redirect:/";
         } catch (IllegalArgumentException | IllegalStateException e) {
             redirectAttributes.addFlashAttribute("error", e.getMessage());

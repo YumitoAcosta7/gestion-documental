@@ -207,6 +207,22 @@ class AdministracionServiceTest {
     }
 
     @Test
+    void cambiarLaPropiaContrasenaCierraLasOtrasSesionesPeroNoLaActual() {
+        Usuario u = usuario(4, "maria");
+        u.setPasswordHash(encoder.encode("Temporal123x"));
+        when(usuarios.findById(4)).thenReturn(Optional.of(u));
+        var principal = org.springframework.security.core.userdetails.User.withUsername("maria").password("x").authorities(List.of()).build();
+        sesiones.registerNewSession("sesion-actual", principal);
+        sesiones.registerNewSession("sesion-en-otro-equipo", principal);
+
+        servicio.cambiarContrasenaPropia(u, "Temporal123x", "NuevaClave2026", "NuevaClave2026", "sesion-actual");
+
+        assertFalse(sesiones.getSessionInformation("sesion-actual").isExpired());
+        assertTrue(sesiones.getSessionInformation("sesion-en-otro-equipo").isExpired());
+        verify(auditoria).save(argThat(e -> "CAMBIO_CONTRASENA".equals(e.getAccion()) && e.getDetalle().contains("1 sesiones")));
+    }
+
+    @Test
     void reglasDeContrasena() {
         assertTrue(ReglasContrasena.cumple("abcdefghi1"));
         assertFalse(ReglasContrasena.cumple("abcdefghij"), "sin números");

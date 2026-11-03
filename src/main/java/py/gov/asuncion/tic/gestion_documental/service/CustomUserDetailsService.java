@@ -22,11 +22,22 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Autowired
     private LimiteIntentosService limiteIntentos;
 
+    // Dirección del cliente. Detrás de un proxy inverso, con server.forward-headers-strategy=native
+    // Tomcat la toma de X-Forwarded-For.
+    private static String ipDeLaPeticion() {
+        if (org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()
+                instanceof org.springframework.web.context.request.ServletRequestAttributes atributos) {
+            return atributos.getRequest().getRemoteAddr();
+        }
+        return null;
+    }
+
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         // Bloqueado por intentos fallidos: cuenta "bloqueada", exista o no el usuario (no se revela cuál existe).
         // Spring rechaza las cuentas bloqueadas antes de comprobar la contraseña.
-        if (limiteIntentos.estaBloqueado(username)) {
+        // Lo mismo si la dirección IP de la petición acumuló demasiados fallos con cualquier usuario.
+        if (limiteIntentos.estaBloqueado(username) || limiteIntentos.ipBloqueada(ipDeLaPeticion())) {
             return User.withUsername(username).password("!bloqueado").authorities(java.util.List.of()).accountLocked(true).build();
         }
         Usuario usuario = usuarioRepository.findByUsernameAndActivoTrue(username)
