@@ -319,7 +319,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 
 ## 8. 🎯 ESTADO ACTUAL Y PENDIENTES
 
-**Estado (03/11/2026):** producción y pruebas en la migración **V20**. Administradores del sistema: `juan.acosta` y `zlobo`. Pase y registro en [docs/pase-produccion.md](docs/pase-produccion.md).
+**Estado (03/11/2026):** producción y pruebas en la migración **V22**, con la huella encadenada instalada en las bitácoras de las dos bases. Administradores del sistema: `juan.acosta` y `zlobo`. Pase y registro en [docs/pase-produccion.md](docs/pase-produccion.md).
 
 **Hecho:**
 - **Fase 2, etapas 2.1 y 2.2:** organigrama, asignaciones, ámbito, custodia, canal jerárquico, tipos de pase, CUTI por cabecera, documentos propios y bandejas paginadas.
