@@ -182,9 +182,15 @@ public class HomeController {
                                          @RequestParam(value = "prioridad", required = false) Prioridad prioridad,
                                          @RequestParam(value = "observacion", required = false) String observacion,
                                          @RequestParam(value = "enviarAlSuperior", defaultValue = "false") boolean enviarAlSuperior,
+                                         @RequestParam(value = "asuntoNuevo", defaultValue = "false") boolean asuntoNuevo,
                                          @RequestParam(value = "archivo", required = false) MultipartFile archivo,
                                          RedirectAttributes redirectAttributes) {
         try {
+            // Un documento que pertenece a un expediente existente se agrega como actuación y se eleva (mismo CUTI)
+            if (!asuntoNuevo) {
+                throw new IllegalArgumentException("Confirme que es un asunto nuevo. Si el documento pertenece a un expediente existente, "
+                        + "regístrelo como actuación en ese expediente y elévelo con \"Derivar / Elevar\".");
+            }
             Documento doc = documentoService.iniciarDocumentoPropio(tipoDocumentoId, numeroDocumento, asunto, prioridad,
                     observacion, enviarAlSuperior, archivo, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Documento " + doc.getCodigoCuti()

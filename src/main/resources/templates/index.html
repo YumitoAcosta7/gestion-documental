@@ -377,8 +377,8 @@
                                                 </button>
 
                                                 <!-- BOTÓN DERIVAR RESTAURADO -->
-                                                <button sec:authorize="hasAuthority('PERMISO_DERIVAR')" type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
-                                                    <i class="bi bi-arrow-right-short"></i> Derivar
+                                                <button sec:authorize="hasAnyAuthority('PERMISO_DERIVAR','PERMISO_REGISTRAR_ACTUACION')" title="Pasar el expediente o elevarlo a la dependencia superior (mismo CUTI)" type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
+                                                    <i class="bi bi-arrow-right-short"></i> Derivar / Elevar
                                                 </button>
 
                                                 <!-- BOTÓN SALIDA -->
@@ -843,7 +843,13 @@
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                     </div>
                     <div class="modal-body">
-                        <p class="small text-muted">Un documento redactado en su dependencia. Recibe el CUTI de su dirección y, si lo envía, sale hacia su dependencia superior con un pase de trámite.</p>
+                        <p class="small text-muted mb-2">Inicia un <strong>expediente nuevo</strong>, con su propio CUTI, para un asunto que nace en su dependencia.</p>
+                        <div class="alert alert-warning small py-2">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            ¿Su memo o informe responde a un expediente que ya existe? Entonces <strong>no use esta opción</strong>:
+                            en ese expediente registre una <strong>Actuación</strong> y elévelo con <strong>Derivar / Elevar</strong>.
+                            Así se conserva el mismo CUTI y el recorrido queda completo.
+                        </div>
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Tipo de documento</label>
@@ -873,6 +879,10 @@
                                 <input type="file" name="archivo" class="form-control form-control-sm" accept="application/pdf">
                             </div>
                             <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="asuntoNuevo" value="true" id="checkPropioNuevo" required>
+                                    <label class="form-check-label small fw-semibold" for="checkPropioNuevo">Confirmo que es un asunto nuevo y no pertenece a ningún expediente registrado</label>
+                                </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="enviarAlSuperior" value="true" id="checkEnviarSuperior" checked>
                                     <label class="form-check-label small" for="checkEnviarSuperior">Enviarlo ahora a mi dependencia superior (pase de trámite)</label>
@@ -1027,7 +1037,7 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-dark text-white">
-                    <h5 class="modal-title fw-bold"><i class="bi bi-diagram-2 me-2 text-warning"></i>Derivar Expediente <span id="labelCuti" class="text-warning"></span></h5>
+                    <h5 class="modal-title fw-bold"><i class="bi bi-diagram-2 me-2 text-warning"></i>Derivar o elevar el expediente <span id="labelCuti" class="text-warning"></span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form th:action="@{/documentos/derivar}" method="post" id="formDerivar">
@@ -1334,6 +1344,18 @@
                                 <label class="form-label small fw-bold">Asunto / Extracto del Documento</label>
                                 <textarea class="form-control form-control-sm" th:field="*{asunto}" rows="3" required placeholder="Resumen del documento..."></textarea>
                             </div>
+                            <!-- Un documento interno que responde a un expediente existente no se registra de nuevo -->
+                            <div class="col-12">
+                                <div class="alert alert-light border small py-2 mb-0">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    Si el documento viene de una dependencia de <strong>su propia dirección</strong> y pertenece a un expediente que ya tiene CUTI,
+                                    no lo ingrese de nuevo: agréguelo como <strong>Actuación</strong> en ese expediente y elévelo con <strong>Derivar / Elevar</strong>.
+                                    <div class="form-check mt-1">
+                                        <input class="form-check-input" type="checkbox" th:field="*{asuntoNuevo}" id="checkAsuntoNuevo">
+                                        <label class="form-check-label" for="checkAsuntoNuevo">Es un asunto nuevo (no pertenece a ningún expediente registrado)</label>
+                                    </div>
+                                </div>
+                            </div>
                             <!-- 📚 Ubicación física -->
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Bibliorato <span id="biblioratoObligatorio" class="text-danger d-none">*</span></label>
@@ -1412,6 +1434,16 @@
                 if (!res.ok) throw new Error(res.status);
                 const datos = await res.json();
                 desde.innerHTML = `El original está en <strong>${esc(datos.custodia)}</strong>.`;
+                // Sin permiso de derivar (operador de una unidad): solo puede elevar el mismo expediente a su superior
+                const selTipo = document.getElementById('selectTipoPase');
+                ['INFORME', 'CONOCIMIENTO'].forEach(t => {
+                    const opcion = selTipo.querySelector(`option[value="${t}"]`);
+                    if (datos.soloElevar) { opcion.disabled = true; }
+                });
+                if (datos.soloElevar) {
+                    selTipo.value = 'TRAMITE';
+                    desde.innerHTML += ' Usted puede <strong>elevarlo a su dependencia superior</strong> con un pase de trámite: el expediente conserva su CUTI.';
+                }
                 if (!datos.puedeDerivar || datos.destinos.length === 0) {
                     aviso.textContent = datos.puedeDerivar
                         ? 'No hay destinos habilitados desde esta dependencia.'
