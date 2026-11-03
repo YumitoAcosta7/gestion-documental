@@ -67,4 +67,25 @@ public class Asignacion {
     @Builder.Default
     @Column(name = "fecha_hora_creacion", nullable = false)
     private LocalDateTime fechaHoraCreacion = LocalDateTime.now();
+
+    // Doble control (auditoría C2, V17): PENDIENTE, APROBADA o RECHAZADA. Solo una aprobada puede estar activa.
+    @Builder.Default
+    @Column(name = "estado_aprobacion", nullable = false, length = 20)
+    private String estadoAprobacion = APROBADA;
+
+    // NULL en las aprobadas sin doble control (no sensibles, previas a V17 o aprobadas por el DBA)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "aprobada_por_id")
+    private Usuario aprobadaPor;
+
+    @Column(name = "fecha_hora_aprobacion")
+    private LocalDateTime fechaHoraAprobacion;
+
+    public static final String PENDIENTE = "PENDIENTE";
+    public static final String APROBADA = "APROBADA";
+    public static final String RECHAZADA = "RECHAZADA";
+
+    public boolean isPendiente() {
+        return PENDIENTE.equals(estadoAprobacion);
+    }
 }

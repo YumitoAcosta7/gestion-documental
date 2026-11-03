@@ -230,9 +230,10 @@ public class AdministracionService {
         if (inicio.isBefore(LocalDate.now())) {
             throw new IllegalArgumentException("La asignación no puede empezar antes de hoy.");
         }
-        // Una asignación igual (mismo rol y ámbito) con fechas superpuestas sería un duplicado
+        // Una asignación igual (mismo rol y ámbito) con fechas superpuestas sería un duplicado,
+        // también si la otra todavía espera aprobación
         for (Asignacion existente : asignacionRepository.findHistorial(u.getId())) {
-            if (Boolean.TRUE.equals(existente.getActiva()) && existente.getRol() == rol
+            if ((Boolean.TRUE.equals(existente.getActiva()) || existente.isPendiente()) && existente.getRol() == rol
                     && existente.getDependenciaAmbito().getId().equals(ambito.getId())
                     && seSuperponen(existente.getVigenteDesde(), existente.getVigenteHasta(), inicio, hasta)) {
                 throw new IllegalStateException("El usuario ya tiene " + rol + " en " + ambito.getNombreVisible()
@@ -263,6 +264,8 @@ public class AdministracionService {
         if (acto.length() < 3) {
             throw new IllegalArgumentException("Indique el acto administrativo que respalda la asignación (resolución, memo...).");
         }
+        // Auditoría C2: las sensibles quedan pendientes (inactivas) hasta que las apruebe otro administrador
+        boolean sensible = requiereDobleControl(rol, ambito);
         Asignacion a = asignacionRepository.save(Asignacion.builder()
                 .usuario(u)
                 .rol(rol)
@@ -274,14 +277,96 @@ public class AdministracionService {
                 .titular(titular)
                 .actoAdministrativo(acto.length() > 100 ? acto.substring(0, 100) : acto)
                 .creadaPor(admin)
+                .activa(!sensible)
+                .estadoAprobacion(sensible ? Asignacion.PENDIENTE : Asignacion.APROBADA)
                 .build());
-        auditar(admin, esSuplencia ? "ALTA_SUPLENCIA" : "ALTA_ASIGNACION", "ASIGNACION", a.getId(),
-                u.getUsername() + ": " + rol + " en " + ambito.getNombreVisible()
-                        + (incluyeSubordinadas ? " y subordinadas" : "")
-                        + " desde " + inicio.format(FECHA) + (hasta != null ? " hasta " + hasta.format(FECHA) : " sin fecha de fin")
-                        + (titular != null ? ", en suplencia de " + titular.getUsername() : "")
-                        + ". Acto: " + acto);
+        String accion = sensible ? "SOLICITUD_ASIGNACION" : esSuplencia ? "ALTA_SUPLENCIA" : "ALTA_ASIGNACION";
+        auditar(admin, accion, "ASIGNACION", a.getId(), describir(a)
+                + (sensible ? ". Queda pendiente: la debe aprobar otro administrador" : ""));
         return a;
+    }
+
+    // ADMIN_SISTEMA siempre; MESA_ENTRADA y RESPONSABLE cuando el ámbito es una Dirección o superior,
+    // porque dan acceso a todo lo que pasa por esa cabecera
+    boolean requiereDobleControl(RolAsignacion rol, Dependencia ambito) {
+        if (rol == RolAsignacion.ADMIN_SISTEMA) {
+            return true;
+        }
+        if (rol != RolAsignacion.MESA_ENTRADA && rol != RolAsignacion.RESPONSABLE) {
+            return false;
+        }
+        int orden = dependenciaRepository.findNiveles().stream()
+                .filter(n -> n.getId().equals(ambito.getNivelJerarquicoId()))
+                .map(n -> n.getOrdenNivel())
+                .findFirst().orElse(99);
+        return orden <= Organigrama.ORDEN_DIRECCION;
+    }
+
+    @Transactional
+    public Asignacion aprobarAsignacion(Long asignacionId, Usuario admin) {
+        exigirAdministrador(admin);
+        Asignacion a = pendiente(asignacionId);
+        if (a.getUsuario().getId().equals(admin.getId())) {
+            throw new IllegalStateException("No puede aprobar una asignación para usted mismo: debe hacerlo otro administrador.");
+        }
+        if (a.getCreadaPor() != null && a.getCreadaPor().getId().equals(admin.getId())) {
+            throw new IllegalStateException("No puede aprobar una asignación que pidió usted: debe hacerlo otro administrador.");
+        }
+        if (!Boolean.TRUE.equals(a.getUsuario().getActivo())) {
+            throw new IllegalStateException(a.getUsuario().getUsername() + " está dado de baja: rechace la solicitud.");
+        }
+        if (a.getVigenteHasta() != null && a.getVigenteHasta().isBefore(LocalDate.now())) {
+            throw new IllegalStateException("El período de la asignación ya terminó: rechácela y pida una nueva.");
+        }
+        a.setEstadoAprobacion(Asignacion.APROBADA);
+        a.setActiva(true);
+        a.setAprobadaPor(admin);
+        a.setFechaHoraAprobacion(java.time.LocalDateTime.now());
+        Asignacion guardada = asignacionRepository.save(a);
+        auditar(admin, "APROBACION_ASIGNACION", "ASIGNACION", a.getId(), "Aprobada: " + describir(a)
+                + (a.getCreadaPor() != null ? ". Pedida por " + a.getCreadaPor().getUsername() : ""));
+        return guardada;
+    }
+
+    // Rechaza una solicitud pendiente. Quien la pidió también puede retirarla; el beneficiario no.
+    @Transactional
+    public Asignacion rechazarAsignacion(Long asignacionId, String motivo, Usuario admin) {
+        exigirAdministrador(admin);
+        Asignacion a = pendiente(asignacionId);
+        if (a.getUsuario().getId().equals(admin.getId())) {
+            throw new IllegalStateException("No puede resolver una asignación para usted mismo.");
+        }
+        if (motivo == null || motivo.trim().length() < 5) {
+            throw new IllegalArgumentException("Indique el motivo (mínimo 5 caracteres).");
+        }
+        a.setEstadoAprobacion(Asignacion.RECHAZADA);
+        a.setActiva(false);
+        Asignacion guardada = asignacionRepository.save(a);
+        auditar(admin, "RECHAZO_ASIGNACION", "ASIGNACION", a.getId(), "Rechazada: " + describir(a) + ". Motivo: " + motivo.trim());
+        return guardada;
+    }
+
+    public List<Asignacion> pendientesDeAprobacion(Usuario admin) {
+        exigirAdministrador(admin);
+        return asignacionRepository.findPendientesDeAprobacion();
+    }
+
+    private Asignacion pendiente(Long asignacionId) {
+        Asignacion a = asignacionRepository.findById(asignacionId)
+                .orElseThrow(() -> new IllegalArgumentException("Asignación no encontrada: " + asignacionId));
+        if (!a.isPendiente()) {
+            throw new IllegalStateException("La asignación ya fue resuelta.");
+        }
+        return a;
+    }
+
+    private static String describir(Asignacion a) {
+        return a.getUsuario().getUsername() + ": " + a.getRol() + " en " + a.getDependenciaAmbito().getNombreVisible()
+                + (Boolean.TRUE.equals(a.getIncluyeSubordinadas()) ? " y subordinadas" : "")
+                + " desde " + a.getVigenteDesde().format(FECHA)
+                + (a.getVigenteHasta() != null ? " hasta " + a.getVigenteHasta().format(FECHA) : " sin fecha de fin")
+                + (a.getTitular() != null ? ", en suplencia de " + a.getTitular().getUsername() : "")
+                + ". Acto: " + a.getActoAdministrativo();
     }
 
     // Da de baja una asignación (no se borra: queda en el historial del usuario y en la auditoría)

@@ -34,6 +34,50 @@
         <div class="small mt-1">Se muestra <strong>una sola vez</strong>. Entréguela al usuario: al entrar deberá cambiarla por una propia.</div>
     </div>
 
+    <!-- ===================== Doble control (auditoría C2) ===================== -->
+    <div th:if="${!#lists.isEmpty(pendientes)}" class="card border-warning shadow-sm mb-3">
+        <div class="card-header bg-warning-subtle fw-bold">
+            <i class="bi bi-shield-lock me-1"></i>Asignaciones sensibles esperando aprobación
+            <span class="badge bg-warning text-dark ms-1" th:text="${#lists.size(pendientes)}">0</span>
+            <div class="small fw-normal text-muted">Administrador del sistema, o mesa de entrada / responsable de una Dirección o superior. No rigen hasta que las apruebe un administrador distinto de quien las pidió y del beneficiario.</div>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm align-middle mb-0 small">
+                <thead class="table-light"><tr><th>Usuario</th><th>Rol y ámbito</th><th>Vigencia</th><th>Acto</th><th>Pedida por</th><th></th></tr></thead>
+                <tbody>
+                <tr th:each="p : ${pendientes}">
+                    <td><a th:href="@{/admin/usuarios(usuarioId=${p.usuario.id})}" th:text="${p.usuario.nombreCompleto + ' (' + p.usuario.username + ')'}">usuario</a></td>
+                    <td>
+                        <span class="fw-semibold" th:text="${p.rol}">ROL</span> en
+                        <span th:text="${p.dependenciaAmbito.nombreVisible}">ámbito</span>
+                        <span th:if="${p.incluyeSubordinadas}" class="text-muted">y subordinadas</span>
+                    </td>
+                    <td class="text-nowrap" th:text="${#temporals.format(p.vigenteDesde, 'dd/MM/yyyy') + ' → ' + (p.vigenteHasta != null ? #temporals.format(p.vigenteHasta, 'dd/MM/yyyy') : 'sin fin')}">fechas</td>
+                    <td th:text="${p.actoAdministrativo}">acto</td>
+                    <td class="text-nowrap">
+                        <span th:text="${p.creadaPor != null ? p.creadaPor.username : '—'}">admin</span>
+                        <div class="text-muted" th:text="${#temporals.format(p.fechaHoraCreacion, 'dd/MM/yyyy HH:mm')}">fecha</div>
+                    </td>
+                    <td>
+                        <div th:if="${p.usuario.id == admin.id}" class="text-muted">Es para usted: la resuelve otro administrador.</div>
+                        <div th:unless="${p.usuario.id == admin.id}" class="d-flex flex-column gap-1">
+                            <form th:if="${p.creadaPor == null || p.creadaPor.id != admin.id}" th:action="@{/admin/asignaciones/{id}/aprobar(id=${p.id})}" method="post" class="m-0">
+                                <button class="btn btn-success btn-sm w-100"><i class="bi bi-check-lg me-1"></i>Aprobar</button>
+                            </form>
+                            <div th:if="${p.creadaPor != null && p.creadaPor.id == admin.id}" class="text-muted">La pidió usted: la aprueba otro administrador.</div>
+                            <form th:action="@{/admin/asignaciones/{id}/rechazar(id=${p.id})}" method="post" class="d-flex gap-1 m-0">
+                                <input name="motivo" class="form-control form-control-sm" style="width: 9rem" required minlength="5"
+                                       th:placeholder="${p.creadaPor != null && p.creadaPor.id == admin.id ? 'Motivo para retirarla' : 'Motivo del rechazo'}">
+                                <button class="btn btn-outline-danger btn-sm" th:title="${p.creadaPor != null && p.creadaPor.id == admin.id ? 'Retirar solicitud' : 'Rechazar'}"><i class="bi bi-x-lg"></i></button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div class="row g-3">
         <!-- ===================== Listado de usuarios ===================== -->
         <div class="col-lg-5">
@@ -173,7 +217,9 @@
                             </td>
                             <td class="text-nowrap" th:text="${#temporals.format(a.vigenteDesde, 'dd/MM/yyyy') + ' → ' + (a.vigenteHasta != null ? #temporals.format(a.vigenteHasta, 'dd/MM/yyyy') : 'sin fin')}">fechas</td>
                             <td>
-                                <span th:if="${!a.activa}" class="badge bg-secondary">Dada de baja</span>
+                                <span th:if="${a.pendiente}" class="badge bg-warning text-dark" title="Asignación sensible: la debe aprobar otro administrador">Pendiente de aprobación</span>
+                                <span th:if="${a.estadoAprobacion == 'RECHAZADA'}" class="badge bg-danger-subtle text-danger border">Rechazada</span>
+                                <span th:if="${!a.activa && a.estadoAprobacion == 'APROBADA'}" class="badge bg-secondary">Dada de baja</span>
                                 <span th:if="${a.activa && a.vigenteDesde.isAfter(hoy)}" class="badge bg-info">Futura</span>
                                 <span th:if="${a.activa && a.vigenteHasta != null && a.vigenteHasta.isBefore(hoy)}" class="badge bg-light text-dark border">Vencida</span>
                                 <span th:if="${a.activa && !a.vigenteDesde.isAfter(hoy) && (a.vigenteHasta == null || !a.vigenteHasta.isBefore(hoy))}" class="badge bg-success">Vigente</span>
@@ -246,6 +292,7 @@
                                 <div class="form-text">La suplencia necesita fecha "Hasta" y deja de regir sola ese día.</div>
                             </div>
                         </div>
+                        <div class="small text-muted mt-2"><i class="bi bi-shield-lock me-1"></i>Administrador del sistema, y mesa de entrada o responsable de una Dirección o superior, quedan pendientes hasta que las apruebe otro administrador.</div>
                         <button type="submit" class="btn btn-primary btn-sm mt-2">Agregar asignación</button>
                     </form>
                 </div>
