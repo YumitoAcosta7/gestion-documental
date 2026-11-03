@@ -34,6 +34,9 @@ fi
 if [ "${1:-}" = "--borrar" ]; then
     psql -X -v ON_ERROR_STOP=1 -d "$BASE_PRUEBAS" <<'SQL'
 \timing on
+-- Sin este índice (V20) cada borrado recorre la tabla entera para comprobar actuacion_padre_id
+CREATE INDEX IF NOT EXISTS idx_actuaciones_padre ON actuaciones_documento (actuacion_padre_id)
+    WHERE actuacion_padre_id IS NOT NULL;
 DELETE FROM actuaciones_documento WHERE documento_id IN (SELECT id FROM documentos WHERE codigo_cuti LIKE 'VOL-%');
 DELETE FROM documentos WHERE codigo_cuti LIKE 'VOL-%';
 ANALYZE documentos;
