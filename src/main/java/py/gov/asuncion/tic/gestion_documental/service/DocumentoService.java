@@ -77,6 +77,9 @@ public class DocumentoService {
     @Autowired
     private FeriadoService feriadoService;
 
+    @Autowired
+    private LegajoSalidaRepository legajoSalidaRepository;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
 
@@ -408,6 +411,7 @@ public class DocumentoService {
             throw new IllegalArgumentException("Debe seleccionar el bibliorato.");
         }
         Documento doc = exigirCustodia(documentoId, usuario, "registrar la ubicación física de");
+        exigirSinTramitePendiente(doc, "registrar la ubicación física");
 
         String anterior = doc.getUbicacionTexto();
         if (anterior != null) {
@@ -514,6 +518,17 @@ public class DocumentoService {
         } else {
             documento.setNumeroDocumentoOrigen(documento.getNumeroDocumentoOrigen().trim().toUpperCase());
             validarFormatoNumeroDocumento(documento.getNumeroDocumentoOrigen());
+            // 🛡️ Un asunto = un CUTI: el mismo documento (misma dependencia de origen y mismo número) no se registra
+            // dos veces. Lo que llega después sobre ese asunto se agrega como actuación en el expediente existente.
+            if (documento.getDependenciaOrigen() != null) {
+                documentoRepository.findFirstByDependenciaOrigenIdAndNumeroDocumentoOrigen(
+                        documento.getDependenciaOrigen().getId(), documento.getNumeroDocumentoOrigen()).ifPresent(existente -> {
+                    throw new IllegalArgumentException("El documento N° " + existente.getNumeroDocumentoOrigen() + " de "
+                            + documento.getDependenciaOrigen().getNombreVisible() + " ya está registrado como "
+                            + existente.getCodigoCuti() + ". No se crea otro expediente: lo que llegue sobre ese asunto se registra "
+                            + "como actuación en " + existente.getCodigoCuti() + ".");
+                });
+            }
         }
 
         documento.setFechaHoraIngreso(ahora);
@@ -887,15 +902,32 @@ public class DocumentoService {
 
 
     @Transactional
-    public Documento registrarSalidaDocumento(Long documentoId, 
-                                               String nroNotaSalida, 
-                                               Integer dependenciaDestinoId, 
-                                               String personaRetira, 
-                                               String funcionarioEntrega, 
-                                               MultipartFile archivoAcuse, 
+    public Documento registrarSalidaDocumento(Long documentoId,
+                                               String nroNotaSalida,
+                                               Integer dependenciaDestinoId,
+                                               String personaRetira,
+                                               String funcionarioEntrega,
+                                               MultipartFile archivoAcuse,
+                                               Usuario usuarioSesion) {
+        return registrarSalidaDocumento(documentoId, nroNotaSalida, dependenciaDestinoId, personaRetira, funcionarioEntrega,
+                archivoAcuse, null, List.of(), usuarioSesion);
+    }
+
+    // tipoRemision: NOTA_DIRECCION o DIRECTO_INFORME. informes: actuaciones (informes o memos del expediente)
+    // que componen el legajo de la respuesta; quedan registradas en legajos_salida (V21)
+    @Transactional
+    public Documento registrarSalidaDocumento(Long documentoId,
+                                               String nroNotaSalida,
+                                               Integer dependenciaDestinoId,
+                                               String personaRetira,
+                                               String funcionarioEntrega,
+                                               MultipartFile archivoAcuse,
+                                               String tipoRemision,
+                                               List<Long> informes,
                                                Usuario usuarioSesion) {
         Documento doc = exigirCustodia(documentoId, usuarioSesion, "registrar la salida de");
         exigirSinTramitePendiente(doc, "registrar la salida");
+        List<ActuacionDocumento> legajo = validarLegajo(documentoId, tipoRemision, informes);
         validarNoFinalizado(doc, "registrar la salida de");
         if (doc.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("Un documento informativo archivado no tiene salida exterior.");
@@ -932,12 +964,61 @@ public class DocumentoService {
             "SALIDA_EXTERNA", 
             estadoAnterior, 
             docGuardado.getEstadoActual(), 
-            "Salida externa con N° Remisión " + nroNotaSalida + " entregada a " + personaRetira, 
-            usuarioSesion, 
+            "Salida externa con N° Remisión " + nroNotaSalida + " entregada a " + personaRetira,
+            usuarioSesion,
             null
         );
 
+        // 📑 Legajo de la respuesta: qué informes y memos del expediente se remitieron con esta salida
+        if (!legajo.isEmpty()) {
+            String remision = tipoRemision != null ? tipoRemision : "NOTA_DIRECCION";
+            for (ActuacionDocumento a : legajo) {
+                legajoSalidaRepository.save(LegajoSalida.builder().documento(docGuardado).actuacion(a)
+                        .tipoRemision(remision).nroNotaSalida(nroNotaSalida).registradoPor(usuarioSesion).build());
+            }
+            auditoriaService.registrarEvento(docGuardado, "LEGAJO_SALIDA", docGuardado.getEstadoActual(), docGuardado.getEstadoActual(),
+                    "Legajo de la salida N° " + nroNotaSalida + " (" + remision + "): " + legajo.stream()
+                            .map(a -> a.getTipoActuacion() + " N° " + a.getNumeroActuacion() + " de " + a.getDependenciaEmisora().getNombreVisible())
+                            .collect(java.util.stream.Collectors.joining("; ")),
+                    usuarioSesion, null);
+        }
+
         return docGuardado;
+    }
+
+    // Los informes del legajo tienen que ser informes o memos vigentes del mismo expediente.
+    // Con remisión directa (sin nota de la Dirección), el legajo es la respuesta: no puede ir vacío.
+    private List<ActuacionDocumento> validarLegajo(Long documentoId, String tipoRemision, List<Long> informes) {
+        if (tipoRemision != null && !List.of("NOTA_DIRECCION", "DIRECTO_INFORME").contains(tipoRemision)) {
+            throw new IllegalArgumentException("Modalidad de despacho no válida: " + tipoRemision);
+        }
+        List<Long> ids = informes == null ? List.of() : informes.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if ("DIRECTO_INFORME".equals(tipoRemision) && ids.isEmpty()) {
+            throw new IllegalArgumentException("En la remisión directa marque al menos un informe o memo que compone la respuesta.");
+        }
+        Map<Long, ActuacionDocumento> delExpediente = new HashMap<>();
+        actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
+                .filter(a -> !Boolean.TRUE.equals(a.getAnulada()))
+                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
+                .forEach(a -> delExpediente.put(a.getId(), a));
+        List<ActuacionDocumento> legajo = new ArrayList<>();
+        for (Long id : ids) {
+            ActuacionDocumento a = delExpediente.get(id);
+            if (a == null) {
+                throw new IllegalArgumentException("La actuación " + id + " no es un informe o memo vigente de este expediente.");
+            }
+            legajo.add(a);
+        }
+        return legajo;
+    }
+
+    // Actuaciones que integran el legajo de una salida: id de actuación -> "Salida N° …"
+    public Map<Long, String> legajoDeSalida(Long documentoId) {
+        Map<Long, String> resultado = new HashMap<>();
+        for (LegajoSalida l : legajoSalidaRepository.findByDocumento(documentoId)) {
+            resultado.put(l.getActuacion().getId(), "Salida N° " + l.getNroNotaSalida());
+        }
+        return resultado;
     }
 
     @Transactional
@@ -1026,6 +1107,26 @@ public class DocumentoService {
         Dependencia depEmisora = dependenciaRepository.findById(dependenciaEmisoraId)
                 .orElseThrow(() -> new RuntimeException("Dependencia no encontrada: " + dependenciaEmisoraId));
 
+        // 🛡️ Quién puede escribir en el expediente: la dependencia que tiene el original, o una dependencia a la que
+        // se pidió informe, para responderlo (su respuesta queda cosida a ese pedido). Una copia "para conocimiento"
+        // o haber intervenido antes no habilitan a agregar actuaciones.
+        boolean esRespuesta = "INFORME_TECNICO".equals(tipoActuacion) || "MEMO".equals(tipoActuacion);
+        ActuacionDocumento pedido = esRespuesta
+                ? pedidoQueResponde(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId), depEmisora)
+                : null;
+        boolean tieneElOriginal = canalService.puedeActuarPor(usuarioSesion, custodiaDe(doc));
+        if (pedido == null) {
+            if (!tieneElOriginal) {
+                throw new AccessDeniedException("Solo " + custodiaDe(doc).getNombreVisible() + ", que tiene el original, puede registrar "
+                        + "actuaciones en este expediente; o una dependencia a la que se pidió informe, para responderlo.");
+            }
+            // El original está en camino a otra dependencia: nadie lo modifica hasta que se confirme o se retire el pase
+            exigirSinTramitePendiente(doc, "registrar actuaciones");
+        }
+        if (!tieneElOriginal && ubicacionBibliorato != null && !ubicacionBibliorato.isBlank()) {
+            throw new IllegalArgumentException("La ubicación física del original la registra la dependencia que lo tiene.");
+        }
+
         boolean tienePdf = archivoCopiaSellada != null && !archivoCopiaSellada.isEmpty();
         if (tienePdf) {
             archivoService.validarPdf(archivoCopiaSellada); // antes de grabar nada
@@ -1040,6 +1141,7 @@ public class DocumentoService {
                 .ubicacionBibliorato(ubicacionBibliorato)
                 .fechaHoraActuacion(LocalDateTime.now())
                 .usuario(usuarioSesion)
+                .actuacionPadre(pedido)
                 .build();
 
         if (ubicacionBibliorato != null && !ubicacionBibliorato.isBlank()) {
@@ -1060,7 +1162,9 @@ public class DocumentoService {
             "REGISTRO_ACTUACION", 
             doc.getEstadoActual(), 
             doc.getEstadoActual(), 
-            "Nueva actuación cargada: " + tipoActuacion + " N° " + nroLimpio + " por " + depEmisora.getNombreVisible(), 
+            "Nueva actuación cargada: " + tipoActuacion + " N° " + nroLimpio + " por " + depEmisora.getNombreVisible()
+                    + (pedido != null ? ", en respuesta al pedido de informe de " + pedido.getDependenciaEmisora().getNombreVisible()
+                            + " (" + pedido.getFechaHoraActuacion().toLocalDate() + ")" : ""),
             usuarioSesion, 
             null
         );
@@ -1162,16 +1266,44 @@ public class DocumentoService {
 
     // Auditoría A4: un pedido de informe está respondido si el área que lo recibió emitió un informe o memo
     // DESPUÉS del pedido. Antes bastaba cualquier respuesta de esa dependencia, aun de un pedido anterior.
+    // Unidad de expediente: cada respuesta queda cosida a su pedido (actuacion_padre_id). Una respuesta vinculada
+    // responde solo a ese pedido: el dictamen de un departamento cierra el pedido que la Dirección le hizo, no el
+    // pedido original de la Dirección, que se cierra con su memo consolidado. Las respuestas sin vínculo
+    // (anteriores a esta regla) siguen contando por área y fecha.
     static boolean informeRespondido(ActuacionDocumento pase, List<ActuacionDocumento> respuestas) {
         Dependencia area = areaReceptora(pase.getDependenciaReceptoraPase());
         return respuestas.stream().anyMatch(r -> {
-            Dependencia emisora = r.getDependenciaEmisora();
-            boolean delArea = emisora != null && (emisora.getId().equals(area.getId())
-                    || (emisora.getRuta() != null && area.getRuta() != null && emisora.getRuta().startsWith(area.getRuta())));
-            boolean posterior = r.getFechaHoraActuacion() != null && pase.getFechaHoraActuacion() != null
+            if (r.getActuacionPadre() != null) {
+                return r.getActuacionPadre().getId() != null && r.getActuacionPadre().getId().equals(pase.getId());
+            }
+            return delArea(r.getDependenciaEmisora(), area)
+                    && r.getFechaHoraActuacion() != null && pase.getFechaHoraActuacion() != null
                     && !r.getFechaHoraActuacion().isBefore(pase.getFechaHoraActuacion());
-            return delArea && posterior;
         });
+    }
+
+    private static boolean delArea(Dependencia emisora, Dependencia area) {
+        return emisora != null && (emisora.getId().equals(area.getId())
+                || (emisora.getRuta() != null && area.getRuta() != null && emisora.getRuta().startsWith(area.getRuta())));
+    }
+
+    // El pedido de informe abierto que responde una actuación de la dependencia: el del área más específica que
+    // la contiene. Así el dictamen de un departamento responde el pedido que le hizo su Dirección, y el memo de
+    // la Dirección, el pedido que ella recibió.
+    static ActuacionDocumento pedidoQueResponde(List<ActuacionDocumento> actuaciones, Dependencia emisora) {
+        List<ActuacionDocumento> vigentes = actuaciones.stream().filter(a -> !Boolean.TRUE.equals(a.getAnulada())).toList();
+        List<ActuacionDocumento> respuestas = vigentes.stream()
+                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion())).toList();
+        return vigentes.stream()
+                .filter(p -> ("PASE_INTERNO".equals(p.getTipoActuacion()) || "PASE_CONFIRMADO".equals(p.getTipoActuacion()))
+                        && Boolean.TRUE.equals(p.getRequiereInforme()) && p.getDependenciaReceptoraPase() != null)
+                .filter(p -> delArea(emisora, areaReceptora(p.getDependenciaReceptoraPase())))
+                .filter(p -> !informeRespondido(p, respuestas))
+                .max(java.util.Comparator.comparingInt((ActuacionDocumento p) -> {
+                    String ruta = areaReceptora(p.getDependenciaReceptoraPase()).getRuta();
+                    return ruta == null ? 0 : ruta.length();
+                }).thenComparing(ActuacionDocumento::getFechaHoraActuacion))
+                .orElse(null);
     }
 
     @Transactional
@@ -1621,6 +1753,7 @@ public class DocumentoService {
         validarMotivo(justificacion, 20, "la justificación");
 
         Documento doc = exigirCustodia(documentoId, usuario, "forzar el cierre de informes de");
+        exigirSinTramitePendiente(doc, "forzar el cierre de informes");
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
         if (estadoAnterior == EstadoDocumento.PENDIENTE_SALIDA || estadoAnterior == EstadoDocumento.FINALIZADO
                 || estadoAnterior == EstadoDocumento.ARCHIVADO) {

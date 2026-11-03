@@ -252,9 +252,13 @@
                 acciones += `<button type="button" class="btn btn-outline-danger btn-sm py-0" data-accion="anular-pase" data-id="${nodo.id}" data-tipo="RECHAZAR" title="No corresponde a su dependencia"><i class="bi bi-hand-thumbs-down me-1"></i>Rechazar</button>`;
             }
 
+            const textoAnulacion = { RECHAZADO: 'Rechazado', RETIRADO: 'Retirado', CIERRE_EXCEPCIONAL: 'Anulado por cierre excepcional' };
             const detalleAnulacion = nodo.anulada
-                ? `<div class="small text-danger mb-2"><i class="bi bi-info-circle me-1"></i>${nodo.tipoAnulacion === 'RECHAZADO' ? 'Rechazado' : 'Retirado'} el ${esc(nodo.fechaAnulacion)}: ${esc(nodo.motivoAnulacion)}</div>`
+                ? `<div class="small text-danger mb-2"><i class="bi bi-info-circle me-1"></i>${textoAnulacion[nodo.tipoAnulacion] || 'Anulado'} el ${esc(nodo.fechaAnulacion)}: ${esc(nodo.motivoAnulacion)}</div>`
                 : '';
+            // Unidad de expediente: respuesta cosida a su pedido de informe y pertenencia al legajo de la salida
+            const vinculos = (nodo.respondeA ? `<span class="badge bg-info-subtle text-info-emphasis border me-1"><i class="bi bi-reply me-1"></i>Responde al pedido de ${esc(nodo.respondeADependencia)}</span>` : '')
+                + (nodo.enLegajo ? `<span class="badge bg-success-subtle text-success-emphasis border"><i class="bi bi-paperclip me-1"></i>Integra el legajo de la ${esc(nodo.enLegajo)}</span>` : '');
 
             let html = `
                 <div class="tree-node">
@@ -267,6 +271,7 @@
                             <small class="text-muted"><i class="bi bi-clock me-1"></i>${esc(nodo.fecha)}</small>
                         </div>
                         <p class="small text-secondary mb-2 mt-1 ${nodo.anulada ? 'text-decoration-line-through' : ''}">${esc(nodo.descripcion)}</p>
+                        ${vinculos ? `<div class="mb-2">${vinculos}</div>` : ''}
                         ${detalleAnulacion}
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 bg-light p-2 rounded">
                             <small class="text-muted"><i class="bi bi-journal-bookmark me-1"></i>Bibliorato: <strong>${esc(nodo.bibliorato)}</strong></small>

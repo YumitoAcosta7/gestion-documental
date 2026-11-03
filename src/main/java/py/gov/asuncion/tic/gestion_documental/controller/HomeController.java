@@ -268,10 +268,13 @@ public class HomeController {
                                   @RequestParam("personaRetira") String personaRetira,
                                   @RequestParam("funcionarioEntrega") String funcionarioEntrega,
                                   @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse,
+                                  @RequestParam(value = "tipoRemision", required = false) String tipoRemision,
+                                  @RequestParam(value = "informeActuacionId", required = false) List<Long> informes,
                                   RedirectAttributes redirectAttributes) {
         try {
             documentoService.registrarSalidaDocumento(documentoId, nroNotaSalida, dependenciaDestinoId,
-                                                   personaRetira, funcionarioEntrega, archivoAcuse, getUsuarioAutenticadoObligatorio());
+                                                   personaRetira, funcionarioEntrega, archivoAcuse,
+                                                   tipoRemision, informes, getUsuarioAutenticadoObligatorio());
             redirectAttributes.addFlashAttribute("mensajeExito", "Salida exterior registrada correctamente.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error al registrar la salida: " + mensajeError(e));
@@ -630,6 +633,9 @@ public class HomeController {
     /**
      * 🌐 API JSON: OBTENER ACTUACIONES (ÁRBOL DE TRAZABILIDAD)
      */
+    static final String JUSTIFICACION_RESERVADA =
+            "Cierre excepcional registrado. La justificación la ven quienes pueden forzar cierres o auditar el expediente.";
+
     @GetMapping("/api/documentos/{id}/actuaciones")
     @ResponseBody
     public ResponseEntity<List<Map<String, Object>>> obtenerActuacionesJson(@PathVariable("id") Long id) {
@@ -647,17 +653,29 @@ public class HomeController {
             versiones.computeIfAbsent(adj.getActuacion().getId(), k -> new ArrayList<>()).add(adjuntoJson(adj));
         }
 
+        // 🛡️ La justificación de un cierre excepcional la ven solo quienes pueden forzar cierres o auditar;
+        // el resto ve que hubo un cierre excepcional, cuándo y quién, pero no el texto
+        boolean veJustificacionCierre = politicaAcceso.puede(usuario, Accion.FORZAR_CIERRE)
+                || politicaAcceso.puede(usuario, Accion.VER_AUDITORIA);
+        Map<Long, String> legajo = documentoService.legajoDeSalida(id);
+
         for (var act : actuaciones) {
             Map<String, Object> map = new HashMap<>();
             map.put("id", act.getId());
             map.put("documentoId", id);
+            // Unidad de expediente: a qué pedido de informe responde y si integra el legajo de la salida
+            map.put("respondeA", act.getActuacionPadre() != null ? act.getActuacionPadre().getId() : null);
+            map.put("respondeADependencia", act.getActuacionPadre() != null && act.getActuacionPadre().getDependenciaEmisora() != null
+                    ? act.getActuacionPadre().getDependenciaEmisora().getNombreVisible() : null);
+            map.put("enLegajo", legajo.get(act.getId()));
             map.put("tipoActuacion", act.getTipoActuacion() != null ? act.getTipoActuacion() : "PASE_INTERNO");
             map.put("numeroActuacion", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
             map.put("dependencia", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getNombreVisible() : "Sin Dependencia");
             map.put("dependenciaEmisoraId", act.getDependenciaEmisora() != null ? act.getDependenciaEmisora().getId() : null);
             map.put("dependenciaReceptoraId", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getId() : null);
             map.put("dependenciaReceptora", act.getDependenciaReceptoraPase() != null ? act.getDependenciaReceptoraPase().getNombreVisible() : null);
-            map.put("descripcion", act.getDescripcionResumen());
+            boolean reservada = !veJustificacionCierre && "CIERRE_EXCEPCIONAL".equals(act.getTipoActuacion());
+            map.put("descripcion", reservada ? JUSTIFICACION_RESERVADA : act.getDescripcionResumen());
             map.put("bibliorato", act.getUbicacionBibliorato() != null && !act.getUbicacionBibliorato().isBlank()
                     ? act.getUbicacionBibliorato() : "No especificado");
             // Solo indica si hay PDF: la ruta interna del servidor no se expone
@@ -669,7 +687,8 @@ public class HomeController {
             // Anulación lógica (pases retirados / rechazados)
             map.put("anulada", Boolean.TRUE.equals(act.getAnulada()));
             map.put("tipoAnulacion", act.getTipoAnulacion());
-            map.put("motivoAnulacion", act.getMotivoAnulacion());
+            map.put("motivoAnulacion", !veJustificacionCierre && "CIERRE_EXCEPCIONAL".equals(act.getTipoAnulacion())
+                    ? JUSTIFICACION_RESERVADA : act.getMotivoAnulacion());
             map.put("fechaAnulacion", act.getFechaHoraAnulacion() != null
                     ? act.getFechaHoraAnulacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : null);
 
