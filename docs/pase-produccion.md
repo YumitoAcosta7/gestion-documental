@@ -171,3 +171,21 @@ sudo -u postgres pg_restore -d gestion_documental /var/backups/gestion_documenta
 Después, arrancar la versión anterior de la aplicación.
 
 **Después del paso 4,** el respaldo se restaura igual. Las bitácoras vuelven a ser del rol de la aplicación, y el paso 4 se repite cuando se vuelva a migrar.
+
+## Registro
+
+**03/11/2026.** Primer pase, de V14 a V20.
+
+- **Antes:**
+  - producción en V14, sin pases sin receptora;
+  - respaldo `antes_V20_20261103_1314.dump` (82 KB, 14 tablas: 7 expedientes, 13 actuaciones, 581 dependencias, 9 usuarios);
+  - carpeta de PDF copiada a otro disco.
+- **Migraciones:** V15 a V20 aplicadas sin errores.
+- **Bitácoras:** ya estaban protegidas; el script lo confirmó.
+- **Comprobación con `juan.acosta`:**
+  - pantalla principal en 345 ms;
+  - CSP estricta y sin cabecera de diagnóstico;
+  - consola sin errores;
+  - administración con 18 feriados;
+  - panel de pases con **8 pases del piloto de la DTIC** (agosto y septiembre de 2026, de 33 a 58 días hábiles sin acuse). Los resuelven la Coordinación de TIC y las dependencias receptoras: confirmar, rechazar o retirar.
+- **Quedan:** los pasos 6 (segundo administrador), 7 (feriados trasladables) y 8 (contraseñas).

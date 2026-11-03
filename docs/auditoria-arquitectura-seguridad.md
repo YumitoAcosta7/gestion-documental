@@ -153,7 +153,7 @@ Además, rechazar una asignación activa idéntica (mismo usuario, rol y ámbito
 - Vincular cada respuesta a su pase, con `actuacion_padre_id` o, como mínimo, con fecha posterior al pase y misma receptora.
 - En el cierre excepcional, anular los pases pendientes con `tipo_anulacion = 'CIERRE_EXCEPCIONAL'`.
 
-**A5 — La bitácora no es realmente inmutable.** 🟡 **Corregido en la base de pruebas (02/11/2026); falta producción.**
+**A5 — La bitácora no es realmente inmutable.** ✅ **Corregido (pruebas el 02/11/2026; producción el 03/11/2026).**
 - V14 protege `auditorias_documento` contra UPDATE y DELETE, y las dos bitácoras contra `TRUNCATE`.
 - **Base de pruebas (hecho):** `proteger_bitacoras.sh` dejó las dos bitácoras a nombre de `gestion_documental_bitacora`; la aplicación solo lee y agrega, y sigue registrando eventos con normalidad.
 - **Producción (pendiente):** arrancar la aplicación real (aplica V13 y V14) y correr `sudo -u postgres bash proteger_bitacoras.sh gestion_documental gestion_documental`.
@@ -333,7 +333,7 @@ CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id D
 | Prioridad | Hallazgos | Esfuerzo |
 |---|---|---|
 | Inmediata, antes de sumar otra dirección | C1, C2, A1 (✅ corregidos; falta el doble control de C2) | 1–2 días |
-| Antes del piloto con Hacienda | A2, A3, A4 (✅ corregidos), A5 (falta el script en el servidor), M1 | 3–4 días |
+| Antes del piloto con Hacienda | A2, A3, A4 (✅ corregidos), A5 (✅ también en producción), M1 | 3–4 días |
 | Antes del despliegue general | M1–M5 (✅ corregidos; quedan los pendientes de M2), B1, B2 (✅ corregidos; falta medir con volumen) | 3–5 días |
 | Con el pase a HTTPS | B3 (✅ corregido; falta `APP_COOKIE_SEGURA=true` y quitar `'unsafe-inline'`) | 1 día |
 
@@ -381,7 +381,7 @@ Todas sobre la base de pruebas, con `@PruebaConBaseDePruebas` y `@Transactional`
 - [x] A1–A2: un usuario dado de baja o reseteado pierde la sesión; hay límite de intentos de inicio de sesión.
 - [x] A3: las suplencias quedan acotadas a lo que tiene el titular y no se solapan.
 - [x] A4: las respuestas a informes se vinculan a su pase; el cierre forzado anula los pases pendientes.
-- [ ] A5: la bitácora pertenece a otro rol y resiste `TRUNCATE`, `DISABLE TRIGGER` y `DROP` desde la aplicación.
+- [x] A5: la bitácora pertenece a otro rol y resiste `TRUNCATE`, `DISABLE TRIGGER` y `DROP` desde la aplicación.
 - [x] M1–M5 resueltos (queda el retiro administrativo de pases y el aviso de plazos, de M2).
 - [x] Índices de B2 creados (V16, V19) y bandejas medidas con 200 000 expedientes (B2).
 - [x] Matriz de autorización automatizada en verde (`MatrizAutorizacionTest`: perfil × endpoint, sin sesión, sin CSRF y cabeceras).
