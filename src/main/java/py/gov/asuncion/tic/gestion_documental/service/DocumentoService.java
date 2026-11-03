@@ -228,7 +228,8 @@ public class DocumentoService {
     // conReceptor = false: nadie usa todavía el sistema en esa dependencia (el modal la muestra deshabilitada)
     public record DestinoPase(Integer id, String nombre, String sigla, String movimiento, boolean conReceptor) {}
 
-    public record OpcionesDerivacion(String custodia, boolean puedeDerivar, List<DestinoPase> destinos) {}
+    // soloElevar: el usuario no tiene el permiso de derivar; solo puede elevar el original a su superior
+    public record OpcionesDerivacion(String custodia, boolean puedeDerivar, boolean soloElevar, List<DestinoPase> destinos) {}
 
     // Auditoría M2: no se deriva a dependencias sin nadie que reciba el pase (se puede desactivar mientras
     // se incorporan las direcciones, si se decide seguir enviando pases a áreas que todavía usan papel)
@@ -244,7 +245,10 @@ public class DocumentoService {
         Organigrama organigrama = canalService.organigrama();
         // Un pase a otra dirección llega a su mesa de entrada: se muestra el nombre de la dirección,
         // no el de su "Unidad de Secretaría Administrativa", que se repite en todas
-        List<Organigrama.Destino> canal = !puede ? List.of() : organigrama.destinos(custodia.getId());
+        boolean soloElevar = !politicaAcceso.puede(usuario, Accion.DERIVAR);
+        List<Organigrama.Destino> canal = !puede ? List.of() : organigrama.destinos(custodia.getId()).stream()
+                .filter(d -> !soloElevar || d.movimiento() == Organigrama.Movimiento.SUBIR)
+                .toList();
         java.util.Set<Integer> conReceptor = canal.isEmpty() ? java.util.Set.of()
                 : new java.util.HashSet<>(dependenciaRepository.findConReceptor(canal.stream().map(d -> d.nodo().id()).toList()));
         List<DestinoPase> destinos = canal.stream()
@@ -257,7 +261,7 @@ public class DocumentoService {
                             !exigirReceptor || conReceptor.contains(d.nodo().id()));
                 })
                 .toList();
-        return new OpcionesDerivacion(custodia.getNombreVisible(), puede, destinos);
+        return new OpcionesDerivacion(custodia.getNombreVisible(), puede, soloElevar, destinos);
     }
 
     public Map<String, Long> obtenerMetricasDashboard() {
@@ -325,6 +329,13 @@ public class DocumentoService {
                 .orElseThrow(() -> new IllegalArgumentException("Dependencia no encontrada: " + dto.getDependenciaOrigenId()));
         if (Boolean.FALSE.equals(origen.getActivo())) {
             throw new IllegalArgumentException("La dependencia '" + origen.getNombre() + "' está inactiva.");
+        }
+        // Un documento de la propia dirección (una unidad que eleva un memo, por ejemplo) casi siempre pertenece a
+        // un expediente que ya tiene CUTI: se agrega como actuación y se eleva, no se registra otro expediente
+        if (esDeLaPropiaDireccion(origen, usuarioSesion) && !Boolean.TRUE.equals(dto.getAsuntoNuevo())) {
+            throw new IllegalArgumentException("El documento viene de " + origen.getNombreVisible() + ", dentro de su propia dirección. "
+                    + "Si pertenece a un expediente que ya tiene CUTI, regístrelo como actuación en ese expediente y elévelo con "
+                    + "\"Derivar / Elevar\"; no cree otro expediente. Si es un asunto nuevo, marque \"Es un asunto nuevo\".");
         }
 
         Documento documento = new Documento();
@@ -395,6 +406,17 @@ public class DocumentoService {
     public List<Documento> obtenerDocumentosArchivoParaUsuario(Usuario usuario, Integer biblioratoId) {
         List<Documento> docs = documentoRepository.findDocumentosArchivo(biblioratoId);
         return docs.stream().filter(d -> puedeAccederDocumento(usuario, d.getId())).toList();
+    }
+
+    // ¿El origen está dentro de la dirección (cabecera) donde registra el usuario?
+    private boolean esDeLaPropiaDireccion(Dependencia origen, Usuario usuario) {
+        Organigrama.Nodo cabecera = canalService.cabeceraDelUsuario(usuario);
+        if (cabecera == null || origen.getRuta() == null) {
+            return false;
+        }
+        return dependenciaRepository.findById(cabecera.id())
+                .map(c -> c.getRuta() != null && origen.getRuta().startsWith(c.getRuta()))
+                .orElse(false);
     }
 
     // ✍️ DOCUMENTO PROPIO (§4.3): cualquier dependencia (unidad, departamento, dirección) inicia un
@@ -648,6 +670,16 @@ public class DocumentoService {
                         + depId + "): el expediente sube por su dependencia superior y pasa entre direcciones por sus mesas de entrada.");
             }
         }
+        // Quien no tiene el permiso de derivar (un operador de una unidad) igual puede ELEVAR el mismo
+        // expediente a su superior con un pase de trámite: así no se crea otro expediente con otro CUTI
+        if (!politicaAcceso.puede(usuario, Accion.DERIVAR)) {
+            java.util.Set<Integer> superiores = organigrama.destinos(custodia.getId()).stream()
+                    .filter(d -> d.movimiento() == Organigrama.Movimiento.SUBIR)
+                    .map(d -> d.nodo().id()).collect(java.util.stream.Collectors.toSet());
+            if (tipoPase != TipoPase.TRAMITE || !superiores.containsAll(destinos)) {
+                throw new AccessDeniedException("Sin el permiso de derivar solo se puede elevar el expediente a la dependencia superior, con un pase de trámite.");
+            }
+        }
         // Auditoría M2: sin nadie que lo reciba, el pase quedaría pendiente para siempre
         if (exigirReceptor) {
             java.util.Set<Integer> conReceptor = new java.util.HashSet<>(dependenciaRepository.findConReceptor(destinos));
@@ -658,8 +690,10 @@ public class DocumentoService {
                         + ". El pase quedaría sin recibir; envíelo en papel o pida que se habiliten usuarios.");
             }
         }
-        if (tipoPase == TipoPase.TRAMITE && actuacionDocumentoRepository.existePaseTramitePendiente(documentoId)) {
-            throw new IllegalStateException("Ya hay un pase de trámite esperando acuse: el original no puede entregarse dos veces. Espere la confirmación o retire ese pase.");
+        // Con un trámite esperando acuse, el original está en camino: nadie más puede pasarlo, ni en trámite
+        // ni para informe o conocimiento, porque la dependencia emisora ya no lo tiene
+        if (actuacionDocumentoRepository.existePaseTramitePendiente(documentoId)) {
+            throw new IllegalStateException("Ya hay un pase de trámite esperando acuse: el original está en camino y no puede volver a pasarse. Espere la confirmación o retire ese pase.");
         }
 
         boolean esInformeRequerido = tipoPase == TipoPase.INFORME;

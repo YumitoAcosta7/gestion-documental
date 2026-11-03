@@ -17,8 +17,12 @@ public class NuevoDocumentoDTO {
     private Integer biblioratoId;
     private Integer fojaDesde;
     private Integer fojaHasta;
+    // Confirmación de que un documento de la propia dirección es un asunto nuevo (no de un expediente existente)
+    private Boolean asuntoNuevo;
 
     // Getters y Setters
+    public Boolean getAsuntoNuevo() { return asuntoNuevo; }
+    public void setAsuntoNuevo(Boolean asuntoNuevo) { this.asuntoNuevo = asuntoNuevo; }
     public Integer getBiblioratoId() { return biblioratoId; }
     public void setBiblioratoId(Integer biblioratoId) { this.biblioratoId = biblioratoId; }
     public Integer getFojaDesde() { return fojaDesde; }

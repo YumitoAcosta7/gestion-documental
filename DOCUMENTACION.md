@@ -204,6 +204,12 @@ Reglas adicionales:
 
   Cada destino genera un `PASE_INTERNO` pendiente de acuse.
 - **Documento propio:** cualquier dependencia (unidad, departamento, dirección) inicia un expediente con su documento (`POST /documentos/propio`), con el CUTI de su cabecera, y puede elevarlo en el mismo acto a su superior con un pase de trámite.
+- **Unidad de expediente (un asunto, un CUTI):** un memo o informe que responde a un expediente existente **no** genera otro expediente.
+  - Se registra como **actuación** en ese expediente y se eleva con **Derivar / Elevar** (pase de trámite). La custodia pasa al superior cuando confirma.
+  - Quien solo tiene `REGISTRAR_ACTUACION` (un operador de una unidad) también puede elevar: el modal le ofrece solo su superior inmediato y el pase de trámite.
+  - "Documento propio" es solo para asuntos nuevos y pide confirmarlo.
+  - El ingreso de la mesa pide la misma confirmación cuando el origen es una dependencia de su propia dirección.
+  - Mientras un trámite espera acuse, el original está en camino: no se puede pasar de nuevo, ni siquiera para informe o conocimiento.
 - **Bandejas** (`BandejaService`, selector arriba de "Trámites en Curso", `GET /?bandeja=…&pagina=…`). Todas se calculan sobre el ámbito del usuario (ver §4):
   - **Todos:** la lista completa de antes; se mantiene durante la transición.
   - **Por recibir:** pases pendientes de acuse dirigidos al ámbito.
@@ -231,7 +237,7 @@ Reglas adicionales:
 | `GET /` | Dashboard: KPIs, activos, salidas propias, finalizados | Autenticado |
 | `GET /documentos/buscar` | Buscador multicriterio (filtrado por acceso) | Autenticado |
 | `POST /documentos/guardar` | Ingreso de expediente | `REGISTRAR_INGRESO` |
-| `POST /documentos/derivar` | Derivación única o múltiple | `DERIVAR` |
+| `POST /documentos/derivar` | Derivación única o múltiple; elevación al superior | `DERIVAR`, o `REGISTRAR_ACTUACION` solo para elevar con un pase de trámite |
 | `POST /documentos/devolver` | Devolución rápida | `REGISTRAR_ACTUACION` (según pases recibidos) |
 | `POST /documentos/salida` | Salida exterior | `REGISTRAR_SALIDA` |
 | `POST /documentos/salida-directa` | Documento propio + salida | `REGISTRAR_SALIDA` |
