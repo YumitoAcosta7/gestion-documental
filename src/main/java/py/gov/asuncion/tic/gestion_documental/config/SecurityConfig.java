@@ -26,12 +26,12 @@ import py.gov.asuncion.tic.gestion_documental.service.PoliticaAcceso;
 public class SecurityConfig {
 
     // Política de contenido: solo recursos propios y los de cdn.jsdelivr.net (con SRI en las plantillas).
-    // 'unsafe-inline' sigue siendo necesario porque las plantillas tienen scripts y manejadores en línea;
-    // se quitará cuando ese código pase a archivos .js. Aun así se bloquean los scripts de otros orígenes,
-    // los <object>, el cambio de <base>, los formularios hacia otros sitios y el encuadre desde otros sitios.
+    // Los scripts no admiten código en línea: todo el JavaScript está en /js y los eventos se asignan con
+    // addEventListener. Un texto inyectado en una página no puede ejecutar código. Los estilos en línea
+    // (atributos style) se siguen admitiendo: no ejecutan código.
     static final String POLITICA_CONTENIDO = String.join("; ",
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+            "script-src 'self' https://cdn.jsdelivr.net",
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "font-src 'self' https://cdn.jsdelivr.net",
             "img-src 'self' data:",
