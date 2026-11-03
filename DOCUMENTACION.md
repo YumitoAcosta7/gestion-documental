@@ -307,7 +307,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 
 ## 8. 🎯 ESTADO ACTUAL Y PENDIENTES
 
-**Estado (03/11/2026):** producción y pruebas en la migración **V20**. Pase y registro en [docs/pase-produccion.md](docs/pase-produccion.md).
+**Estado (03/11/2026):** producción y pruebas en la migración **V20**. Administradores del sistema: `juan.acosta` y `zlobo`. Pase y registro en [docs/pase-produccion.md](docs/pase-produccion.md).
 
 **Hecho:**
 - **Fase 2, etapas 2.1 y 2.2:** organigrama, asignaciones, ámbito, custodia, canal jerárquico, tipos de pase, CUTI por cabecera, documentos propios y bandejas paginadas.
@@ -316,8 +316,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
 - **Pruebas automatizadas:** 100, incluidas la matriz de autorización (`MatrizAutorizacionTest`) y la revisión de las consultas nativas (`ConsultasNativasTest`).
 
-**Pendientes en producción** (pasos 6 a 8 de [docs/pase-produccion.md](docs/pase-produccion.md)):
-- Segundo administrador, aprobado por el DBA con `aprobar_asignacion.sh`.
+**Pendientes en producción** (pasos 7 y 8 de [docs/pase-produccion.md](docs/pase-produccion.md)):
 - Feriados trasladables y asuetos de 2026, según el decreto.
 - Cambio de las contraseñas de las dos bases.
 - 8 pases del piloto de la DTIC (agosto y septiembre de 2026) sin acuse: los resuelven las dependencias.
