@@ -107,7 +107,10 @@ Un `ADMIN_SISTEMA` puede asignarse a sí mismo `MESA_ENTRADA` sobre la Intendenc
 - Bloqueo de 15 minutos tras 5 intentos fallidos (`LimiteIntentosService`), sin revelar si el usuario existe.
 - El reseteo y la baja cierran las sesiones abiertas (`SessionRegistry`).
 - La sesión vence tras 30 minutos sin actividad.
-- **Queda:** contar también por IP, y que al cambiar la propia contraseña se cierren las otras sesiones.
+- **Bloqueo por IP:** 20 fallos con cualquier usuario en 15 minutos (`app.login.intentos-maximos-ip`) bloquean esa dirección 15 minutos.
+  - Un ingreso correcto no reinicia ese conteo.
+  - Detrás de un proxy inverso, hace falta `server.forward-headers-strategy=native` para ver la IP real.
+- Al cambiar la propia contraseña se cierran las sesiones abiertas en otros equipos.
 - Pruebas: `LimiteIntentosServiceTest` y `AdministracionServiceTest`.
 - El reseteo o el cambio de contraseña no cierran las otras sesiones del usuario: no hay `SessionRegistry`.
 - No hay límite de intentos de inicio de sesión ni bloqueo temporal.
