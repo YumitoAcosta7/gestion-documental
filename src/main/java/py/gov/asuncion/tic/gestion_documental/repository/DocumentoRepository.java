@@ -129,9 +129,10 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     List<Long> idsAccesibles(@Param("usuarioId") Integer usuarioId, @Param("ids") java.util.Collection<Long> ids);
 
     // Historial de finalizados: los 50 más recientes que el usuario puede ver (auditoría B2: la lista
-    // ya no crece sin límite; los anteriores se encuentran con el buscador)
-    @Query(value = CTE_AMBITO + CTE_CONJUNTOS + "SELECT d.* FROM documentos d WHERE d.estado_actual = 'FINALIZADO' AND "
-                 + EN_ACC + " ORDER BY d.fecha_hora_salida DESC NULLS LAST, d.id DESC LIMIT 50", nativeQuery = true)
+    // ya no crece sin límite; los anteriores se encuentran con el buscador). Recorre los finalizados por fecha con
+    // el índice de V19 y comprueba el acceso de cada uno hasta juntar 50: no arma el conjunto completo.
+    @Query(value = CTE_AMBITO + "SELECT d.* FROM documentos d WHERE d.estado_actual = 'FINALIZADO' AND "
+                 + DOCUMENTO_ACCESIBLE + " ORDER BY d.fecha_hora_salida DESC NULLS LAST, d.id DESC LIMIT 50", nativeQuery = true)
     List<Documento> findFinalizadosAccesibles(@Param("usuarioId") Integer usuarioId);
 
     // Máximo de resultados del buscador: para más, el usuario afina los filtros

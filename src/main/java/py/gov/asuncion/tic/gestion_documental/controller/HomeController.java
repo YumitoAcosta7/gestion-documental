@@ -141,10 +141,11 @@ public class HomeController {
         List<Documento> activos = List.of();
         BandejaService.Resumen resumen = null;
         if (usuario != null) {
-            Page<Documento> paginaBandeja = c.medir("bandeja", () -> bandejaService.listar(usuario, bandeja, pagina));
+            resumen = c.medir("resumen", () -> bandejaService.resumen(usuario));
+            long total = resumen.bandejas().getOrDefault(bandeja.name(), 0L);
+            Page<Documento> paginaBandeja = c.medir("bandeja", () -> bandejaService.listar(usuario, bandeja, pagina, total));
             activos = paginaBandeja.getContent();
             model.addAttribute("paginaBandeja", paginaBandeja);
-            resumen = c.medir("resumen", () -> bandejaService.resumen(usuario));
         }
         model.addAttribute("bandejas", BandejaService.Bandeja.values());
         model.addAttribute("bandejaActual", bandeja);

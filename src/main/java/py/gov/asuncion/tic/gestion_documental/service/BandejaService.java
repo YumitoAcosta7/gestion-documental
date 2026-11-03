@@ -24,10 +24,12 @@ public class BandejaService {
     public static final int TAMANIO_PAGINA = 20;
 
     public enum Bandeja {
-        // Las condiciones usan los conjuntos de DocumentoRepository.CTE_CONJUNTOS (acc, recibir, emitio)
-        // Todo lo activo que el usuario puede ver (paginado como el resto: auditoría B2)
-        TODOS("Todos", "d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO') AND " + DocumentoRepository.EN_ACC),
-        POR_RECIBIR("Por recibir", "d.id IN (SELECT id FROM recibir)"),
+        // Las condiciones usan los conjuntos de DocumentoRepository.CTE_CONJUNTOS (recibir, emitio).
+        // Todo lo activo que el usuario puede ver (paginado como el resto: auditoría B2). Para listar se comprueba
+        // expediente por expediente, en orden de fecha, hasta juntar la página; el total sale del resumen, que lo
+        // cuenta con el conjunto acc (la misma regla, ver sobreCruces).
+        TODOS("Todos", "d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO') AND " + DocumentoRepository.DOCUMENTO_ACCESIBLE),
+        POR_RECIBIR("Por recibir", "d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO') AND d.id IN (SELECT id FROM recibir)"),
         EN_MI_PODER("En mi poder", """
             d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO')
             AND d.dependencia_custodia_id IN (SELECT id FROM deps)
@@ -66,6 +68,7 @@ public class BandejaService {
     // La condición de una bandeja escrita sobre los LEFT JOIN del resumen
     static String sobreCruces(String condicion) {
         return condicion
+                .replace(DocumentoRepository.DOCUMENTO_ACCESIBLE, "acc.id IS NOT NULL")
                 .replace(DocumentoRepository.EN_ACC, "acc.id IS NOT NULL")
                 .replace("d.id IN (SELECT id FROM recibir)", "recibir.id IS NOT NULL")
                 .replace("d.id IN (SELECT id FROM emitio)", "emitio.id IS NOT NULL");
@@ -74,7 +77,8 @@ public class BandejaService {
     @PersistenceContext
     private EntityManager entityManager;
 
-    public Page<Documento> listar(Usuario usuario, Bandeja bandeja, int pagina) {
+    // total: el de la bandeja, ya contado en el resumen (así no se cuenta dos veces por pantalla)
+    public Page<Documento> listar(Usuario usuario, Bandeja bandeja, int pagina, long total) {
         int paginaValida = Math.max(pagina, 0);
         @SuppressWarnings("unchecked")
         List<Documento> contenido = entityManager
@@ -84,7 +88,11 @@ public class BandejaService {
                 .setFirstResult(paginaValida * TAMANIO_PAGINA)
                 .setMaxResults(TAMANIO_PAGINA)
                 .getResultList();
-        return new PageImpl<>(contenido, PageRequest.of(paginaValida, TAMANIO_PAGINA), contar(usuario, bandeja));
+        return new PageImpl<>(contenido, PageRequest.of(paginaValida, TAMANIO_PAGINA), total);
+    }
+
+    public Page<Documento> listar(Usuario usuario, Bandeja bandeja, int pagina) {
+        return listar(usuario, bandeja, pagina, contar(usuario, bandeja));
     }
 
     public long contar(Usuario usuario, Bandeja bandeja) {
@@ -106,7 +114,7 @@ public class BandejaService {
     // Las claves son nombres: Thymeleaf no indexa mapas con claves enum.
     public Resumen resumen(Usuario usuario) {
         StringBuilder sql = new StringBuilder(CTE).append("SELECT ");
-        List<Bandeja> conContador = java.util.Arrays.stream(Bandeja.values()).filter(b -> b != Bandeja.TODOS).toList();
+        List<Bandeja> conContador = List.of(Bandeja.values());
         for (Bandeja b : conContador) {
             sql.append("COUNT(*) FILTER (WHERE ").append(sobreCruces(b.condicion)).append("), ");
         }
