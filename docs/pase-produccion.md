@@ -39,7 +39,7 @@ Todo se aplicó y se probó primero en `gestion_documental_pruebas`.
 sudo -u postgres psql -d gestion_documental -c "SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank"
 ```
 
-- Lo esperado es que la última versión aplicada sea la **12**, y que todas las filas digan `success = t`.
+- La última versión aplicada puede ser cualquiera entre la **12** y la **19**. El 03/11/2026 producción estaba en la **14**. Todas las filas tienen que decir `success = t`.
 - Si alguna dice `f`, **no seguir**: hay una migración fallida que se revisa antes de continuar.
 
 **Verificación de datos (solo lectura, se puede hacer días antes).**
@@ -50,7 +50,7 @@ sudo -u postgres psql -d gestion_documental -c "SELECT version, description, suc
 sudo -u postgres psql -d gestion_documental -c "SELECT tipo_actuacion, COUNT(*) FROM actuaciones_documento WHERE tipo_actuacion IN ('PASE_INTERNO','PASE_CONFIRMADO','DEVOLUCION') AND dependencia_receptora_pase_id IS NULL GROUP BY tipo_actuacion"
 ```
 
-- **Sin filas:** se puede seguir.
+- **Sin filas:** se puede seguir. El 03/11/2026 no devolvió filas.
 - **Con filas:** **no seguir.** Son pases antiguos que identificaban la receptora solo por el nombre. Hay que completarlos antes; enviar el resultado para preparar la corrección.
 
 ## 2. Respaldo (servidor y equipo de la aplicación)
@@ -78,10 +78,10 @@ Arrancar la aplicación **sin** el perfil de pruebas, como se arranca siempre en
 
 En la salida tienen que aparecer las migraciones y el arranque:
 ```
-Migrating schema "public" to version "13 - administracion usuarios"
+Migrating schema "public" to version "15 - organigrama concurrente y receptora"
 …
 Migrating schema "public" to version "20 - indice actuacion padre"
-Successfully applied 8 migrations …
+Successfully applied 6 migrations …
 Started GestionDocumentalApplication in … seconds
 ```
 
