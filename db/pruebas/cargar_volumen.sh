@@ -58,10 +58,30 @@ SELECT (SELECT array_agg(id) FROM dependencias WHERE activo)          AS deps,
        (SELECT array_agg(id) FROM tipos_documentos WHERE activo)     AS tipos,
        (SELECT array_agg(id) FROM usuarios)                          AS usuarios;
 
+-- Antes de cargar: ninguna otra columna obligatoria sin valor por defecto puede quedar vacía
+SELECT COALESCE(string_agg(table_name || '.' || column_name, ', '), '') AS faltan
+  FROM information_schema.columns
+ WHERE table_schema = 'public' AND is_nullable = 'NO' AND column_default IS NULL
+   AND ((table_name = 'documentos' AND column_name NOT IN ('codigo_cuti', 'numero_documento_origen', 'prioridad',
+            'tipo_documento_id', 'dependencia_origen_id', 'dependencia_registro_id', 'dependencia_custodia_id', 'asunto',
+            'estado_actual', 'fecha_hora_ingreso', 'usuario_carga_ingreso_id', 'usuario_recepcion_id', 'anio',
+            'fecha_hora_carga_ingreso'))
+     OR (table_name = 'actuaciones_documento' AND column_name NOT IN ('documento_id', 'dependencia_emisora_id',
+            'tipo_actuacion', 'numero_actuacion', 'descripcion_resumen', 'fecha_hora_actuacion', 'usuario_id',
+            'pase_confirmado', 'requiere_informe', 'tipo_pase', 'dependencia_receptora_pase_id', 'anulada'))) \gset
+SELECT :'faltan' = '' AS completo \gset
+\if :completo
+\else
+    \echo 'El script no completa estas columnas obligatorias:' :faltan
+    ROLLBACK;
+    \quit
+\endif
+
 -- Expedientes: 60 % finalizados, el resto repartido entre los estados activos; 10 % urgentes
 INSERT INTO documentos (codigo_cuti, numero_documento_origen, prioridad, tipo_documento_id,
                         dependencia_origen_id, dependencia_registro_id, dependencia_custodia_id,
-                        asunto, estado_actual, fecha_hora_ingreso, usuario_carga_ingreso_id)
+                        asunto, estado_actual, fecha_hora_ingreso, usuario_carga_ingreso_id,
+                        usuario_recepcion_id, anio, fecha_hora_carga_ingreso)
 SELECT 'VOL-' || lpad(g::text, 7, '0'),
        g || '/2026',
        CASE WHEN random() < 0.1 THEN 'URGENTE' ELSE 'NORMAL' END,
@@ -72,9 +92,14 @@ SELECT 'VOL-' || lpad(g::text, 7, '0'),
        'VOLUMEN SINTÉTICO ' || g || ': solicitud de prueba para medir bandejas y buscador',
        (ARRAY['FINALIZADO','FINALIZADO','FINALIZADO','FINALIZADO','FINALIZADO','FINALIZADO',
               'EN_REVISION','INGRESADO','EN_ESPERA_INFORME','PENDIENTE_SALIDA'])[1 + floor(random() * 10)::int],
-       now() - (random() * interval '730 days'),
-       z.usuarios[1 + floor(random() * array_length(z.usuarios, 1))::int]
-  FROM generate_series(1, :expedientes) g, azar z;
+       f.ingreso,
+       u.id, u.id,
+       extract(year FROM f.ingreso)::int,
+       f.ingreso
+  FROM generate_series(1, :expedientes) g
+ CROSS JOIN azar z
+ CROSS JOIN LATERAL (SELECT now() - (random() * interval '730 days') + g * interval '0 second' AS ingreso) f
+ CROSS JOIN LATERAL (SELECT z.usuarios[1 + floor(random() * array_length(z.usuarios, 1))::int] + g * 0 AS id) u;
 
 -- Actuaciones: 3 pases de trámite confirmados, 1 memo y 1 informe técnico o, en el 30 % de los activos,
 -- un pase de trámite esperando acuse (como mucho uno por expediente y receptora)
