@@ -1696,6 +1696,7 @@ public class DocumentoService {
         validarNoFinalizado(doc, "modificar pases de");
         String motivoCompleto = "Retirado por el administrador del sistema (receptora sin usuarios): " + motivo.trim();
         aplicarAnulacion(pase, doc, ANULACION_RETIRADO, motivoCompleto, admin);
+        auditoriaSistemaRepository.marcarIp(AuditoriaService.ipDeLaPeticion());
         auditoriaSistemaRepository.save(AuditoriaSistema.builder()
                 .usuario(admin)
                 .accion("RETIRO_PASE_TRABADO")

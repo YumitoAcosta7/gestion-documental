@@ -147,13 +147,16 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     @Query(value = CTE_AMBITO + """
         SELECT d.* FROM documentos d LEFT JOIN biblioratos b ON b.id = d.bibliorato_id
          WHERE (CAST(:texto AS text) IS NULL
-                OR d.codigo_cuti ILIKE '%' || CAST(:texto AS text) || '%'
-                OR d.asunto ILIKE '%' || CAST(:texto AS text) || '%'
-                OR d.numero_documento_origen ILIKE '%' || CAST(:texto AS text) || '%'
-                OR d.nro_nota_salida ILIKE '%' || CAST(:texto AS text) || '%'
-                OR d.ubicacion_bibliorato ILIKE '%' || CAST(:texto AS text) || '%'
-                OR b.codigo ILIKE '%' || CAST(:texto AS text) || '%'
-                OR b.descripcion ILIKE '%' || CAST(:texto AS text) || '%')
+                -- En una subconsulta sobre documentos, para que use los índices de trigramas de V22
+                OR d.id IN (SELECT t.id FROM documentos t
+                             WHERE t.codigo_cuti ILIKE '%' || CAST(:texto AS text) || '%'
+                                OR t.asunto ILIKE '%' || CAST(:texto AS text) || '%'
+                                OR t.numero_documento_origen ILIKE '%' || CAST(:texto AS text) || '%'
+                                OR t.nro_nota_salida ILIKE '%' || CAST(:texto AS text) || '%'
+                                OR t.ubicacion_bibliorato ILIKE '%' || CAST(:texto AS text) || '%')
+                OR d.bibliorato_id IN (SELECT bt.id FROM biblioratos bt
+                                        WHERE bt.codigo ILIKE '%' || CAST(:texto AS text) || '%'
+                                           OR bt.descripcion ILIKE '%' || CAST(:texto AS text) || '%'))
            AND (CAST(:dependenciaId AS integer) IS NULL OR d.dependencia_origen_id = CAST(:dependenciaId AS integer))
            AND (CAST(:tipoDocId AS integer) IS NULL OR d.tipo_documento_id = CAST(:tipoDocId AS integer))
            AND (CAST(:estado AS text) IS NULL OR d.estado_actual = CAST(:estado AS text))

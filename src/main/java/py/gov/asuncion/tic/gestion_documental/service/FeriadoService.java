@@ -94,6 +94,7 @@ public class FeriadoService {
     }
 
     private void auditar(Usuario admin, String accion, String detalle) {
+        auditoriaRepository.marcarIp(AuditoriaService.ipDeLaPeticion());
         auditoriaRepository.save(AuditoriaSistema.builder()
                 .usuario(admin).accion(accion).entidad("FERIADO").detalle(detalle).build());
     }

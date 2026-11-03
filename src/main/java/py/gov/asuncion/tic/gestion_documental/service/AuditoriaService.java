@@ -52,7 +52,7 @@ public class AuditoriaService {
     // (proceso interno), usa la IP recibida o "SISTEMA".
     // Si la aplicación se publica detrás de un proxy inverso, configurar
     // server.forward-headers-strategy=native para que getRemoteAddr() devuelva la IP del cliente.
-    private String resolverIp(String ipRecibida) {
+    private static String resolverIp(String ipRecibida) {
         if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
             HttpServletRequest request = attrs.getRequest();
             if (request.getRemoteAddr() != null) {
@@ -60,6 +60,11 @@ public class AuditoriaService {
             }
         }
         return ipRecibida != null ? ipRecibida : "SISTEMA";
+    }
+
+    // IP de la petición en curso, para las bitácoras (también la de administración)
+    public static String ipDeLaPeticion() {
+        return resolverIp(null);
     }
 
     public List<AuditoriaDocumento> obtenerHistorialAuditoria(Long documentoId) {

@@ -506,6 +506,7 @@ public class AdministracionService {
     }
 
     private void auditar(Usuario admin, String accion, String entidad, Long entidadId, String detalle) {
+        auditoriaRepository.marcarIp(AuditoriaService.ipDeLaPeticion());
         auditoriaRepository.save(AuditoriaSistema.builder()
                 .usuario(admin)
                 .accion(accion)
