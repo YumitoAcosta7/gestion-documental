@@ -91,10 +91,41 @@ class HallazgosBajosTest {
     }
 
     @Test
-    void unPdfEscaneadoComunSeAcepta() {
-        assertNull(ArchivoService.buscarContenidoActivo(pdf(
-                "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj 3 0 obj << /Type /XObject /Subtype /Image "
-                + "/Filter /DCTDecode /JSize 10 >> endobj")), "/JSize no es /JS");
+    void unNombreParecidoNoSeConfundeConJS() {
+        // Solo la primera pasada (texto): /JSize no es /JS. El archivo no es un PDF completo, así que
+        // la segunda pasada (PDFBox) lo rechaza por no poder analizarlo.
+        var e = assertThrows(IllegalArgumentException.class, () -> ArchivoService.buscarContenidoActivo(pdf(
+                "1 0 obj << /Type /XObject /Subtype /Image /Filter /DCTDecode /JSize 10 >> endobj")));
+        assertTrue(e.getMessage().contains("no se puede verificar"));
+    }
+
+    @Test
+    void unPdfRealSinCodigoSeAcepta() {
+        assertNull(ArchivoService.buscarContenidoActivo(ArchivoServiceTest.pdfReal(1000)));
+    }
+
+    @Test
+    void seDetectaElJavaScriptEscondidoEnUnFlujoComprimido() throws Exception {
+        byte[] conCodigo;
+        byte[] limpio;
+        try (var doc = new org.apache.pdfbox.pdmodel.PDDocument()) {
+            doc.addPage(new org.apache.pdfbox.pdmodel.PDPage());
+            var salida = new java.io.ByteArrayOutputStream();
+            doc.save(salida);
+            limpio = salida.toByteArray();
+        }
+        try (var doc = new org.apache.pdfbox.pdmodel.PDDocument()) {
+            doc.addPage(new org.apache.pdfbox.pdmodel.PDPage());
+            doc.getDocumentCatalog().setOpenAction(
+                    new org.apache.pdfbox.pdmodel.interactive.action.PDActionJavaScript("app.alert('hola')"));
+            var salida = new java.io.ByteArrayOutputStream();
+            doc.save(salida, org.apache.pdfbox.pdfwriter.compress.CompressParameters.DEFAULT_COMPRESSION);
+            conCodigo = salida.toByteArray();
+        }
+        String crudo = new String(conCodigo, java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertFalse(crudo.contains("JavaScript"), "comprimido: el texto del archivo no lo muestra");
+        assertEquals("/JS", ArchivoService.buscarContenidoActivo(conCodigo).replace("/JavaScript", "/JS"));
+        assertNull(ArchivoService.buscarContenidoActivo(limpio), "un PDF de una página sin código se acepta");
     }
 
     private static byte[] pdf(String cuerpo) {

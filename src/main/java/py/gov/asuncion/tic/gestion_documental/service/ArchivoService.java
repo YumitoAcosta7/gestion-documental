@@ -87,14 +87,72 @@ public class ArchivoService {
     // Nombres PDF (/Nombre), con los caracteres escritos como #xx ya decodificados
     private static final java.util.regex.Pattern NOMBRE_PDF = java.util.regex.Pattern.compile("/([^\\s/<>\\[\\]()%{}]+)");
 
-    // Devuelve el primer nombre de contenido activo que aparece en el archivo, o null.
-    // Límite conocido: no se miran los objetos guardados dentro de flujos comprimidos (ObjStm).
+    // Devuelve el primer nombre de contenido activo que aparece en el archivo, o null. Dos pasadas:
+    // 1. el texto del archivo (rápido; ve los nombres escritos con #xx);
+    // 2. PDFBox abre el documento y recorre todos sus objetos, también los guardados dentro de
+    //    flujos comprimidos (ObjStm), que la primera pasada no ve.
     static String buscarContenidoActivo(byte[] contenido) {
         java.util.regex.Matcher m = NOMBRE_PDF.matcher(new String(contenido, StandardCharsets.ISO_8859_1));
         while (m.find()) {
             String nombre = decodificarNombre(m.group(1));
             if (NOMBRES_ACTIVOS.contains(nombre)) {
                 return "/" + nombre;
+            }
+        }
+        return analizarObjetos(contenido);
+    }
+
+    private static String analizarObjetos(byte[] contenido) {
+        try (org.apache.pdfbox.pdmodel.PDDocument pdf = org.apache.pdfbox.Loader.loadPDF(contenido)) {
+            org.apache.pdfbox.cos.COSDocument cos = pdf.getDocument();
+            for (org.apache.pdfbox.cos.COSObjectKey clave : new java.util.ArrayList<>(cos.getXrefTable().keySet())) {
+                org.apache.pdfbox.cos.COSObject objeto = cos.getObjectFromPool(clave);
+                String hallado = revisar(objeto != null ? objeto.getObject() : null, 0);
+                if (hallado != null) {
+                    return hallado;
+                }
+            }
+            return null;
+        } catch (org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException e) {
+            throw new IllegalArgumentException("El PDF está protegido con contraseña: quite la protección y vuelva a subirlo.");
+        } catch (IOException e) {
+            // Un PDF que no se puede analizar no se acepta: podría esconder contenido que el navegador sí ejecute
+            throw new IllegalArgumentException("El PDF está dañado o tiene un formato que no se puede verificar. Vuelva a escanearlo o exportarlo.");
+        }
+    }
+
+    // Revisa un diccionario o arreglo y lo que contiene directamente (las referencias a otros objetos
+    // se revisan por su cuenta en el recorrido de la tabla de objetos)
+    private static String revisar(org.apache.pdfbox.cos.COSBase base, int profundidad) {
+        if (base == null || profundidad > 50) {
+            return null;
+        }
+        if (base instanceof org.apache.pdfbox.cos.COSDictionary dic) {
+            for (org.apache.pdfbox.cos.COSName clave : dic.keySet()) {
+                if (NOMBRES_ACTIVOS.contains(clave.getName())) {
+                    return "/" + clave.getName();
+                }
+            }
+            if (dic.getDictionaryObject(org.apache.pdfbox.cos.COSName.S) instanceof org.apache.pdfbox.cos.COSName tipo
+                    && NOMBRES_ACTIVOS.contains(tipo.getName())) {
+                return "/" + tipo.getName();
+            }
+            for (org.apache.pdfbox.cos.COSBase valor : dic.getValues()) {
+                if (!(valor instanceof org.apache.pdfbox.cos.COSObject)) {
+                    String hallado = revisar(valor, profundidad + 1);
+                    if (hallado != null) {
+                        return hallado;
+                    }
+                }
+            }
+        } else if (base instanceof org.apache.pdfbox.cos.COSArray arreglo) {
+            for (org.apache.pdfbox.cos.COSBase valor : arreglo) {
+                if (!(valor instanceof org.apache.pdfbox.cos.COSObject)) {
+                    String hallado = revisar(valor, profundidad + 1);
+                    if (hallado != null) {
+                        return hallado;
+                    }
+                }
             }
         }
         return null;
