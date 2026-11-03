@@ -301,18 +301,20 @@
             <!-- PESTAÑA 1: TRÁMITES ACTIVOS -->
             <div th:class="${esBusqueda != null && esBusqueda ? 'tab-pane fade' : 'tab-pane fade show active'}" id="activos-pane" role="tabpanel">
                 <!-- ⏳ Pases emitidos sin acuse fuera de plazo o sin nadie que los reciba (auditoría M2) -->
-                <div th:if="${pasesDemorados != null && !#lists.isEmpty(pasesDemorados)}" class="alert alert-warning py-2 mb-3">
+                <div th:if="${pasesDemorados != null && pasesDemorados.total() > 0}" class="alert alert-warning py-2 mb-3">
                     <div class="fw-bold mb-1">
-                        <i class="bi bi-hourglass-split me-1"></i><span th:text="${#lists.size(pasesDemorados)}">0</span>
+                        <i class="bi bi-hourglass-split me-1"></i><span th:text="${pasesDemorados.total()}">0</span>
                         pase(s) enviado(s) esperan acuse fuera de plazo o no tienen quién los reciba
                     </div>
                     <ul class="mb-1 small ps-3">
-                        <li th:each="p : ${pasesDemorados}">
+                        <li th:each="p : ${pasesDemorados.pases()}">
                             <span class="fw-semibold" th:text="${p.cuti()}">CUTI</span>:
                             <span th:text="${p.emisora() + ' ➔ ' + p.receptora()}">emisora ➔ receptora</span>
                             <span class="text-muted" th:text="${'· ' + p.diasHabiles() + ' días hábiles'}">· 0 días</span>
                             <span th:if="${p.sinReceptor()}" class="badge bg-danger ms-1">Nadie puede recibirlo</span>
                         </li>
+                        <li th:if="${pasesDemorados.total() > #lists.size(pasesDemorados.pases())}" class="text-muted"
+                            th:text="${'… y ' + (pasesDemorados.total() - #lists.size(pasesDemorados.pases())) + ' más (se muestran los más antiguos)'}">… y más</li>
                     </ul>
                     <div class="small text-muted">Comuníquese con la dependencia receptora. Si el pase no corresponde o nadie puede recibirlo, retírelo desde el Historial del expediente y derive de nuevo.</div>
                 </div>

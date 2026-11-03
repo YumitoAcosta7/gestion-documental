@@ -304,14 +304,14 @@
     <div class="card border-0 shadow-sm mt-3">
         <div class="card-header bg-white fw-bold">
             <i class="bi bi-hourglass-split me-1"></i>Pases trabados o fuera de plazo
-            <span class="badge bg-secondary ms-1" th:text="${#lists.size(pasesTrabados)}">0</span>
+            <span class="badge bg-secondary ms-1" th:text="${pasesTrabados.total()}">0</span>
             <div class="small fw-normal text-muted">Pases sin acuse con demora crítica, o hacia una dependencia sin usuarios ni asignaciones vigentes. Solo se pueden retirar estos últimos; el resto lo resuelven las dependencias.</div>
         </div>
         <div class="card-body p-0" style="max-height: 40vh; overflow-y: auto;">
             <table class="table table-sm align-middle mb-0 small">
                 <thead class="table-light"><tr><th>CUTI</th><th>Emisora ➔ receptora</th><th>Tipo</th><th>Enviado</th><th>Días hábiles</th><th></th></tr></thead>
                 <tbody>
-                <tr th:each="p : ${pasesTrabados}">
+                <tr th:each="p : ${pasesTrabados.pases()}">
                     <td class="fw-semibold" th:text="${p.cuti()}">CUTI</td>
                     <td th:text="${p.emisora() + ' ➔ ' + p.receptora()}">emisora ➔ receptora</td>
                     <td th:text="${p.tipoPase()}">TRAMITE</td>
@@ -325,7 +325,10 @@
                         <span th:unless="${p.sinReceptor()}" class="text-muted">Fuera de plazo</span>
                     </td>
                 </tr>
-                <tr th:if="${#lists.isEmpty(pasesTrabados)}"><td colspan="6" class="text-muted p-3">No hay pases trabados ni fuera de plazo.</td></tr>
+                <tr th:if="${pasesTrabados.total() == 0}"><td colspan="6" class="text-muted p-3">No hay pases trabados ni fuera de plazo.</td></tr>
+                <tr th:if="${pasesTrabados.total() > #lists.size(pasesTrabados.pases())}">
+                    <td colspan="6" class="text-muted p-2" th:text="${'Se muestran los ' + #lists.size(pasesTrabados.pases()) + ' más antiguos de ' + pasesTrabados.total() + '.'}">Se muestran los más antiguos.</td>
+                </tr>
                 </tbody>
             </table>
         </div>
