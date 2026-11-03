@@ -192,3 +192,11 @@ Después, arrancar la versión anterior de la aplicación.
   - La pidió `juan.acosta` (asignación 12) y la aprobó el DBA con `aprobar_asignacion.sh`.
   - En la auditoría: `SOLICITUD_ASIGNACION` y `APROBACION_ASIGNACION_DBA`.
 - **Quedan:** los pasos 7 (feriados trasladables) y 8 (contraseñas).
+
+**03/11/2026, 14:12.** Segundo pase, de V20 a V22 (gobernanza: PR #23).
+- **Respaldo:** `antes_V22_20261103_1412.dump` (98 KB). Se comprobó que no tiene `legajos_salida`, así que es anterior a las migraciones.
+- **Migraciones:** V21 (legajo de la salida) y V22 (índices de trigramas) aplicadas a las 14:12:24, sin errores. `pg_trgm` se instaló desde la aplicación.
+- **Huella encadenada:** instalada con `reforzar_bitacoras.sh gestion_documental`. Las dos bitácoras quedaron ÍNTEGRAS, con 25 filas la de expedientes y 2 la de administración.
+- **Últimas huellas,** para el anclaje externo:
+  - `auditorias_documento`: `83a594ade7b4934bc31086284740331bc67a0e788d4bd26901794d4c2694944d`
+  - `auditoria_sistema`: `9d5eb223f71f83fcea35b8ad174bd4a5652c7cc78979c458ba882ce3777a3288`
