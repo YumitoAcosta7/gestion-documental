@@ -744,32 +744,6 @@ public class HomeController {
         return ResponseEntity.ok(listaJson);
     }
 
-    @PostMapping("/documentos/salida-directa")
-    public String registrarSalidaDirecta(@RequestParam("nroNotaSalida") String nroNotaSalida,
-                                    @RequestParam(value = "tipoDocumentoId", required = false) Integer tipoDocumentoId,
-                                    @RequestParam("asunto") String asunto,
-                                    @RequestParam(value = "dependenciaDestinoId", required = false) Integer dependenciaDestinoId,
-                                    @RequestParam(value = "personaRetira", required = false) String personaRetira,
-                                    @RequestParam(value = "funcionarioEntrega", required = false) String funcionarioEntrega,
-                                    @RequestParam(value = "archivoAcuse", required = false) MultipartFile archivoAcuse,
-                                    Principal principal,
-                                    RedirectAttributes redirectAttributes) {
-        try {
-            Usuario usuarioSesion = usuarioRepository.findByUsernameAndActivoTrue(principal.getName())
-                    .orElseThrow(() -> new RuntimeException("Usuario no autenticado o inactivo"));
-
-            documentoService.crearYRegistrarSalidaDirecta(
-                nroNotaSalida, tipoDocumentoId, asunto, dependenciaDestinoId, 
-                personaRetira, funcionarioEntrega, archivoAcuse, usuarioSesion
-            );
-
-            redirectAttributes.addFlashAttribute("mensajeExito", "Documento propio generado y salida registrada correctamente.");
-        } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("error", "Error al registrar salida directa: " + mensajeError(e));
-        }
-        return "redirect:/";
-    }
-
     /**
      * 🛡️ API JSON: BITÁCORA DE AUDITORÍA INMUTABLE
      */

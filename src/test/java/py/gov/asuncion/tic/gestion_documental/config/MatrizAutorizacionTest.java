@@ -68,7 +68,6 @@ class MatrizAutorizacionTest {
             new Puerta(HttpMethod.POST, "/admin/feriados", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             new Puerta(HttpMethod.POST, "/documentos/guardar", EnumSet.of(Accion.REGISTRAR_INGRESO)),
             new Puerta(HttpMethod.POST, "/documentos/salida", EnumSet.of(Accion.REGISTRAR_SALIDA)),
-            new Puerta(HttpMethod.POST, "/documentos/salida-directa", EnumSet.of(Accion.REGISTRAR_SALIDA)),
             new Puerta(HttpMethod.POST, "/documentos/confirmar-acuse", EnumSet.of(Accion.REGISTRAR_SALIDA)),
             new Puerta(HttpMethod.POST, "/documentos/reemplazar-acuse", EnumSet.of(Accion.REGISTRAR_SALIDA)),
             new Puerta(HttpMethod.POST, "/documentos/ubicacion", EnumSet.of(Accion.GESTIONAR_ARCHIVO)),
@@ -126,6 +125,14 @@ class MatrizAutorizacionTest {
             }
         }
         assertTrue(errores.isEmpty(), String.join("\n", errores));
+    }
+
+    @Test
+    void laSalidaDirectaYaNoExiste() throws Exception {
+        // Crear un expediente y darle salida en el mismo paso esquivaba el canal y la confirmación de asunto nuevo
+        int estado = mvc.perform(request(HttpMethod.POST, "/documentos/salida-directa").with(user("mesa")).with(csrf()))
+                .andReturn().getResponse().getStatus();
+        assertEquals(404, estado);
     }
 
     @Test
