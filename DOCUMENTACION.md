@@ -250,7 +250,7 @@ Reglas adicionales:
 - **Cierre automático de informes:** cuando **cada** dependencia a la que se pidió informe emitió un `INFORME_TECNICO` o `MEMO`, el expediente pasa solo de `EN_ESPERA_INFORME` a `PENDIENTE_SALIDA`.
 - **Devolución rápida:** la dependencia devuelve el expediente a quien le envió el último pase recibido (actuación `DEVOLUCION`), el estado vuelve a `EN_REVISION`. No se puede devolver dos veces el mismo pase ni devolver a la propia dependencia.
 - **Salida exterior:** registra nota, destino, mensajero y funcionario. No aplica a expedientes `FINALIZADO`.
-- **Salida directa (documentos propios):** crea un documento originado en la dependencia y lo deja en `PENDIENTE_SALIDA` con la salida ya registrada.
+- **Salida directa:** se quitó el 03/11/2026. Creaba un expediente y le registraba la salida en el mismo paso, sin pasar por el canal. Los documentos nacen como ingreso o documento propio y circulan con Derivar / Elevar.
 - **Acuse final:** exige `PENDIENTE_SALIDA`, salida física registrada y PDF; el expediente pasa a `FINALIZADO`.
 - **Árbol de trazabilidad:** cada actuación cuelga del último pase o devolución que recibió la dependencia que la emitió, formando un árbol de varios niveles.
 - **Auditoría:** cada ingreso, derivación, devolución, actuación, confirmación, salida y cambio de estado queda registrado con usuario, dependencia e IP.
@@ -267,8 +267,7 @@ Reglas adicionales:
 | `POST /documentos/guardar` | Ingreso de expediente | `REGISTRAR_INGRESO` |
 | `POST /documentos/derivar` | Derivación única o múltiple; elevación al superior | `DERIVAR`, o `REGISTRAR_ACTUACION` solo para elevar con un pase de trámite |
 | `POST /documentos/devolver` | Devolución rápida | `REGISTRAR_ACTUACION` (según pases recibidos) |
-| `POST /documentos/salida` | Salida exterior | `REGISTRAR_SALIDA` |
-| `POST /documentos/salida-directa` | Documento propio + salida | `REGISTRAR_SALIDA` |
+| `POST /documentos/salida` | Respuesta y salida del expediente, con el legajo de informes (`tipoRemision`, `informeActuacionId`) | `REGISTRAR_SALIDA` |
 | `POST /documentos/confirmar-acuse` | Acuse final → `FINALIZADO` | `REGISTRAR_SALIDA` |
 | `POST /documentos/actuaciones/guardar` | Informe, memo, acta o providencia | `REGISTRAR_ACTUACION` |
 | `POST /documentos/actuaciones/confirmar-pase` | Confirmar recepción de pase con PDF | Dependencia receptora |
@@ -336,6 +335,8 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
   - buscador con trigramas.
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
 - **Pruebas automatizadas:** 105, incluidas la matriz de autorización (`MatrizAutorizacionTest`), la revisión de las consultas nativas (`ConsultasNativasTest`) y la gobernanza del expediente (`GobernanzaExpedienteTest`).
+
+**Prueba de campo:** el veredicto y los bloqueantes están en [docs/viabilidad-piloto.md](docs/viabilidad-piloto.md).
 
 **Pendientes en producción** (pasos 7 y 8 de [docs/pase-produccion.md](docs/pase-produccion.md)):
 - Feriados trasladables y asuetos de 2026, según el decreto.
