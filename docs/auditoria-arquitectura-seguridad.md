@@ -226,13 +226,24 @@ Hoy hay **0 pases sin receptora en producción**, así que no hay exposición.
 
 ### BAJO — rendimiento y endurecimiento
 
-**B1 — Organigrama recalculado en cada llamada.**
+**B1 — Organigrama recalculado en cada llamada.** ✅ **Corregido (03/11/2026).**
+- El organigrama y los selectores de dependencias se guardan en memoria junto con una versión.
+- V16 agrega `organigrama_version`. Los triggers de `dependencias`, `niveles_jerarquicos` y `reglas_derivacion` la incrementan en cada cambio.
+- Cada uso lee solo esa fila; el organigrama se vuelve a armar únicamente cuando cambió. Así vale también con varias instancias de la aplicación.
 
 `CanalService.organigrama()` carga las 581 dependencias y los niveles **en cada llamada**, varias veces por petición (registro, CUTI, destinos, título). `obtenerDependenciasAgrupadas()` hace lo mismo en cada carga de pantalla.
 
 *Mitigación:* caché en memoria invalidada cuando cambia `dependencias`, por ejemplo con un contador de versión o un `LISTEN/NOTIFY` desde el trigger.
 
-**B2 — Bandejas.**
+**B2 — Bandejas.** ✅ **Corregido (03/11/2026).**
+- Los contadores de las bandejas y los indicadores del panel salen de una sola consulta (`COUNT(*) FILTER`).
+- Los indicadores (Ingresados, En espera de informe, Pendientes de salida, Urgentes) cuentan ahora el ámbito del usuario. Antes contaban toda la institución.
+- "Todos" se pagina como las demás bandejas.
+- El buscador filtra el ámbito en la propia consulta y devuelve como máximo 500 resultados. El archivo físico verifica el acceso por lotes de 1000 (`idsAccesibles`).
+- El historial de finalizados muestra los 200 más recientes; los anteriores se encuentran con el buscador.
+- V16 crea los índices indicados abajo, más `dependencia_origen_id` y `usuarios.dependencia_id`.
+- Falta medir con volumen real (prueba 9 de la sección 3).
+- La marca de demora crítica cuenta solo la página que se muestra.
 - Cada carga de pantalla ejecuta 5 consultas con `CTE_AMBITO`: la lista y los 4 contadores.
 - "Todos" no está paginada.
 - El buscador y el archivo filtran con `puedeAccederDocumento` expediente por expediente (N+1).
@@ -251,7 +262,19 @@ CREATE INDEX idx_documentos_carga ON documentos (usuario_carga_ingreso_id);
 CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id DESC);
 ```
 
-**B3 — PDF y cabeceras.**
+**B3 — PDF y cabeceras.** ✅ **Corregido en lo principal (03/11/2026).**
+- Los PDF se siguen viendo en el navegador.
+  - Al subirlos se rechazan los que traen `/JavaScript`, `/JS` o `/Launch`, también escritos con `#xx`.
+  - No se usa `Content-Security-Policy: sandbox`: Chrome y Edge no muestran un PDF aislado (se probó: "Error al cargar el documento PDF").
+  - *Límite:* el control no mira los objetos guardados dentro de flujos comprimidos (`ObjStm`). Para cubrirlos hace falta un analizador de PDF, como Apache PDFBox, o servir los PDF desde otro dominio.
+- Hay CSP general:
+  - solo recursos propios y de cdn.jsdelivr.net;
+  - `object-src 'none'`, `base-uri`, `form-action` y `frame-ancestors` limitados al propio sitio.
+- Se agregaron `Referrer-Policy`, `Permissions-Policy` y `X-Frame-Options: SAMEORIGIN`.
+- Las hojas de estilo y el script del CDN llevan SRI (`integrity=`).
+- La cookie de sesión es `HttpOnly` y `SameSite=Lax`. `Secure` se activa con `APP_COOKIE_SEGURA=true` al pasar a HTTPS.
+- El tiempo de sesión de 30 minutos ya estaba configurado (A2).
+- *Pendiente:* la CSP todavía admite `'unsafe-inline'`, porque las plantillas tienen scripts y manejadores en línea. Quitarlo requiere mover ese código a archivos `.js`.
 - Los PDF se sirven `inline`. Un PDF con JavaScript se ejecuta en el visor del navegador, dentro del origen de la aplicación.
 
   *Mitigación:* agregar `Content-Security-Policy: sandbox` a esas respuestas, u ofrecer descarga (`attachment`).
@@ -269,8 +292,8 @@ CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id D
 |---|---|---|
 | Inmediata, antes de sumar otra dirección | C1, C2, A1 (✅ corregidos; falta el doble control de C2) | 1–2 días |
 | Antes del piloto con Hacienda | A2, A3, A4 (✅ corregidos), A5 (falta el script en el servidor), M1 | 3–4 días |
-| Antes del despliegue general | M1–M5 (✅ corregidos; quedan los pendientes de M2), B1, B2 | 3–5 días |
-| Con el pase a HTTPS | B3 | 1 día |
+| Antes del despliegue general | M1–M5 (✅ corregidos; quedan los pendientes de M2), B1, B2 (✅ corregidos; falta medir con volumen) | 3–5 días |
+| Con el pase a HTTPS | B3 (✅ corregido; falta `APP_COOKIE_SEGURA=true` y quitar `'unsafe-inline'`) | 1 día |
 
 ## 3. Pruebas de integración recomendadas
 
@@ -318,7 +341,7 @@ Todas sobre la base de pruebas, con `@PruebaConBaseDePruebas` y `@Transactional`
 - [x] A4: las respuestas a informes se vinculan a su pase; el cierre forzado anula los pases pendientes.
 - [ ] A5: la bitácora pertenece a otro rol y resiste `TRUNCATE`, `DISABLE TRIGGER` y `DROP` desde la aplicación.
 - [x] M1–M5 resueltos (queda el retiro administrativo de pases y el aviso de plazos, de M2).
-- [ ] Índices de B2 creados y bandejas medidas con volumen real.
+- [ ] Índices de B2 creados (✅ V16) y bandejas medidas con volumen real.
 - [ ] Matriz de autorización automatizada en verde.
 - [ ] HTTPS, cookies seguras, CSP y SRI configurados.
 - [ ] Respaldos de la base y de la carpeta de PDF probados con una restauración real.

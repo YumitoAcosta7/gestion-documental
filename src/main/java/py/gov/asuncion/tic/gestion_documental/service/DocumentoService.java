@@ -21,7 +21,9 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 
 import java.time.LocalDate;
@@ -92,7 +94,23 @@ public class DocumentoService {
 
     public record GrupoDependencias(String etiqueta, List<OpcionDependencia> opciones) {}
 
+    // Los grupos se arman una vez por versión del organigrama (auditoría B1), no en cada pantalla
+    private record GruposEnCache(long version, List<GrupoDependencias> grupos) {}
+
+    private volatile GruposEnCache gruposEnCache;
+
     public List<GrupoDependencias> obtenerDependenciasAgrupadas() {
+        long version = canalService.versionOrganigrama();
+        GruposEnCache actual = gruposEnCache;
+        if (actual != null && actual.version() == version) {
+            return actual.grupos();
+        }
+        List<GrupoDependencias> grupos = List.copyOf(armarDependenciasAgrupadas());
+        gruposEnCache = new GruposEnCache(version, grupos);
+        return grupos;
+    }
+
+    private List<GrupoDependencias> armarDependenciasAgrupadas() {
         Map<Integer, Integer> ordenPorNivel = new HashMap<>();
         dependenciaRepository.findNiveles().forEach(n -> ordenPorNivel.put(n.getId(), n.getOrdenNivel()));
         Map<Integer, Dependencia> porId = new HashMap<>();
@@ -172,6 +190,20 @@ public class DocumentoService {
             return true;
         }
         return actuacionDocumentoRepository.existeParticipacionDependencia(documentoId, depId);
+    }
+
+    // Los expedientes de la lista que el usuario puede ver, conservando el orden. Misma regla que
+    // puedeAccederDocumento, resuelta con una consulta por cada 1000 expedientes (auditoría B2)
+    public List<Documento> filtrarAccesibles(Usuario usuario, List<Documento> documentos) {
+        if (usuario == null || documentos.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> accesibles = new HashSet<>();
+        List<Long> ids = documentos.stream().map(Documento::getId).distinct().toList();
+        for (int i = 0; i < ids.size(); i += 1000) {
+            accesibles.addAll(documentoRepository.idsAccesibles(usuario.getId(), ids.subList(i, Math.min(i + 1000, ids.size()))));
+        }
+        return documentos.stream().filter(d -> accesibles.contains(d.getId())).toList();
     }
 
     public void verificarAccesoDocumento(Usuario usuario, Long documentoId) {
@@ -262,16 +294,6 @@ public class DocumentoService {
                 })
                 .toList();
         return new OpcionesDerivacion(custodia.getNombreVisible(), puede, soloElevar, destinos);
-    }
-
-    public Map<String, Long> obtenerMetricasDashboard() {
-        Map<String, Long> metricas = new HashMap<>();
-        metricas.put("ingresados", documentoRepository.countByEstadoActual(EstadoDocumento.INGRESADO) 
-                                         + documentoRepository.countByEstadoActual(EstadoDocumento.EN_REVISION));
-        metricas.put("enEsperaInforme", documentoRepository.countByEstadoActual(EstadoDocumento.EN_ESPERA_INFORME));
-        metricas.put("pendienteSalida", documentoRepository.countByEstadoActual(EstadoDocumento.PENDIENTE_SALIDA));
-        metricas.put("urgentes", documentoRepository.countByPrioridadAndEstadoActualNotIn(Prioridad.URGENTE, ESTADOS_CERRADOS));
-        return metricas;
     }
 
     // 🔢 CUTI por cabecera (docs/diseno-fase2-multiarea.md §5): DTIC-2026-000001, DHAC-2026-000001...
@@ -405,7 +427,7 @@ public class DocumentoService {
     // 📚 Archivo físico visible para el usuario: solo lo de su ámbito
     public List<Documento> obtenerDocumentosArchivoParaUsuario(Usuario usuario, Integer biblioratoId) {
         List<Documento> docs = documentoRepository.findDocumentosArchivo(biblioratoId);
-        return docs.stream().filter(d -> puedeAccederDocumento(usuario, d.getId())).toList();
+        return filtrarAccesibles(usuario, docs);
     }
 
     // ¿El origen está dentro de la dirección (cabecera) donde registra el usuario?
@@ -946,7 +968,9 @@ public class DocumentoService {
         return docFinalizado;
     }
 
-    public List<Documento> buscarDocumentosMulticriterio(String texto, 
+    // Solo devuelve expedientes que el usuario puede ver (el filtro de ámbito va en la consulta)
+    public List<Documento> buscarDocumentosMulticriterio(Usuario usuario,
+                                                        String texto,
                                                         Integer dependenciaId, 
                                                         Integer tipoDocId, 
                                                         String estadoStr,
@@ -954,6 +978,9 @@ public class DocumentoService {
                                                         LocalDate fechaDesde, 
                                                         LocalDate fechaHasta) {
 
+        if (usuario == null) {
+            return List.of();
+        }
         EstadoDocumento estadoEnum = null;
         if (estadoStr != null && !estadoStr.isBlank()) {
             try {
@@ -966,7 +993,8 @@ public class DocumentoService {
 
         String textoLimpio = (texto != null && !texto.isBlank()) ? texto.trim() : null;
 
-        return documentoRepository.buscarMulticriterio(textoLimpio, dependenciaId, tipoDocId, estadoEnum, biblioratoId, desde, hasta);
+        return documentoRepository.buscarMulticriterio(usuario.getId(), textoLimpio, dependenciaId, tipoDocId,
+                estadoEnum != null ? estadoEnum.name() : null, biblioratoId, desde, hasta);
     }
 
     @Transactional
@@ -1190,30 +1218,6 @@ public class DocumentoService {
                 null
             );
         }
-    }
-
-    public List<Documento> obtenerDocumentosActivosParaUsuario(Usuario usuario) {
-        if (usuario == null) {
-            return new ArrayList<>();
-        }
-
-        // 🧭 Lo de su ámbito, más lo derivado a su propia dependencia (pases antiguos sin receptora incluidos)
-        List<Documento> ambito = documentoRepository.findActivosEnAmbito(usuario.getId());
-        if (usuario.getDependencia() == null) {
-            return ambito;
-        }
-        return unir(ambito, documentoRepository.findDocumentosActivosPorDependencia(usuario.getDependencia().getId()),
-                java.util.Comparator.comparing(Documento::getFechaHoraIngreso,
-                        java.util.Comparator.nullsLast(java.util.Comparator.<LocalDateTime>naturalOrder())).reversed());
-    }
-
-    private static List<Documento> unir(List<Documento> a, List<Documento> b, java.util.Comparator<Documento> orden) {
-        Map<Long, Documento> porId = new java.util.LinkedHashMap<>();
-        a.forEach(d -> porId.put(d.getId(), d));
-        b.forEach(d -> porId.putIfAbsent(d.getId(), d));
-        List<Documento> todos = new ArrayList<>(porId.values());
-        todos.sort(orden);
-        return todos;
     }
 
     // =====================================================================
@@ -1620,13 +1624,7 @@ public class DocumentoService {
             return new ArrayList<>();
         }
 
-        // 🧭 Los finalizados de su ámbito y aquellos en los que participó su dependencia
-        List<Documento> ambito = documentoRepository.findFinalizadosEnAmbito(usuario.getId());
-        if (usuario.getDependencia() == null) {
-            return ambito;
-        }
-        return unir(ambito, documentoRepository.findDocumentosFinalizadosPorDependencia(usuario.getDependencia().getId()),
-                java.util.Comparator.comparing(Documento::getFechaHoraSalida,
-                        java.util.Comparator.nullsFirst(java.util.Comparator.<LocalDateTime>naturalOrder())).reversed());
+        // 🧭 Los finalizados más recientes que puede ver; los anteriores se encuentran con el buscador
+        return documentoRepository.findFinalizadosAccesibles(usuario.getId());
     }
 }

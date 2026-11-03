@@ -27,8 +27,31 @@ public class CanalService {
         this.asignacionRepository = asignacionRepository;
     }
 
-    // Se arma en cada llamada: el organigrama tiene unas 600 dependencias y así refleja cualquier cambio
+    // Organigrama en memoria con la versión de la base con que se armó (auditoría B1).
+    // Organigrama no se modifica después de construido, así que se comparte entre peticiones.
+    private record Cache(long version, Organigrama organigrama) {}
+
+    private volatile Cache cache;
+
+    // Versión del organigrama: la incrementan los triggers de V16 en cada cambio de dependencias,
+    // niveles o atajos. Leerla es una consulta de una sola fila.
+    public long versionOrganigrama() {
+        return dependenciaRepository.versionOrganigrama();
+    }
+
+    // Se rearma solo cuando cambió la versión: el organigrama tiene unas 600 dependencias
     public Organigrama organigrama() {
+        long version = versionOrganigrama();
+        Cache actual = cache;
+        if (actual != null && actual.version() == version) {
+            return actual.organigrama();
+        }
+        Organigrama nuevo = armarOrganigrama();
+        cache = new Cache(version, nuevo);
+        return nuevo;
+    }
+
+    private Organigrama armarOrganigrama() {
         Map<Integer, Integer> ordenPorNivel = new HashMap<>();
         dependenciaRepository.findNiveles().forEach(n -> ordenPorNivel.put(n.getId(), n.getOrdenNivel()));
         List<Organigrama.Nodo> nodos = dependenciaRepository.findAll().stream()

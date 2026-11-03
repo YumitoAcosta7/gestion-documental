@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title th:text="${'Gestión Documental' + (areaUsuario != null && areaUsuario.sigla() != null ? ' - ' + areaUsuario.sigla() : '')}">Gestión Documental</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" integrity="sha384-QuGBSgV5Im3DzL2z+8Ko9/hqNy/N0O7zwvXAtfd1MvPKWa/UbeLV65cfm4BV5Wgq" crossorigin="anonymous">
     <style>
         body { background-color: #f4f6f9; font-family: 'Segoe UI', system-ui, sans-serif; }
         .kpi-card { border: none; border-radius: 10px; transition: transform 0.2s; }
@@ -247,6 +247,9 @@
                 <div class="card border-0 shadow-sm rounded-3 mb-4">
                     <div class="card-header bg-white py-3">
                         <h5 class="fw-bold text-primary m-0"><i class="bi bi-list-check me-2"></i>Expedientes Encontrados</h5>
+                        <div th:if="${busquedaRecortada}" class="small text-muted mt-1">
+                            <i class="bi bi-info-circle me-1"></i>Se muestran los 500 más recientes. Para ver otros, afine los filtros.
+                        </div>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -301,7 +304,7 @@
                     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                         <h5 class="fw-bold text-secondary m-0">Trámites en Curso</h5>
                         <span th:if="${slaCriticos != null && slaCriticos > 0}" class="badge bg-danger fs-6">
-                            <i class="bi bi-alarm me-1"></i><span th:text="${slaCriticos}">0</span> con demora crítica
+                            <i class="bi bi-alarm me-1"></i><span th:text="${slaCriticos}">0</span> con demora crítica en esta página
                         </span>
                     </div>
                     <!-- 📥 Bandejas de trabajo por ámbito -->
@@ -1384,7 +1387,7 @@
     </div>
 
     <!-- Scripts Bootstrap y Control Global -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
     <script>
         // Escapa texto antes de insertarlo con innerHTML (evita inyección de HTML/JS)
         function esc(valor) {
