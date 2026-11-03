@@ -326,6 +326,40 @@ CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id D
   - cookie de sesión `Secure` y `SameSite=Lax` cuando haya HTTPS;
   - `server.servlet.session.timeout` explícito, por ejemplo 30 minutos.
 
+### GOBERNANZA — segunda revisión (03/11/2026)
+
+Revisión de las directrices de unidad de expediente, custodia, trazabilidad y separación de la administración.
+
+**Ya se cumplían:**
+- **Un asunto, un CUTI (#15):**
+  - el operador eleva con "Derivar / Elevar" (pase de trámite al superior);
+  - "Documento propio" exige confirmar que es un asunto nuevo;
+  - la mesa no reingresa como nuevo un documento de su propia dirección.
+- **CUTI por cabecera** con `series_cuti` en una sola sentencia bloqueante.
+- **Custodia:** derivar, devolver y dar salida exigen tener el original. Con un trámite esperando acuse, se rechazan derivar, devolver, la salida y el acuse final (M1).
+- **Cierre excepcional:** justificación de 20 caracteres o más, actuación `CIERRE_EXCEPCIONAL` y evento `CIERRE_FORZADO`.
+- **Bitácoras:** inmutables por triggers y en manos de otro rol (A5). La de expedientes guarda la IP.
+- **Demoras:** se cuentan en días hábiles con la tabla `feriados`, en amarillo y rojo.
+- **Administración separada:** `ADMIN_SISTEMA` no da acceso a expedientes. Las asignaciones sensibles tienen doble control (C2).
+
+**Lagunas encontradas y corregidas:**
+
+| Laguna | Corrección |
+|---|---|
+| Cualquier dependencia que alguna vez intervino, incluida una copia "para conocimiento", podía agregar actuaciones aunque no tuviera el original y aunque el original estuviera en camino. | Solo pueden agregar actuaciones la dependencia con el original, sin trámite en camino, o una dependencia a la que se pidió informe, para responderlo. |
+| Un pedido de informe se daba por respondido con cualquier respuesta del área o de sus subordinadas. El dictamen de un departamento cerraba el pedido de su Dirección antes del memo consolidado. | Cada respuesta queda cosida a su pedido (`actuacion_padre_id`): al del área más específica que contiene a quien responde. El pedido de la Dirección se cierra con el memo de la Dirección. Las respuestas anteriores, sin vínculo, siguen contando por área. |
+| Con el original en camino se podía registrar la ubicación física o forzar el cierre de informes. | También se bloquean. |
+| El mismo documento (misma dependencia de origen y mismo número) se podía registrar como dos expedientes. | Se rechaza e indica el CUTI existente. |
+| El modal de salida enviaba el legajo de informes y el servidor lo descartaba. | V21 (`legajos_salida`) registra qué informes y memos componen la respuesta. Se audita (`LEGAJO_SALIDA`) y el árbol lo muestra. |
+| La justificación del cierre excepcional la veía cualquiera con acceso al expediente. | Solo la ven quienes tienen `FORZAR_CIERRE` o `VER_AUDITORIA`. El resto ve que hubo un cierre excepcional, cuándo y quién. |
+| La bitácora de administración no guardaba la IP. Ninguna bitácora probaba que un superusuario no la hubiera alterado. | `db/seguridad/reforzar_bitacoras.sh`, que ejecuta el DBA: huella SHA-256 encadenada en las dos bitácoras, IP en la de administración y verificación de la cadena (`--verificar`). |
+| El buscador leía todos los expedientes para buscar un texto. | V22 instala `pg_trgm`, si el rol puede, y crea índices de trigramas que usa el buscador. |
+
+- Prueba: `GobernanzaExpedienteTest`.
+- **Pendiente:**
+  - guardar fuera del servidor, periódicamente, la última huella que informa `--verificar`. Sin ese anclaje externo no se detectaría el borrado de las últimas filas;
+  - registrar en la bitácora los inicios de sesión, exitosos y fallidos. Hoy solo quedan en el registro de la aplicación.
+
 ---
 
 ## 2. Orden de corrección propuesto
