@@ -296,21 +296,39 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - **Alertas de demora (SLA):** días **hábiles** (lunes a viernes) desde el último movimiento vigente (o el ingreso).
   - Badge amarillo desde `app.sla.dias-advertencia` (5) y rojo desde `app.sla.dias-critico` (10).
   - Los expedientes URGENTES usan umbrales propios (2 / 4).
-  - Se calcula con una sola consulta por bandeja. No contempla feriados.
-- **Validación de PDF:** límite de 20 MB (antes Spring rechazaba todo archivo de más de 1 MB). Se comprueba la firma `%PDF-` del contenido, no solo la extensión.
+  - Se calcula con una sola consulta por bandeja. Descuenta los feriados de la tabla `feriados` (V18), que mantiene el administrador.
+- **Validación de PDF:**
+  - límite de 20 MB (antes Spring rechazaba todo archivo de más de 1 MB);
+  - se comprueba la firma `%PDF-` del contenido, no solo la extensión;
+  - con Apache PDFBox se rechazan los PDF con JavaScript, `/Launch` o contraseña, y los que no se pueden analizar.
 - **Suplencias:** diseño en [docs/diseno-suplencias.md](docs/diseno-suplencias.md), pendiente de decisiones institucionales.
 
 ---
 
 ## 8. 🎯 ESTADO ACTUAL Y PENDIENTES
 
-**Estado:** compila (`BUILD SUCCESS`). Flujos probados contra la BD: ingreso, salida directa, devolución, bloqueo de doble devolución, control de acceso por dependencia, árbol y PDF de actuaciones.
+**Estado (03/11/2026):** producción y pruebas en la migración **V20**. Pase y registro en [docs/pase-produccion.md](docs/pase-produccion.md).
 
-**Pendientes conocidos:**
-- Probar en uso real el acuse final y la confirmación de pases con la nueva carpeta de PDF.
-- El modal de salida envía `tipoRemision` e `informeActuacionId` (legajo), pero todavía no se guardan.
-- Expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes (por ejemplo TIC-2026-000001) deben revisarse manualmente.
-- Fase 2, etapa 2.2 (circulación): completa en código, con custodia, canal jerárquico, tipos de pase, CUTI por cabecera, documentos propios y bandejas. Etapa 2.1 (`docs/diseno-fase2-multiarea.md` §10): completa en código. Están hechos el organigrama, las asignaciones, la visibilidad por ámbito, `PoliticaAcceso`, la eliminación de los IDs fijos, el CUTI configurable y Flyway. Falta crear la base de pruebas en el servidor (`docs/ambiente-pruebas.md`).
-- Pruebas automatizadas: 36 unitarias (`DiasHabilesTest`, `ValidacionFojasTest`, `ArchivoServiceTest`, `PoliticaAccesoTest`, `OrganigramaTest`) y el arranque de la aplicación sobre la base de pruebas. Faltan pruebas de integración de los flujos (ingreso, derivación, confirmación) sobre esa base.
-- Feriados nacionales/municipales para el SLA (requiere una tabla de feriados).
-- Paginación de bandejas para grandes volúmenes (hoy se cargan todos los expedientes activos).
+**Hecho:**
+- **Fase 2, etapas 2.1 y 2.2:** organigrama, asignaciones, ámbito, custodia, canal jerárquico, tipos de pase, CUTI por cabecera, documentos propios y bandejas paginadas.
+- **Etapa 2.3:** administración de usuarios, asignaciones, suplencias y feriados, con doble control de las asignaciones sensibles.
+- **Auditoría de seguridad y QA** ([docs/auditoria-arquitectura-seguridad.md](docs/auditoria-arquitectura-seguridad.md)): hallazgos C1 a B3 y sus residuales corregidos.
+- **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
+- **Pruebas automatizadas:** 100, incluidas la matriz de autorización (`MatrizAutorizacionTest`) y la revisión de las consultas nativas (`ConsultasNativasTest`).
+
+**Pendientes en producción** (pasos 6 a 8 de [docs/pase-produccion.md](docs/pase-produccion.md)):
+- Segundo administrador, aprobado por el DBA con `aprobar_asignacion.sh`.
+- Feriados trasladables y asuetos de 2026, según el decreto.
+- Cambio de las contraseñas de las dos bases.
+- 8 pases del piloto de la DTIC (agosto y septiembre de 2026) sin acuse: los resuelven las dependencias.
+
+**Pendientes técnicos:**
+- **Buscador:** buscar un texto puntual en volumen grande tarda unos 3 s. Necesita la extensión `pg_trgm`, que instala el DBA, y un índice de trigramas.
+- **Contadores:** rondan 1 s cuando el ámbito abarca decenas de miles de expedientes activos. Se pueden cargar después de mostrar la página.
+- **HTTPS:** al pasar, definir `APP_COOKIE_SEGURA=true`.
+- **Análisis de seguridad:** OWASP ZAP y OWASP Dependency-Check.
+- **Respaldos programados** de la base y de la carpeta de PDF, probados con una restauración real.
+- **Inicio de sesión con LDAP de Carbonio.** Necesita los datos de conexión y una cuenta de servicio.
+- **Funcionales:**
+  - el modal de salida envía `tipoRemision` e `informeActuacionId` (legajo), pero todavía no se guardan;
+  - revisar a mano los expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes, por ejemplo TIC-2026-000001.
