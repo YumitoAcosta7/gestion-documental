@@ -63,6 +63,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
                                  AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE))
         ), deps AS (
             SELECT x.id FROM dependencias x JOIN amb ON x.ruta = amb.ruta OR (amb.incluye_subordinadas AND x.ruta LIKE amb.ruta || '%')
+        ), propia AS (
+            SELECT dependencia_id AS id FROM usuarios WHERE id = :usuarioId AND dependencia_id IS NOT NULL
         )
         """;
 
@@ -75,70 +77,61 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
                            OR (a.dependencia_receptora_pase_id IN (SELECT id FROM deps) AND NOT a.anulada))))
         """;
 
+    // Lo mismo que DocumentoService.puedeAccederDocumento, en SQL: el ámbito, más lo originado en la propia
+    // dependencia del usuario o en lo que esta emitió o recibió una actuación
+    String DOCUMENTO_ACCESIBLE = "(" + DOCUMENTO_EN_AMBITO + """
+         OR d.dependencia_origen_id IN (SELECT id FROM propia)
+         OR EXISTS (SELECT 1 FROM actuaciones_documento p WHERE p.documento_id = d.id
+                      AND (p.dependencia_emisora_id IN (SELECT id FROM propia)
+                           OR (p.dependencia_receptora_pase_id IN (SELECT id FROM propia) AND NOT p.anulada))))
+        """;
+
     @Query(value = CTE_AMBITO + "SELECT EXISTS (SELECT 1 FROM documentos d WHERE d.id = :documentoId AND " + DOCUMENTO_EN_AMBITO + ")",
            nativeQuery = true)
     boolean existeEnAmbito(@Param("usuarioId") Integer usuarioId, @Param("documentoId") Long documentoId);
 
-    @Query(value = CTE_AMBITO + "SELECT d.* FROM documentos d WHERE d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO') AND "
-                 + DOCUMENTO_EN_AMBITO + " ORDER BY d.fecha_hora_ingreso DESC", nativeQuery = true)
-    List<Documento> findActivosEnAmbito(@Param("usuarioId") Integer usuarioId);
+    // De los expedientes indicados, los que el usuario puede ver, en una sola consulta (auditoría B2:
+    // el buscador y el archivo ya no verifican el acceso expediente por expediente)
+    @Query(value = CTE_AMBITO + "SELECT d.id FROM documentos d WHERE d.id IN (:ids) AND " + DOCUMENTO_ACCESIBLE,
+           nativeQuery = true)
+    List<Long> idsAccesibles(@Param("usuarioId") Integer usuarioId, @Param("ids") java.util.Collection<Long> ids);
 
+    // Historial de finalizados: los 200 más recientes que el usuario puede ver (auditoría B2: la lista
+    // ya no crece sin límite; los anteriores se encuentran con el buscador)
     @Query(value = CTE_AMBITO + "SELECT d.* FROM documentos d WHERE d.estado_actual = 'FINALIZADO' AND "
-                 + DOCUMENTO_EN_AMBITO + " ORDER BY d.fecha_hora_salida DESC NULLS LAST", nativeQuery = true)
-    List<Documento> findFinalizadosEnAmbito(@Param("usuarioId") Integer usuarioId);
+                 + DOCUMENTO_ACCESIBLE + " ORDER BY d.fecha_hora_salida DESC NULLS LAST, d.id DESC LIMIT 200", nativeQuery = true)
+    List<Documento> findFinalizadosAccesibles(@Param("usuarioId") Integer usuarioId);
 
-    // 🛡️ FILTRO DE TRÁMITES ACTIVOS POR DEPENDENCIA
-    // Se usa la dependencia receptora del pase (obligatoria desde V15: ya no se busca por el nombre
-    // en la descripción, que se repite entre dependencias)
-    @Query("""
-        SELECT DISTINCT d FROM Documento d
-        LEFT JOIN ActuacionDocumento a ON a.documento.id = d.id
-        LEFT JOIN a.dependenciaReceptoraPase r
-        WHERE d.estadoActual NOT IN ('FINALIZADO', 'ARCHIVADO')
-          AND (
-               a.dependenciaEmisora.id = :dependenciaId
-               OR (r.id = :dependenciaId AND a.anulada = false)
-              )
-        ORDER BY d.fechaHoraIngreso DESC
-    """)
-    List<Documento> findDocumentosActivosPorDependencia(@Param("dependenciaId") Integer dependenciaId);
+    // Máximo de resultados del buscador: para más, el usuario afina los filtros
+    int MAXIMO_RESULTADOS_BUSQUEDA = 500;
 
-    // 🛡️ FILTRO DE TRÁMITES FINALIZADOS POR DEPENDENCIA
-    @Query("""
-        SELECT DISTINCT d FROM Documento d 
-        LEFT JOIN ActuacionDocumento a ON a.documento.id = d.id
-        LEFT JOIN a.dependenciaReceptoraPase r
-        WHERE d.estadoActual = 'FINALIZADO'
-          AND (
-               a.dependenciaEmisora.id = :dependenciaId
-               OR (r.id = :dependenciaId AND a.anulada = false)
-              )
-        ORDER BY d.fechaHoraSalida DESC
-    """)
-    List<Documento> findDocumentosFinalizadosPorDependencia(@Param("dependenciaId") Integer dependenciaId);
-
-    // El texto también busca en el bibliorato (código, descripción o texto histórico)
-    @Query("SELECT d FROM Documento d LEFT JOIN d.bibliorato b WHERE " +
-           "(CAST(:texto AS string) IS NULL OR " +
-           " LOWER(d.codigoCuti) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
-           " LOWER(d.asunto) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
-           " LOWER(d.numeroDocumentoOrigen) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
-           " LOWER(d.nroNotaSalida) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
-           " LOWER(d.ubicacionBibliorato) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
-           " LOWER(b.codigo) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%')) OR " +
-           " LOWER(b.descripcion) LIKE LOWER(CONCAT('%', CAST(:texto AS string), '%'))) AND " +
-           "(:dependenciaId IS NULL OR d.dependenciaOrigen.id = :dependenciaId) AND " +
-           "(:tipoDocId IS NULL OR d.tipoDocumento.id = :tipoDocId) AND " +
-           "(:estado IS NULL OR d.estadoActual = :estado) AND " +
-           "(:biblioratoId IS NULL OR b.id = :biblioratoId) AND " +
-           "(CAST(:fechaDesde AS timestamp) IS NULL OR d.fechaHoraIngreso >= :fechaDesde) AND " +
-           "(CAST(:fechaHasta AS timestamp) IS NULL OR d.fechaHoraIngreso <= :fechaHasta) " +
-           "ORDER BY d.fechaHoraIngreso DESC")
+    // El texto también busca en el bibliorato (código, descripción o texto histórico).
+    // Solo devuelve expedientes que el usuario puede ver: el ámbito se filtra en la misma consulta (auditoría B2)
+    @Query(value = CTE_AMBITO + """
+        SELECT d.* FROM documentos d LEFT JOIN biblioratos b ON b.id = d.bibliorato_id
+         WHERE (CAST(:texto AS text) IS NULL
+                OR d.codigo_cuti ILIKE '%' || CAST(:texto AS text) || '%'
+                OR d.asunto ILIKE '%' || CAST(:texto AS text) || '%'
+                OR d.numero_documento_origen ILIKE '%' || CAST(:texto AS text) || '%'
+                OR d.nro_nota_salida ILIKE '%' || CAST(:texto AS text) || '%'
+                OR d.ubicacion_bibliorato ILIKE '%' || CAST(:texto AS text) || '%'
+                OR b.codigo ILIKE '%' || CAST(:texto AS text) || '%'
+                OR b.descripcion ILIKE '%' || CAST(:texto AS text) || '%')
+           AND (CAST(:dependenciaId AS integer) IS NULL OR d.dependencia_origen_id = CAST(:dependenciaId AS integer))
+           AND (CAST(:tipoDocId AS integer) IS NULL OR d.tipo_documento_id = CAST(:tipoDocId AS integer))
+           AND (CAST(:estado AS text) IS NULL OR d.estado_actual = CAST(:estado AS text))
+           AND (CAST(:biblioratoId AS integer) IS NULL OR b.id = CAST(:biblioratoId AS integer))
+           AND (CAST(:fechaDesde AS timestamp) IS NULL OR d.fecha_hora_ingreso >= CAST(:fechaDesde AS timestamp))
+           AND (CAST(:fechaHasta AS timestamp) IS NULL OR d.fecha_hora_ingreso <= CAST(:fechaHasta AS timestamp))
+           AND """ + DOCUMENTO_ACCESIBLE + """
+         ORDER BY d.fecha_hora_ingreso DESC, d.id DESC
+         LIMIT\s""" + MAXIMO_RESULTADOS_BUSQUEDA, nativeQuery = true)
     List<Documento> buscarMulticriterio(
+            @Param("usuarioId") Integer usuarioId,
             @Param("texto") String texto,
             @Param("dependenciaId") Integer dependenciaId,
             @Param("tipoDocId") Integer tipoDocId,
-            @Param("estado") EstadoDocumento estado,
+            @Param("estado") String estado,
             @Param("biblioratoId") Integer biblioratoId,
             @Param("fechaDesde") LocalDateTime fechaDesde,
             @Param("fechaHasta") LocalDateTime fechaHasta

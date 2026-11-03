@@ -16,6 +16,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import py.gov.asuncion.tic.gestion_documental.domain.Accion;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 import py.gov.asuncion.tic.gestion_documental.service.PoliticaAcceso;
@@ -23,6 +24,22 @@ import py.gov.asuncion.tic.gestion_documental.service.PoliticaAcceso;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    // Política de contenido: solo recursos propios y los de cdn.jsdelivr.net (con SRI en las plantillas).
+    // 'unsafe-inline' sigue siendo necesario porque las plantillas tienen scripts y manejadores en línea;
+    // se quitará cuando ese código pase a archivos .js. Aun así se bloquean los scripts de otros orígenes,
+    // los <object>, el cambio de <base>, los formularios hacia otros sitios y el encuadre desde otros sitios.
+    static final String POLITICA_CONTENIDO = String.join("; ",
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+            "font-src 'self' https://cdn.jsdelivr.net",
+            "img-src 'self' data:",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'self'");
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -65,8 +82,13 @@ public class SecurityConfig {
                 org.springframework.security.web.csrf.CookieCsrfTokenRepository.withHttpOnlyFalse()))
             
             // 🚫 Desactivar la caché del navegador para forzar re-validación al usar el botón "Atrás"
+            // 🛡️ Cabeceras de seguridad (auditoría B3). Los PDF llevan su propia CSP (sandbox), que tiene prioridad.
             .headers(headers -> headers
                 .cacheControl(cache -> cache.disable())
+                .contentSecurityPolicy(csp -> csp.policyDirectives(POLITICA_CONTENIDO))
+                .frameOptions(marcos -> marcos.sameOrigin())
+                .referrerPolicy(referencia -> referencia.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN))
+                .permissionsPolicyHeader(permisos -> permisos.policy("camera=(), microphone=(), geolocation=(), payment=()"))
             )
             
             // 🔐 Reglas de autorización por acción (PoliticaAcceso: rol × ámbito × vigencia)

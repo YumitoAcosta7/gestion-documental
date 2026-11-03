@@ -24,7 +24,8 @@ public class BandejaService {
     public static final int TAMANIO_PAGINA = 20;
 
     public enum Bandeja {
-        TODOS("Todos", null),
+        // Todo lo activo que el usuario puede ver (paginado como el resto: auditoría B2)
+        TODOS("Todos", "d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO') AND " + DocumentoRepository.DOCUMENTO_ACCESIBLE),
         POR_RECIBIR("Por recibir", """
             EXISTS (SELECT 1 FROM actuaciones_documento a
                      WHERE a.documento_id = d.id AND a.tipo_actuacion = 'PASE_INTERNO'
@@ -90,15 +91,44 @@ public class BandejaService {
         return total.longValue();
     }
 
-    // Cantidad de expedientes de cada bandeja, para los contadores del selector.
-    // Las claves son el nombre de la bandeja: Thymeleaf no indexa mapas con claves enum.
-    public Map<String, Long> contadores(Usuario usuario) {
-        Map<String, Long> contadores = new LinkedHashMap<>();
-        for (Bandeja b : Bandeja.values()) {
-            if (b != Bandeja.TODOS) {
-                contadores.put(b.name(), contar(usuario, b));
-            }
+    // Contadores de las bandejas e indicadores del panel, del ámbito del usuario
+    public record Resumen(Map<String, Long> bandejas, Map<String, Long> indicadores) {}
+
+    // Todo en una sola consulta con COUNT(*) FILTER (auditoría B2). Todas las bandejas son de expedientes
+    // activos (al cerrar un expediente se anulan sus pases pendientes), así que se recorre solo esos.
+    // Las claves son nombres: Thymeleaf no indexa mapas con claves enum.
+    public Resumen resumen(Usuario usuario) {
+        StringBuilder sql = new StringBuilder(DocumentoRepository.CTE_AMBITO).append("SELECT ");
+        List<Bandeja> conContador = java.util.Arrays.stream(Bandeja.values()).filter(b -> b != Bandeja.TODOS).toList();
+        for (Bandeja b : conContador) {
+            sql.append("COUNT(*) FILTER (WHERE ").append(b.condicion).append("), ");
         }
-        return contadores;
+        // Indicadores del panel: los expedientes activos que el usuario puede ver, por estado
+        sql.append("""
+                COUNT(*) FILTER (WHERE d.accesible AND d.estado_actual IN ('INGRESADO', 'EN_REVISION')),
+                COUNT(*) FILTER (WHERE d.accesible AND d.estado_actual = 'EN_ESPERA_INFORME'),
+                COUNT(*) FILTER (WHERE d.accesible AND d.estado_actual = 'PENDIENTE_SALIDA'),
+                COUNT(*) FILTER (WHERE d.accesible AND d.prioridad = 'URGENTE')
+                  FROM (SELECT d.*,
+                """).append(DocumentoRepository.DOCUMENTO_ACCESIBLE).append("""
+                        AS accesible
+                          FROM documentos d
+                         WHERE d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO')) d
+                """);
+        Object[] fila = (Object[]) entityManager.createNativeQuery(sql.toString())
+                .setParameter("usuarioId", usuario.getId())
+                .getSingleResult();
+
+        Map<String, Long> bandejas = new LinkedHashMap<>();
+        for (int i = 0; i < conContador.size(); i++) {
+            bandejas.put(conContador.get(i).name(), ((Number) fila[i]).longValue());
+        }
+        int base = conContador.size();
+        Map<String, Long> indicadores = new LinkedHashMap<>();
+        indicadores.put("ingresados", ((Number) fila[base]).longValue());
+        indicadores.put("enEsperaInforme", ((Number) fila[base + 1]).longValue());
+        indicadores.put("pendienteSalida", ((Number) fila[base + 2]).longValue());
+        indicadores.put("urgentes", ((Number) fila[base + 3]).longValue());
+        return new Resumen(bandejas, indicadores);
     }
 }

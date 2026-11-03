@@ -35,6 +35,7 @@ Otras propiedades relevantes:
 | `spring.datasource.url` | `jdbc:postgresql://<servidor>:5432/gestion_documental` |
 | `app.upload.dir` | Carpeta única de todos los PDF (acuses, copias selladas, versiones). Debe incluirse en las copias de respaldo. Por defecto `C:/gestion-documental-uploads/acuses` |
 | `spring.jpa.open-in-view=true` | Necesario: las vistas Thymeleaf leen relaciones LAZY |
+| `server.servlet.session.cookie.secure` | Toma la variable `APP_COOKIE_SEGURA` (por defecto `false`). Al pasar a HTTPS, definir `APP_COOKIE_SEGURA=true`. Si un proxy inverso termina el HTTPS, agregar `server.forward-headers-strategy=native` |
 
 Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archivos no se versionan en git.
 
@@ -56,6 +57,7 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V13__administracion_usuarios.sql` | Etapa 2.3. Agrega `usuarios.debe_cambiar_contrasena`, deja opcional `usuarios.rol` (los permisos salen de las asignaciones) y crea `auditoria_sistema`, inmutable por trigger |
 | `V14__bitacoras_inmutables.sql` | Auditoría A4 y A5. Agrega la anulación `CIERRE_EXCEPCIONAL` y protege las dos bitácoras contra modificación, borrado y `TRUNCATE`. El cambio de dueño lo hace un superusuario con `db/seguridad/proteger_bitacoras.sh` |
 | `V15__organigrama_concurrente_y_receptora.sql` | Auditoría M3 y M4. Serializa los cambios del organigrama (bloqueo transaccional en el trigger de `ruta`) y exige la dependencia receptora en todo pase y devolución |
+| `V16__rendimiento_organigrama_y_bandejas.sql` | Auditoría B1 y B2. Versión del organigrama, que permite a la aplicación tenerlo en memoria hasta que cambie, e índices de bandejas y ámbito |
 
 **Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`.
 

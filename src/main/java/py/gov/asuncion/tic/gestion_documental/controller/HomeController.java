@@ -109,18 +109,20 @@ public class HomeController {
         model.addAttribute("rolesUsuario", politicaAcceso.descripcionRoles(usuario));
         model.addAttribute("areaUsuario", usuario != null ? canalService.cabeceraDelUsuario(usuario) : null);
 
-        // 📥 Bandejas: "Todos" es la lista completa de antes; el resto, paginadas por ámbito
-        List<Documento> activos;
-        if (bandeja == BandejaService.Bandeja.TODOS || usuario == null) {
-            activos = documentoService.obtenerDocumentosActivosParaUsuario(usuario);
-        } else {
+        // 📥 Bandejas paginadas por ámbito, "Todos" incluida (auditoría B2)
+        List<Documento> activos = List.of();
+        BandejaService.Resumen resumen = null;
+        if (usuario != null) {
             Page<Documento> paginaBandeja = bandejaService.listar(usuario, bandeja, pagina);
             activos = paginaBandeja.getContent();
             model.addAttribute("paginaBandeja", paginaBandeja);
+            resumen = bandejaService.resumen(usuario);
         }
         model.addAttribute("bandejas", BandejaService.Bandeja.values());
         model.addAttribute("bandejaActual", bandeja);
-        model.addAttribute("contadoresBandejas", usuario != null ? bandejaService.contadores(usuario) : java.util.Map.of());
+        model.addAttribute("contadoresBandejas", resumen != null ? resumen.bandejas() : java.util.Map.of());
+        // Indicadores del panel: del ámbito del usuario, no de toda la institución
+        model.addAttribute("metricas", resumen != null ? resumen.indicadores() : java.util.Map.of());
         model.addAttribute("documentos", activos);
         agregarIndicadoresSla(model, activos, resultadosBusqueda);
         agregarDatosArchivo(model, usuario);
@@ -131,7 +133,6 @@ public class HomeController {
                 ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
                 : List.of());
 
-        model.addAttribute("metricas", documentoService.obtenerMetricasDashboard());
         model.addAttribute("dependenciasAgrupadas", documentoService.obtenerDependenciasAgrupadas());
         model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
     }
@@ -267,15 +268,7 @@ public class HomeController {
         } catch (AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        if (ruta == null) {
-            return ResponseEntity.notFound().build();
-        }
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
-                        .filename(ruta.getFileName().toString(), StandardCharsets.UTF_8).build().toString())
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(new FileSystemResource(ruta));
+        return responderPdf(ruta, null);
     }
 
     /**
@@ -309,11 +302,16 @@ public class HomeController {
         }
     }
 
+    // Auditoría B3: el PDF se muestra en el navegador, pero aislado del origen de la aplicación
+    // (CSP sandbox): si trajera JavaScript, no podría usar la sesión ni leer otras páginas
+    static final String POLITICA_PDF = "sandbox";
+
     private ResponseEntity<Resource> responderPdf(java.nio.file.Path ruta, String nombre) {
         if (ruta == null) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok()
+                .header("Content-Security-Policy", POLITICA_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
                         .filename(nombre != null ? nombre : ruta.getFileName().toString(), StandardCharsets.UTF_8)
                         .build().toString())
@@ -525,15 +523,12 @@ public class HomeController {
                                    Model model) {
 
         Usuario usuarioLogueado = getUsuarioAutenticado();
-        List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(
+        // 🛡️ La búsqueda muestra solo los expedientes del ámbito del usuario (filtrado en la consulta)
+        List<Documento> resultados = documentoService.buscarDocumentosMulticriterio(usuarioLogueado,
                 texto, dependenciaId, tipoDocId, estado, biblioratoId, fechaDesde, fechaHasta);
 
-        // 🛡️ La búsqueda muestra solo los expedientes del ámbito del usuario
-        resultados = resultados.stream()
-                .filter(d -> documentoService.puedeAccederDocumento(usuarioLogueado, d.getId()))
-                .toList();
-
         model.addAttribute("documentosResultados", resultados);
+        model.addAttribute("busquedaRecortada", resultados.size() >= DocumentoRepository.MAXIMO_RESULTADOS_BUSQUEDA);
         model.addAttribute("esBusqueda", true);
         model.addAttribute("paramTexto", texto);
         model.addAttribute("paramDependenciaId", dependenciaId);

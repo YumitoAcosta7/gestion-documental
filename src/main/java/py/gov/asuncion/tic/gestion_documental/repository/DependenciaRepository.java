@@ -37,6 +37,10 @@ public interface DependenciaRepository extends JpaRepository<Dependencia, Intege
         """, nativeQuery = true)
     List<Integer> findConReceptor(@Param("ids") Collection<Integer> ids);
 
+    // Versión del organigrama (V16): cambia con cada alta, baja o modificación de dependencias, niveles o atajos
+    @Query(value = "SELECT version FROM organigrama_version WHERE id = 1", nativeQuery = true)
+    long versionOrganigrama();
+
     // Atajos habilitados fuera del canal jerárquico: [origen_id, destino_id]
     @Query(value = "SELECT origen_id, destino_id FROM reglas_derivacion WHERE activa", nativeQuery = true)
     List<Object[]> findAtajosActivos();
