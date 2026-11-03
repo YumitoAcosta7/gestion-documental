@@ -156,7 +156,7 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
            AND (CAST(:biblioratoId AS integer) IS NULL OR b.id = CAST(:biblioratoId AS integer))
            AND (CAST(:fechaDesde AS timestamp) IS NULL OR d.fecha_hora_ingreso >= CAST(:fechaDesde AS timestamp))
            AND (CAST(:fechaHasta AS timestamp) IS NULL OR d.fecha_hora_ingreso <= CAST(:fechaHasta AS timestamp))
-           AND """ + EN_ACC + """
+           AND\s""" + EN_ACC + """
 
          ORDER BY d.fecha_hora_ingreso DESC, d.id DESC
          LIMIT\s""" + MAXIMO_RESULTADOS_BUSQUEDA, nativeQuery = true)
