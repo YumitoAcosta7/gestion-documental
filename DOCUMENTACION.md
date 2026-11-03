@@ -58,6 +58,16 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V14__bitacoras_inmutables.sql` | Auditoría A4 y A5. Agrega la anulación `CIERRE_EXCEPCIONAL` y protege las dos bitácoras contra modificación, borrado y `TRUNCATE`. El cambio de dueño lo hace un superusuario con `db/seguridad/proteger_bitacoras.sh` |
 | `V15__organigrama_concurrente_y_receptora.sql` | Auditoría M3 y M4. Serializa los cambios del organigrama (bloqueo transaccional en el trigger de `ruta`) y exige la dependencia receptora en todo pase y devolución |
 | `V16__rendimiento_organigrama_y_bandejas.sql` | Auditoría B1 y B2. Versión del organigrama, que permite a la aplicación tenerlo en memoria hasta que cambie, e índices de bandejas y ámbito |
+| `V17__doble_control_asignaciones.sql` | Auditoría C2. Estado de aprobación de las asignaciones y restricciones: solo una aprobada puede estar activa, y nadie aprueba lo que pidió ni lo que lo beneficia |
+
+**Segundo administrador (doble control, C2).** Las asignaciones sensibles las aprueba otro administrador. Con un solo administrador, nadie puede aprobar la del segundo:
+1. Pedirla desde la pantalla de administración. Queda "Pendiente de aprobación".
+2. Listar las pendientes y aprobarla en el servidor, como postgres:
+   ```bash
+   sudo -u postgres bash aprobar_asignacion.sh gestion_documental
+   sudo -u postgres bash aprobar_asignacion.sh gestion_documental <id>
+   ```
+   Queda en la auditoría de administración como `APROBACION_ASIGNACION_DBA`.
 
 **Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`.
 
