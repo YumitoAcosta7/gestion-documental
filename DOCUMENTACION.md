@@ -325,21 +325,31 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - **Fase 2, etapas 2.1 y 2.2:** organigrama, asignaciones, ámbito, custodia, canal jerárquico, tipos de pase, CUTI por cabecera, documentos propios y bandejas paginadas.
 - **Etapa 2.3:** administración de usuarios, asignaciones, suplencias y feriados, con doble control de las asignaciones sensibles.
 - **Auditoría de seguridad y QA** ([docs/auditoria-arquitectura-seguridad.md](docs/auditoria-arquitectura-seguridad.md)): hallazgos C1 a B3 y sus residuales corregidos.
+- **Gobernanza del expediente** (misma auditoría, segunda revisión):
+  - actuaciones solo de quien tiene el original o responde un pedido de informe;
+  - respuestas cosidas a su pedido;
+  - nada se modifica con el original en camino;
+  - un documento no se registra dos veces;
+  - legajo de la salida registrado;
+  - justificación de cierre reservada;
+  - huella encadenada de las bitácoras;
+  - buscador con trigramas.
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
-- **Pruebas automatizadas:** 100, incluidas la matriz de autorización (`MatrizAutorizacionTest`) y la revisión de las consultas nativas (`ConsultasNativasTest`).
+- **Pruebas automatizadas:** 105, incluidas la matriz de autorización (`MatrizAutorizacionTest`), la revisión de las consultas nativas (`ConsultasNativasTest`) y la gobernanza del expediente (`GobernanzaExpedienteTest`).
 
 **Pendientes en producción** (pasos 7 y 8 de [docs/pase-produccion.md](docs/pase-produccion.md)):
 - Feriados trasladables y asuetos de 2026, según el decreto.
-- Cambio de las contraseñas de las dos bases.
+- Cambio de la contraseña de la base de producción (la de pruebas se cambió el 03/11/2026).
 - 8 pases del piloto de la DTIC (agosto y septiembre de 2026) sin acuse: los resuelven las dependencias.
 
+**Tareas periódicas:**
+- Cada semana: `sudo -u postgres bash reforzar_bitacoras.sh gestion_documental --verificar`, y guardar fuera del servidor la última huella que informa (anclaje externo de las bitácoras).
+
 **Pendientes técnicos:**
-- **Buscador:** buscar un texto puntual en volumen grande tarda unos 3 s. Necesita la extensión `pg_trgm`, que instala el DBA, y un índice de trigramas.
 - **Contadores:** rondan 1 s cuando el ámbito abarca decenas de miles de expedientes activos. Se pueden cargar después de mostrar la página.
 - **HTTPS:** al pasar, definir `APP_COOKIE_SEGURA=true`.
-- **Análisis de seguridad:** OWASP ZAP y OWASP Dependency-Check.
 - **Respaldos programados** de la base y de la carpeta de PDF, probados con una restauración real.
+- **Bitácora de inicios de sesión:** hoy los exitosos y fallidos solo quedan en el registro de la aplicación.
+- **Análisis de seguridad:** OWASP ZAP y OWASP Dependency-Check.
 - **Inicio de sesión con LDAP de Carbonio.** Necesita los datos de conexión y una cuenta de servicio.
-- **Funcionales:**
-  - el modal de salida envía `tipoRemision` e `informeActuacionId` (legajo), pero todavía no se guardan;
-  - revisar a mano los expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes, por ejemplo TIC-2026-000001.
+- **Funcional:** revisar a mano los expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes, por ejemplo TIC-2026-000001.
