@@ -123,6 +123,8 @@ public class HomeController {
         model.addAttribute("contadoresBandejas", resumen != null ? resumen.bandejas() : java.util.Map.of());
         // Indicadores del panel: del ámbito del usuario, no de toda la institución
         model.addAttribute("metricas", resumen != null ? resumen.indicadores() : java.util.Map.of());
+        // ⏳ Pases que emitió su ámbito y siguen sin acuse fuera de plazo, o que nadie puede recibir (auditoría M2)
+        model.addAttribute("pasesDemorados", documentoService.pasesEmitidosDemorados(usuario));
         model.addAttribute("documentos", activos);
         agregarIndicadoresSla(model, activos, resultadosBusqueda);
         agregarDatosArchivo(model, usuario);

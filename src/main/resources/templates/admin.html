@@ -34,6 +34,50 @@
         <div class="small mt-1">Se muestra <strong>una sola vez</strong>. Entréguela al usuario: al entrar deberá cambiarla por una propia.</div>
     </div>
 
+    <!-- ===================== Doble control (auditoría C2) ===================== -->
+    <div th:if="${!#lists.isEmpty(pendientes)}" class="card border-warning shadow-sm mb-3">
+        <div class="card-header bg-warning-subtle fw-bold">
+            <i class="bi bi-shield-lock me-1"></i>Asignaciones sensibles esperando aprobación
+            <span class="badge bg-warning text-dark ms-1" th:text="${#lists.size(pendientes)}">0</span>
+            <div class="small fw-normal text-muted">Administrador del sistema, o mesa de entrada / responsable de una Dirección o superior. No rigen hasta que las apruebe un administrador distinto de quien las pidió y del beneficiario.</div>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm align-middle mb-0 small">
+                <thead class="table-light"><tr><th>Usuario</th><th>Rol y ámbito</th><th>Vigencia</th><th>Acto</th><th>Pedida por</th><th></th></tr></thead>
+                <tbody>
+                <tr th:each="p : ${pendientes}">
+                    <td><a th:href="@{/admin/usuarios(usuarioId=${p.usuario.id})}" th:text="${p.usuario.nombreCompleto + ' (' + p.usuario.username + ')'}">usuario</a></td>
+                    <td>
+                        <span class="fw-semibold" th:text="${p.rol}">ROL</span> en
+                        <span th:text="${p.dependenciaAmbito.nombreVisible}">ámbito</span>
+                        <span th:if="${p.incluyeSubordinadas}" class="text-muted">y subordinadas</span>
+                    </td>
+                    <td class="text-nowrap" th:text="${#temporals.format(p.vigenteDesde, 'dd/MM/yyyy') + ' → ' + (p.vigenteHasta != null ? #temporals.format(p.vigenteHasta, 'dd/MM/yyyy') : 'sin fin')}">fechas</td>
+                    <td th:text="${p.actoAdministrativo}">acto</td>
+                    <td class="text-nowrap">
+                        <span th:text="${p.creadaPor != null ? p.creadaPor.username : '—'}">admin</span>
+                        <div class="text-muted" th:text="${#temporals.format(p.fechaHoraCreacion, 'dd/MM/yyyy HH:mm')}">fecha</div>
+                    </td>
+                    <td>
+                        <div th:if="${p.usuario.id == admin.id}" class="text-muted">Es para usted: la resuelve otro administrador.</div>
+                        <div th:unless="${p.usuario.id == admin.id}" class="d-flex flex-column gap-1">
+                            <form th:if="${p.creadaPor == null || p.creadaPor.id != admin.id}" th:action="@{/admin/asignaciones/{id}/aprobar(id=${p.id})}" method="post" class="m-0">
+                                <button class="btn btn-success btn-sm w-100"><i class="bi bi-check-lg me-1"></i>Aprobar</button>
+                            </form>
+                            <div th:if="${p.creadaPor != null && p.creadaPor.id == admin.id}" class="text-muted">La pidió usted: la aprueba otro administrador.</div>
+                            <form th:action="@{/admin/asignaciones/{id}/rechazar(id=${p.id})}" method="post" class="d-flex gap-1 m-0">
+                                <input name="motivo" class="form-control form-control-sm" style="width: 9rem" required minlength="5"
+                                       th:placeholder="${p.creadaPor != null && p.creadaPor.id == admin.id ? 'Motivo para retirarla' : 'Motivo del rechazo'}">
+                                <button class="btn btn-outline-danger btn-sm" th:title="${p.creadaPor != null && p.creadaPor.id == admin.id ? 'Retirar solicitud' : 'Rechazar'}"><i class="bi bi-x-lg"></i></button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div class="row g-3">
         <!-- ===================== Listado de usuarios ===================== -->
         <div class="col-lg-5">
@@ -112,7 +156,7 @@
                         <span th:unless="${seleccionado.activo}" class="badge bg-secondary ms-1">Dado de baja</span>
                     </span>
                     <form th:if="${seleccionado.activo}" th:action="@{/admin/usuarios/{id}/contrasena(id=${seleccionado.id})}" method="post" class="m-0"
-                          onsubmit="return confirm('Se generará una contraseña temporal nueva y la actual dejará de servir. ¿Continuar?');">
+                          data-confirmar="Se generará una contraseña temporal nueva y la actual dejará de servir. ¿Continuar?">
                         <button class="btn btn-outline-warning btn-sm"><i class="bi bi-key me-1"></i>Restablecer contraseña</button>
                     </form>
                 </div>
@@ -140,10 +184,11 @@
 
                     <!-- Baja / reactivación -->
                     <div class="border-top mt-3 pt-3">
-                        <form th:if="${seleccionado.activo && seleccionado.id != admin.id}" th:action="@{/admin/usuarios/{id}/estado(id=${seleccionado.id})}" method="post" class="d-flex gap-2">
+                        <form th:if="${seleccionado.activo && seleccionado.id != admin.id}" th:action="@{/admin/usuarios/{id}/estado(id=${seleccionado.id})}" method="post" class="d-flex gap-2"
+                              data-confirmar="El usuario no podrá ingresar. Su historial se conserva. ¿Dar de baja?">
                             <input type="hidden" name="activo" value="false">
                             <input name="motivo" class="form-control form-control-sm" required minlength="5" placeholder="Motivo de la baja (ej.: fin de contrato, traslado)">
-                            <button class="btn btn-outline-danger btn-sm text-nowrap" onclick="return confirm('El usuario no podrá ingresar. Su historial se conserva. ¿Dar de baja?');">Dar de baja</button>
+                            <button class="btn btn-outline-danger btn-sm text-nowrap">Dar de baja</button>
                         </form>
                         <form th:unless="${seleccionado.activo}" th:action="@{/admin/usuarios/{id}/estado(id=${seleccionado.id})}" method="post">
                             <input type="hidden" name="activo" value="true">
@@ -173,7 +218,9 @@
                             </td>
                             <td class="text-nowrap" th:text="${#temporals.format(a.vigenteDesde, 'dd/MM/yyyy') + ' → ' + (a.vigenteHasta != null ? #temporals.format(a.vigenteHasta, 'dd/MM/yyyy') : 'sin fin')}">fechas</td>
                             <td>
-                                <span th:if="${!a.activa}" class="badge bg-secondary">Dada de baja</span>
+                                <span th:if="${a.pendiente}" class="badge bg-warning text-dark" title="Asignación sensible: la debe aprobar otro administrador">Pendiente de aprobación</span>
+                                <span th:if="${a.estadoAprobacion == 'RECHAZADA'}" class="badge bg-danger-subtle text-danger border">Rechazada</span>
+                                <span th:if="${!a.activa && a.estadoAprobacion == 'APROBADA'}" class="badge bg-secondary">Dada de baja</span>
                                 <span th:if="${a.activa && a.vigenteDesde.isAfter(hoy)}" class="badge bg-info">Futura</span>
                                 <span th:if="${a.activa && a.vigenteHasta != null && a.vigenteHasta.isBefore(hoy)}" class="badge bg-light text-dark border">Vencida</span>
                                 <span th:if="${a.activa && !a.vigenteDesde.isAfter(hoy) && (a.vigenteHasta == null || !a.vigenteHasta.isBefore(hoy))}" class="badge bg-success">Vigente</span>
@@ -200,7 +247,7 @@
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold">Rol</label>
                                 <!-- Mesa de entrada y responsable abarcan por defecto las subordinadas; operador y consulta, no -->
-                                <select name="rol" class="form-select form-select-sm" required onchange="document.getElementById('chkSub').checked = (this.value === 'MESA_ENTRADA' || this.value === 'RESPONSABLE' || this.value === 'ADMIN_SISTEMA');">
+                                <select name="rol" id="selRol" class="form-select form-select-sm" required>
                                     <option value="MESA_ENTRADA">Mesa de entrada</option>
                                     <option value="RESPONSABLE">Responsable</option>
                                     <option value="OPERADOR" selected>Operador</option>
@@ -233,8 +280,7 @@
                             </div>
                             <div class="col-md-4">
                                 <div class="form-check mt-1">
-                                    <input class="form-check-input" type="checkbox" name="esSuplencia" value="true" id="chkSuplencia"
-                                           onchange="document.getElementById('bloqueTitular').classList.toggle('d-none', !this.checked); document.getElementById('selTitular').required = this.checked;">
+                                    <input class="form-check-input" type="checkbox" name="esSuplencia" value="true" id="chkSuplencia">
                                     <label class="form-check-label small" for="chkSuplencia">Es una suplencia</label>
                                 </div>
                             </div>
@@ -246,10 +292,42 @@
                                 <div class="form-text">La suplencia necesita fecha "Hasta" y deja de regir sola ese día.</div>
                             </div>
                         </div>
+                        <div class="small text-muted mt-2"><i class="bi bi-shield-lock me-1"></i>Administrador del sistema, y mesa de entrada o responsable de una Dirección o superior, quedan pendientes hasta que las apruebe otro administrador.</div>
                         <button type="submit" class="btn btn-primary btn-sm mt-2">Agregar asignación</button>
                     </form>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ===================== Pases trabados (auditoría M2) ===================== -->
+    <div class="card border-0 shadow-sm mt-3">
+        <div class="card-header bg-white fw-bold">
+            <i class="bi bi-hourglass-split me-1"></i>Pases trabados o fuera de plazo
+            <span class="badge bg-secondary ms-1" th:text="${#lists.size(pasesTrabados)}">0</span>
+            <div class="small fw-normal text-muted">Pases sin acuse con demora crítica, o hacia una dependencia sin usuarios ni asignaciones vigentes. Solo se pueden retirar estos últimos; el resto lo resuelven las dependencias.</div>
+        </div>
+        <div class="card-body p-0" style="max-height: 40vh; overflow-y: auto;">
+            <table class="table table-sm align-middle mb-0 small">
+                <thead class="table-light"><tr><th>CUTI</th><th>Emisora ➔ receptora</th><th>Tipo</th><th>Enviado</th><th>Días hábiles</th><th></th></tr></thead>
+                <tbody>
+                <tr th:each="p : ${pasesTrabados}">
+                    <td class="fw-semibold" th:text="${p.cuti()}">CUTI</td>
+                    <td th:text="${p.emisora() + ' ➔ ' + p.receptora()}">emisora ➔ receptora</td>
+                    <td th:text="${p.tipoPase()}">TRAMITE</td>
+                    <td class="text-nowrap" th:text="${#temporals.format(p.fecha(), 'dd/MM/yyyy HH:mm')}">fecha</td>
+                    <td th:text="${p.diasHabiles()}">0</td>
+                    <td>
+                        <form th:if="${p.sinReceptor()}" th:action="@{/admin/pases/{id}/retirar(id=${p.actuacionId()})}" method="post" class="d-flex gap-1 m-0">
+                            <input name="motivo" class="form-control form-control-sm" style="width: 12rem" required minlength="10" placeholder="Motivo (mín. 10 caracteres)">
+                            <button class="btn btn-outline-danger btn-sm text-nowrap" title="La receptora no tiene quién lo reciba"><i class="bi bi-x-circle me-1"></i>Retirar</button>
+                        </form>
+                        <span th:unless="${p.sinReceptor()}" class="text-muted">Fuera de plazo</span>
+                    </td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(pasesTrabados)}"><td colspan="6" class="text-muted p-3">No hay pases trabados ni fuera de plazo.</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -273,5 +351,6 @@
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+<script th:src="@{/js/admin.js}"></script>
 </body>
 </html>

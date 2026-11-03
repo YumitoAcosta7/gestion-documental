@@ -71,6 +71,9 @@ public class DocumentoService {
     @Autowired
     private CanalService canalService;
 
+    @Autowired
+    private AuditoriaSistemaRepository auditoriaSistemaRepository;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
 
@@ -1455,7 +1458,89 @@ public class DocumentoService {
         } else {
             throw new IllegalArgumentException("Acción no válida: " + accion);
         }
+        return aplicarAnulacion(pase, doc, tipoAnulacion, motivo, usuario);
+    }
 
+    // =====================================================================
+    // ⏳ PASES DEMORADOS Y TRABADOS (auditoría M2)
+    // =====================================================================
+
+    // Un pase esperando acuse fuera de plazo (días hábiles >= crítico) o hacia una dependencia en la que
+    // nadie puede recibirlo (sinReceptor)
+    public record PaseDemorado(Long actuacionId, Long documentoId, String cuti, String emisora, String receptora,
+                               TipoPase tipoPase, LocalDateTime fecha, long diasHabiles, boolean sinReceptor) {}
+
+    // Aviso para la mesa que emitió: sus pases fuera de plazo o trabados
+    public List<PaseDemorado> pasesEmitidosDemorados(Usuario usuario) {
+        if (usuario == null) {
+            return List.of();
+        }
+        return demorados(actuacionDocumentoRepository.findPasesPendientesEmitidos(usuario.getId()));
+    }
+
+    // Panel del administrador: todos los pases trabados o fuera de plazo de la institución.
+    // Solo datos de circulación (CUTI, dependencias, fecha): no el contenido del expediente.
+    public List<PaseDemorado> pasesTrabados(Usuario admin) {
+        politicaAcceso.exigir(admin, Accion.ADMINISTRAR_SISTEMA, "Solo un administrador del sistema puede ver los pases trabados.");
+        return demorados(actuacionDocumentoRepository.findPasesPendientes());
+    }
+
+    private List<PaseDemorado> demorados(List<ActuacionDocumento> pendientes) {
+        if (pendientes.isEmpty()) {
+            return List.of();
+        }
+        Set<Integer> conReceptor = new HashSet<>(dependenciaRepository.findConReceptor(pendientes.stream()
+                .map(ActuacionDocumento::getDependenciaReceptoraPase).filter(java.util.Objects::nonNull)
+                .map(Dependencia::getId).distinct().toList()));
+        LocalDate hoy = LocalDate.now();
+        List<PaseDemorado> resultado = new ArrayList<>();
+        for (ActuacionDocumento a : pendientes) {
+            Dependencia receptora = a.getDependenciaReceptoraPase();
+            boolean sinReceptor = receptora == null || Boolean.FALSE.equals(receptora.getActivo()) || !conReceptor.contains(receptora.getId());
+            long dias = diasHabilesEntre(a.getFechaHoraActuacion().toLocalDate(), hoy);
+            if (sinReceptor || dias >= slaDiasCritico) {
+                resultado.add(new PaseDemorado(a.getId(), a.getDocumento().getId(), a.getDocumento().getCodigoCuti(),
+                        a.getDependenciaEmisora().getNombreVisible(), receptora != null ? receptora.getNombreVisible() : "(sin receptora)",
+                        a.getTipoPase(), a.getFechaHoraActuacion(), dias, sinReceptor));
+            }
+        }
+        return resultado;
+    }
+
+    // El administrador retira un pase que nadie puede recibir (la receptora no tiene usuarios ni asignaciones
+    // vigentes, o está dada de baja). Queda en la bitácora del expediente y en la de administración.
+    @Transactional
+    public ActuacionDocumento retirarPaseTrabado(Long actuacionId, String motivo, Usuario admin) {
+        politicaAcceso.exigir(admin, Accion.ADMINISTRAR_SISTEMA, "Solo un administrador del sistema puede retirar pases trabados.");
+        validarMotivo(motivo, 10, "el motivo");
+        ActuacionDocumento pase = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
+                .orElseThrow(() -> new IllegalArgumentException("Pase no encontrado: " + actuacionId));
+        if (!esPasePendiente(pase)) {
+            throw new IllegalStateException("El pase ya fue confirmado o anulado.");
+        }
+        Dependencia receptora = pase.getDependenciaReceptoraPase();
+        boolean sinReceptor = receptora == null || Boolean.FALSE.equals(receptora.getActivo())
+                || dependenciaRepository.findConReceptor(List.of(receptora.getId())).isEmpty();
+        if (!sinReceptor) {
+            throw new IllegalStateException("La dependencia receptora tiene quién reciba el pase: lo confirma o rechaza ella, o lo retira la emisora.");
+        }
+        Documento doc = documentoRepository.findByIdParaActualizar(pase.getDocumento().getId()).orElseThrow();
+        validarNoFinalizado(doc, "modificar pases de");
+        String motivoCompleto = "Retirado por el administrador del sistema (receptora sin usuarios): " + motivo.trim();
+        aplicarAnulacion(pase, doc, ANULACION_RETIRADO, motivoCompleto, admin);
+        auditoriaSistemaRepository.save(AuditoriaSistema.builder()
+                .usuario(admin)
+                .accion("RETIRO_PASE_TRABADO")
+                .entidad("PASE")
+                .entidadId(pase.getId())
+                .detalle(doc.getCodigoCuti() + ": " + pase.getDependenciaEmisora().getNombreVisible() + " ➔ "
+                        + (receptora != null ? receptora.getNombreVisible() : "(sin receptora)") + ". Motivo: " + motivo.trim())
+                .build());
+        return pase;
+    }
+
+    private ActuacionDocumento aplicarAnulacion(ActuacionDocumento pase, Documento doc, String tipoAnulacion,
+                                                String motivo, Usuario usuario) {
         pase.setAnulada(true);
         pase.setTipoAnulacion(tipoAnulacion);
         pase.setMotivoAnulacion(motivo.trim());

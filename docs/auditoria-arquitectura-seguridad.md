@@ -68,10 +68,21 @@ private Documento exigirCustodia(Long documentoId, Usuario usuario, String accio
 }
 ```
 
-**C2 — Escalada por autoasignación.** ✅ **Corregido en lo principal (02/11/2026).**
+**C2 — Escalada por autoasignación.** ✅ **Corregido (02/11/2026; doble control el 03/11/2026).**
+- **Doble control (V17):**
+  - Las asignaciones sensibles quedan *pendientes* e inactivas al crearse:
+    - `ADMIN_SISTEMA`;
+    - `MESA_ENTRADA` o `RESPONSABLE` sobre una Dirección o superior.
+  - Rigen cuando las aprueba otro administrador, distinto de quien las pidió y del beneficiario.
+  - La base también lo controla, con restricciones `CHECK`.
+  - El segundo administrador lo aprueba el DBA una sola vez (`db/seguridad/aprobar_asignacion.sh`).
+  - Prueba: `DobleControlAsignacionesTest`.
 - Un administrador ya no puede asignarse roles de trámite ni cambiar su propia dependencia; lo tiene que hacer otro administrador.
 - Prueba: `AdministracionServiceTest`.
-- **Riesgo residual:** un administrador todavía puede crear un usuario "de paja", darle permisos y resetearle la contraseña. Eso queda en la auditoría, pero solo se evita con el doble control que se describe abajo, que está pendiente.
+- **Riesgo residual:**
+  - Un administrador puede crear un usuario "de paja" y darle roles **no sensibles** (operador, o mesa de una unidad), que no necesitan aprobación.
+  - Queda en la auditoría.
+  - El acceso amplio (cabeceras y administración) ya exige a un segundo administrador.
 
 Un `ADMIN_SISTEMA` puede asignarse a sí mismo `MESA_ENTRADA` sobre la Intendencia, y así obtener acceso a **todos** los expedientes. Queda auditado, pero nada lo impide. El aislamiento del rol es solo nominal.
 
@@ -178,10 +189,15 @@ Queda un recorrido incoherente, con dos "dueños" sucesivos del original.
 
 *Mitigación:* bloquear esas acciones mientras haya un trámite pendiente, o anularlo automáticamente con motivo.
 
-**M2 — Bloqueo por pases sin receptor.** ✅ **Corregido en lo principal (02/11/2026).**
+**M2 — Bloqueo por pases sin receptor.** ✅ **Corregido (02/11/2026; retiro y aviso el 03/11/2026).**
 - No se deriva a dependencias sin usuarios activos ni asignaciones vigentes que las abarquen; el modal las muestra deshabilitadas.
 - Se puede desactivar con `app.canal.exigir-receptor=false` durante la incorporación gradual.
-- **Queda:** la acción de administración para retirar pases trabados y el aviso de pases fuera de plazo.
+- **Aviso:** la pantalla principal muestra a cada mesa los pases que emitió su ámbito y que siguen sin acuse fuera de plazo (días hábiles ≥ `app.sla.dias-critico`) o sin nadie que pueda recibirlos.
+- **Panel del administrador:**
+  - lista esos pases en toda la institución, mostrando solo el CUTI, las dependencias y la fecha;
+  - permite retirar, con motivo, los que van a una dependencia sin receptor;
+  - el retiro queda en la bitácora del expediente y en la de administración.
+- Prueba: `PasesTrabadosTest`.
 
 Si la receptora de un trámite se da de baja, o se queda sin usuarios, el pase queda pendiente para siempre y bloquea nuevos trámites. Hoy solo lo destraba `SUPERVISAR_PASES`, que es justamente el permiso global de C1.
 
@@ -266,7 +282,8 @@ CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id D
 - Los PDF se siguen viendo en el navegador.
   - Al subirlos se rechazan los que traen `/JavaScript`, `/JS` o `/Launch`, también escritos con `#xx`.
   - No se usa `Content-Security-Policy: sandbox`: Chrome y Edge no muestran un PDF aislado (se probó: "Error al cargar el documento PDF").
-  - *Límite:* el control no mira los objetos guardados dentro de flujos comprimidos (`ObjStm`). Para cubrirlos hace falta un analizador de PDF, como Apache PDFBox, o servir los PDF desde otro dominio.
+  - Además, Apache PDFBox abre el documento y recorre todos sus objetos, también los guardados dentro de flujos comprimidos (`ObjStm`).
+  - Se rechazan también los PDF protegidos con contraseña y los que no se pueden analizar.
 - Hay CSP general:
   - solo recursos propios y de cdn.jsdelivr.net;
   - `object-src 'none'`, `base-uri`, `form-action` y `frame-ancestors` limitados al propio sitio.
@@ -274,7 +291,10 @@ CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id D
 - Las hojas de estilo y el script del CDN llevan SRI (`integrity=`).
 - La cookie de sesión es `HttpOnly` y `SameSite=Lax`. `Secure` se activa con `APP_COOKIE_SEGURA=true` al pasar a HTTPS.
 - El tiempo de sesión de 30 minutos ya estaba configurado (A2).
-- *Pendiente:* la CSP todavía admite `'unsafe-inline'`, porque las plantillas tienen scripts y manejadores en línea. Quitarlo requiere mover ese código a archivos `.js`.
+- Los scripts ya no admiten código en línea (sin `'unsafe-inline'` en `script-src`).
+  - Todo el JavaScript está en `/js/index.js` y `/js/admin.js`.
+  - Los eventos se asignan con `addEventListener`.
+  - Los atributos `style` en línea se siguen admitiendo: no ejecutan código.
 - Los PDF se sirven `inline`. Un PDF con JavaScript se ejecuta en el visor del navegador, dentro del origen de la aplicación.
 
   *Mitigación:* agregar `Content-Security-Policy: sandbox` a esas respuestas, u ofrecer descarga (`attachment`).
@@ -335,14 +355,14 @@ Todas sobre la base de pruebas, con `@PruebaConBaseDePruebas` y `@Transactional`
 ## 5. Checklist antes del despliegue masivo
 
 - [x] C1: todas las operaciones sobre un expediente verifican acceso y custodia en el servicio.
-- [ ] C2: el administrador no puede autoasignarse roles de trámite; las asignaciones sensibles tienen doble control.
+- [x] C2: el administrador no puede autoasignarse roles de trámite; las asignaciones sensibles tienen doble control.
 - [x] A1–A2: un usuario dado de baja o reseteado pierde la sesión; hay límite de intentos de inicio de sesión.
 - [x] A3: las suplencias quedan acotadas a lo que tiene el titular y no se solapan.
 - [x] A4: las respuestas a informes se vinculan a su pase; el cierre forzado anula los pases pendientes.
 - [ ] A5: la bitácora pertenece a otro rol y resiste `TRUNCATE`, `DISABLE TRIGGER` y `DROP` desde la aplicación.
 - [x] M1–M5 resueltos (queda el retiro administrativo de pases y el aviso de plazos, de M2).
 - [ ] Índices de B2 creados (✅ V16) y bandejas medidas con volumen real.
-- [ ] Matriz de autorización automatizada en verde.
+- [x] Matriz de autorización automatizada en verde (`MatrizAutorizacionTest`: perfil × endpoint, sin sesión, sin CSRF y cabeceras).
 - [ ] HTTPS, cookies seguras, CSP y SRI configurados.
 - [ ] Respaldos de la base y de la carpeta de PDF probados con una restauración real.
 - [ ] Contraseña de producción rotada; credenciales fuera del repositorio (ya resuelto con `application-local.properties`).

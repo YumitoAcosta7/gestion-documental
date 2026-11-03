@@ -46,6 +46,8 @@ public class AdministracionController {
             model.addAttribute("seleccionado", administracionService.obtenerUsuario(usuarioId, admin));
             model.addAttribute("asignaciones", administracionService.asignacionesDe(usuarioId, admin));
         }
+        model.addAttribute("pendientes", administracionService.pendientesDeAprobacion(admin));
+        model.addAttribute("pasesTrabados", documentoService.pasesTrabados(admin));
         model.addAttribute("auditoria", administracionService.auditoriaReciente(admin));
         return "admin";
     }
@@ -114,9 +116,11 @@ public class AdministracionController {
                           @RequestParam("actoAdministrativo") String actoAdministrativo,
                           Authentication auth, RedirectAttributes ra) {
         try {
-            administracionService.crearAsignacion(id, rol, ambitoId, incluyeSubordinadas, desde, hasta, esSuplencia,
+            var a = administracionService.crearAsignacion(id, rol, ambitoId, incluyeSubordinadas, desde, hasta, esSuplencia,
                     titularId, actoAdministrativo, actual(auth));
-            ra.addFlashAttribute("mensajeExito", esSuplencia ? "Suplencia registrada." : "Asignación registrada.");
+            ra.addFlashAttribute("mensajeExito", a.isPendiente()
+                    ? "Solicitud registrada. Es una asignación sensible: no rige hasta que la apruebe otro administrador."
+                    : esSuplencia ? "Suplencia registrada." : "Asignación registrada.");
         } catch (IllegalArgumentException | IllegalStateException e) {
             ra.addFlashAttribute("error", e.getMessage());
         }
@@ -133,6 +137,44 @@ public class AdministracionController {
             ra.addFlashAttribute("error", e.getMessage());
         }
         return "redirect:/admin/usuarios?usuarioId=" + usuarioId;
+    }
+
+    // Doble control (auditoría C2): otro administrador aprueba o rechaza las asignaciones sensibles
+    @PostMapping("/asignaciones/{id}/aprobar")
+    public String aprobar(@PathVariable("id") Long id, Authentication auth, RedirectAttributes ra) {
+        try {
+            var a = administracionService.aprobarAsignacion(id, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Asignación aprobada: " + a.getUsuario().getUsername() + " ya tiene " + a.getRol() + ".");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios";
+    }
+
+    @PostMapping("/asignaciones/{id}/rechazar")
+    public String rechazar(@PathVariable("id") Long id, @RequestParam("motivo") String motivo,
+                           Authentication auth, RedirectAttributes ra) {
+        try {
+            administracionService.rechazarAsignacion(id, motivo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Solicitud rechazada.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios";
+    }
+
+    // Auditoría M2: retiro de un pase que nadie puede recibir
+    @PostMapping("/pases/{id}/retirar")
+    public String retirarPase(@PathVariable("id") Long id, @RequestParam("motivo") String motivo,
+                              Authentication auth, RedirectAttributes ra) {
+        try {
+            var pase = documentoService.retirarPaseTrabado(id, motivo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Pase retirado del expediente " + pase.getDocumento().getCodigoCuti()
+                    + ". La dependencia emisora puede derivarlo de nuevo.");
+        } catch (IllegalArgumentException | IllegalStateException | org.springframework.security.access.AccessDeniedException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios";
     }
 
     // La contraseña temporal se muestra una sola vez (flash): no queda en ningún registro

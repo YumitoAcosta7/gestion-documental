@@ -26,7 +26,26 @@ class ArchivoServiceTest {
 
     private ArchivoService servicio;
 
-    private static final byte[] PDF_VALIDO = "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n".getBytes(StandardCharsets.US_ASCII);
+    // Un PDF real de una página: desde la auditoría B3 el archivo se abre y se analiza con PDFBox
+    private static final byte[] PDF_VALIDO = pdfReal(0);
+
+    // relleno: bytes de contenido sin comprimir, para obtener un archivo grande
+    static byte[] pdfReal(int relleno) {
+        try (var doc = new org.apache.pdfbox.pdmodel.PDDocument()) {
+            var pagina = new org.apache.pdfbox.pdmodel.PDPage();
+            if (relleno > 0) {
+                byte[] espacios = new byte[relleno];
+                java.util.Arrays.fill(espacios, (byte) ' ');
+                pagina.setContents(new org.apache.pdfbox.pdmodel.common.PDStream(doc, new java.io.ByteArrayInputStream(espacios)));
+            }
+            doc.addPage(pagina);
+            var salida = new java.io.ByteArrayOutputStream();
+            doc.save(salida, org.apache.pdfbox.pdfwriter.compress.CompressParameters.NO_COMPRESSION);
+            return salida.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @BeforeEach
     void preparar() {
@@ -67,10 +86,8 @@ class ArchivoServiceTest {
 
     @Test
     void pdfGrandeConCierreAlFinalSeAcepta() {
-        byte[] grande = new byte[3 * 1024 * 1024];
-        System.arraycopy(PDF_VALIDO, 0, grande, 0, 9);                                  // cabecera
-        byte[] cierre = "\n%%EOF\n".getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(cierre, 0, grande, grande.length - cierre.length, cierre.length); // cierre
+        byte[] grande = pdfReal(3 * 1024 * 1024);   // el cierre queda a más de 3 MB del comienzo
+        assertTrue(grande.length > 3 * 1024 * 1024);
         assertDoesNotThrow(() -> servicio.validarPdf(pdf("grande.pdf", grande)));
     }
 

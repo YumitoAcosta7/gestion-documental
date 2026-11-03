@@ -54,6 +54,24 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
     """)
     boolean existePaseTramitePendiente(@Param("documentoId") Long documentoId);
 
+    // Todos los pases esperando acuse, los más viejos primero (auditoría M2: panel de pases trabados)
+    @Query("""
+        SELECT a FROM ActuacionDocumento a JOIN FETCH a.documento JOIN FETCH a.dependenciaEmisora
+        LEFT JOIN FETCH a.dependenciaReceptoraPase
+        WHERE a.tipoActuacion = 'PASE_INTERNO' AND a.anulada = false AND a.paseConfirmado = false
+        ORDER BY a.fechaHoraActuacion
+    """)
+    List<ActuacionDocumento> findPasesPendientes();
+
+    // Pases esperando acuse emitidos por dependencias del ámbito del usuario o por la suya (aviso de plazos)
+    @Query(value = DocumentoRepository.CTE_AMBITO + """
+        SELECT a.* FROM actuaciones_documento a
+         WHERE a.tipo_actuacion = 'PASE_INTERNO' AND NOT a.anulada AND NOT a.pase_confirmado
+           AND (a.dependencia_emisora_id IN (SELECT id FROM deps) OR a.dependencia_emisora_id IN (SELECT id FROM propia))
+         ORDER BY a.fecha_hora_actuacion
+        """, nativeQuery = true)
+    List<ActuacionDocumento> findPasesPendientesEmitidos(@Param("usuarioId") Integer usuarioId);
+
     // Último pase vigente (no anulado) recibido por la dependencia: base de la devolución
     ActuacionDocumento findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(
             Long documentoId, Integer dependenciaReceptoraId);

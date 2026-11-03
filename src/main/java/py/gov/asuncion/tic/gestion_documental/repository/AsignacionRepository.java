@@ -28,6 +28,14 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Long> {
     """)
     List<Asignacion> findHistorial(@Param("usuarioId") Integer usuarioId);
 
+    // Asignaciones sensibles esperando la aprobación de un segundo administrador (auditoría C2)
+    @Query("""
+        SELECT a FROM Asignacion a JOIN FETCH a.usuario JOIN FETCH a.dependenciaAmbito LEFT JOIN FETCH a.creadaPor
+        WHERE a.estadoAprobacion = 'PENDIENTE'
+        ORDER BY a.fechaHoraCreacion
+    """)
+    List<Asignacion> findPendientesDeAprobacion();
+
     // Cuántos usuarios activos tienen hoy el rol ADMIN_SISTEMA: nunca debe quedar en cero
     @Query("""
         SELECT COUNT(DISTINCT a.usuario.id) FROM Asignacion a
