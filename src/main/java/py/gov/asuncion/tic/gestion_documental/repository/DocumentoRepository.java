@@ -23,8 +23,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     long countByPrioridadAndEstadoActualNotIn(Prioridad prioridad, java.util.Collection<EstadoDocumento> estados);
 
     // Método para obtener los documentos emitidos/creados por tu propia dependencia
-    // Los 200 más recientes (auditoría B2: las listas de la pantalla no crecen sin límite)
-    List<Documento> findTop200ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
+    // Los 50 más recientes (auditoría B2: las listas de la pantalla no crecen sin límite)
+    List<Documento> findTop50ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
 
     // 🔒 Bloquea la fila del expediente hasta el fin de la transacción (SELECT ... FOR UPDATE).
     // Serializa las operaciones simultáneas sobre un mismo expediente (derivar, anular, confirmar...).
@@ -128,10 +128,10 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
            nativeQuery = true)
     List<Long> idsAccesibles(@Param("usuarioId") Integer usuarioId, @Param("ids") java.util.Collection<Long> ids);
 
-    // Historial de finalizados: los 200 más recientes que el usuario puede ver (auditoría B2: la lista
+    // Historial de finalizados: los 50 más recientes que el usuario puede ver (auditoría B2: la lista
     // ya no crece sin límite; los anteriores se encuentran con el buscador)
     @Query(value = CTE_AMBITO + CTE_CONJUNTOS + "SELECT d.* FROM documentos d WHERE d.estado_actual = 'FINALIZADO' AND "
-                 + EN_ACC + " ORDER BY d.fecha_hora_salida DESC NULLS LAST, d.id DESC LIMIT 200", nativeQuery = true)
+                 + EN_ACC + " ORDER BY d.fecha_hora_salida DESC NULLS LAST, d.id DESC LIMIT 50", nativeQuery = true)
     List<Documento> findFinalizadosAccesibles(@Param("usuarioId") Integer usuarioId);
 
     // Máximo de resultados del buscador: para más, el usuario afina los filtros

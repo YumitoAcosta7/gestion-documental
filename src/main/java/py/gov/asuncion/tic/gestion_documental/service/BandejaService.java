@@ -63,6 +63,14 @@ public class BandejaService {
 
     private static final String CTE = DocumentoRepository.CTE_AMBITO + DocumentoRepository.CTE_CONJUNTOS;
 
+    // La condición de una bandeja escrita sobre los LEFT JOIN del resumen
+    static String sobreCruces(String condicion) {
+        return condicion
+                .replace(DocumentoRepository.EN_ACC, "acc.id IS NOT NULL")
+                .replace("d.id IN (SELECT id FROM recibir)", "recibir.id IS NOT NULL")
+                .replace("d.id IN (SELECT id FROM emitio)", "emitio.id IS NOT NULL");
+    }
+
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -92,22 +100,27 @@ public class BandejaService {
 
     // Todo en una sola consulta con COUNT(*) FILTER (auditoría B2). Todas las bandejas son de expedientes
     // activos (al cerrar un expediente se anulan sus pases pendientes), así que se recorre solo esos.
+    // Los conjuntos grandes (acc, recibir, emitio) se cruzan con LEFT JOIN: un "IN (SELECT ...)" dentro de
+    // FILTER no siempre usa una tabla hash y, con decenas de miles de expedientes, recorre el conjunto en
+    // cada fila. Las condiciones son las mismas de cada bandeja, escritas sobre esos cruces.
     // Las claves son nombres: Thymeleaf no indexa mapas con claves enum.
     public Resumen resumen(Usuario usuario) {
         StringBuilder sql = new StringBuilder(CTE).append("SELECT ");
         List<Bandeja> conContador = java.util.Arrays.stream(Bandeja.values()).filter(b -> b != Bandeja.TODOS).toList();
         for (Bandeja b : conContador) {
-            sql.append("COUNT(*) FILTER (WHERE ").append(b.condicion).append("), ");
+            sql.append("COUNT(*) FILTER (WHERE ").append(sobreCruces(b.condicion)).append("), ");
         }
         // Indicadores del panel: los expedientes activos que el usuario puede ver, por estado
         sql.append("""
-                COUNT(*) FILTER (WHERE d.accesible AND d.estado_actual IN ('INGRESADO', 'EN_REVISION')),
-                COUNT(*) FILTER (WHERE d.accesible AND d.estado_actual = 'EN_ESPERA_INFORME'),
-                COUNT(*) FILTER (WHERE d.accesible AND d.estado_actual = 'PENDIENTE_SALIDA'),
-                COUNT(*) FILTER (WHERE d.accesible AND d.prioridad = 'URGENTE')
-                  FROM (SELECT d.*, d.id IN (SELECT id FROM acc) AS accesible
-                          FROM documentos d
-                         WHERE d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO')) d
+                COUNT(*) FILTER (WHERE acc.id IS NOT NULL AND d.estado_actual IN ('INGRESADO', 'EN_REVISION')),
+                COUNT(*) FILTER (WHERE acc.id IS NOT NULL AND d.estado_actual = 'EN_ESPERA_INFORME'),
+                COUNT(*) FILTER (WHERE acc.id IS NOT NULL AND d.estado_actual = 'PENDIENTE_SALIDA'),
+                COUNT(*) FILTER (WHERE acc.id IS NOT NULL AND d.prioridad = 'URGENTE')
+                  FROM documentos d
+                  LEFT JOIN acc ON acc.id = d.id
+                  LEFT JOIN recibir ON recibir.id = d.id
+                  LEFT JOIN emitio ON emitio.id = d.id
+                 WHERE d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO')
                 """);
         Object[] fila = (Object[]) entityManager.createNativeQuery(sql.toString())
                 .setParameter("usuarioId", usuario.getId())

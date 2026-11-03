@@ -161,7 +161,7 @@ public class HomeController {
 
         boolean conDependencia = usuario != null && usuario.getDependencia() != null;
         model.addAttribute("documentosSalida", c.medir("salidas", () -> conDependencia
-                ? documentoRepository.findTop200ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
+                ? documentoRepository.findTop50ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
                 : List.<Documento>of()));
 
         model.addAttribute("dependenciasAgrupadas", c.medir("dependencias", () -> documentoService.obtenerDependenciasAgrupadas()));
