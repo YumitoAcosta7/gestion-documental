@@ -69,6 +69,53 @@ public class ArchivoService {
         } catch (IOException e) {
             throw new IllegalArgumentException("No se pudo leer el archivo adjunto: " + e.getMessage());
         }
+        try {
+            String contenidoActivo = buscarContenidoActivo(archivo.getBytes());
+            if (contenidoActivo != null) {
+                throw new IllegalArgumentException("El PDF '" + nombre + "' contiene código ejecutable (" + contenidoActivo
+                        + ") y no se acepta. Escanee el documento o expórtelo de nuevo como PDF sin formularios ni scripts.");
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("No se pudo leer el archivo adjunto: " + e.getMessage());
+        }
+    }
+
+    // Auditoría B3: los PDF se muestran dentro del sitio, así que no se aceptan los que traen JavaScript
+    // o acciones que abren programas. Un escaneo o una exportación común no los tiene.
+    private static final java.util.Set<String> NOMBRES_ACTIVOS = java.util.Set.of("JavaScript", "JS", "Launch");
+
+    // Nombres PDF (/Nombre), con los caracteres escritos como #xx ya decodificados
+    private static final java.util.regex.Pattern NOMBRE_PDF = java.util.regex.Pattern.compile("/([^\\s/<>\\[\\]()%{}]+)");
+
+    // Devuelve el primer nombre de contenido activo que aparece en el archivo, o null.
+    // Límite conocido: no se miran los objetos guardados dentro de flujos comprimidos (ObjStm).
+    static String buscarContenidoActivo(byte[] contenido) {
+        java.util.regex.Matcher m = NOMBRE_PDF.matcher(new String(contenido, StandardCharsets.ISO_8859_1));
+        while (m.find()) {
+            String nombre = decodificarNombre(m.group(1));
+            if (NOMBRES_ACTIVOS.contains(nombre)) {
+                return "/" + nombre;
+            }
+        }
+        return null;
+    }
+
+    private static String decodificarNombre(String nombre) {
+        if (nombre.indexOf('#') < 0) {
+            return nombre;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < nombre.length(); i++) {
+            char c = nombre.charAt(i);
+            if (c == '#' && i + 2 < nombre.length()
+                    && HexFormat.isHexDigit(nombre.charAt(i + 1)) && HexFormat.isHexDigit(nombre.charAt(i + 2))) {
+                sb.append((char) Integer.parseInt(nombre.substring(i + 1, i + 3), 16));
+                i += 2;
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     // Valida y guarda el PDF calculando su huella SHA-256 en la misma lectura

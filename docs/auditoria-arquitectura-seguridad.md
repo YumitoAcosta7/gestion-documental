@@ -263,7 +263,10 @@ CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id D
 ```
 
 **B3 — PDF y cabeceras.** ✅ **Corregido en lo principal (03/11/2026).**
-- Los PDF se siguen viendo en el navegador, pero con `Content-Security-Policy: sandbox`: quedan aislados del origen de la aplicación.
+- Los PDF se siguen viendo en el navegador.
+  - Al subirlos se rechazan los que traen `/JavaScript`, `/JS` o `/Launch`, también escritos con `#xx`.
+  - No se usa `Content-Security-Policy: sandbox`: Chrome y Edge no muestran un PDF aislado (se probó: "Error al cargar el documento PDF").
+  - *Límite:* el control no mira los objetos guardados dentro de flujos comprimidos (`ObjStm`). Para cubrirlos hace falta un analizador de PDF, como Apache PDFBox, o servir los PDF desde otro dominio.
 - Hay CSP general:
   - solo recursos propios y de cdn.jsdelivr.net;
   - `object-src 'none'`, `base-uri`, `form-action` y `frame-ancestors` limitados al propio sitio.

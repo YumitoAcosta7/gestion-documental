@@ -82,6 +82,26 @@ class HallazgosBajosTest {
     }
 
     @Test
+    void seRechazanLosPdfConCodigoEjecutable() {
+        assertEquals("/JavaScript", ArchivoService.buscarContenidoActivo(
+                pdf("1 0 obj << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >> endobj")));
+        assertEquals("/Launch", ArchivoService.buscarContenidoActivo(pdf("<< /S /Launch /F (cmd.exe) >>")));
+        // Nombre disfrazado con caracteres #xx
+        assertEquals("/JavaScript", ArchivoService.buscarContenidoActivo(pdf("<< /S /J#61vaScript >>")));
+    }
+
+    @Test
+    void unPdfEscaneadoComunSeAcepta() {
+        assertNull(ArchivoService.buscarContenidoActivo(pdf(
+                "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj 3 0 obj << /Type /XObject /Subtype /Image "
+                + "/Filter /DCTDecode /JSize 10 >> endobj")), "/JSize no es /JS");
+    }
+
+    private static byte[] pdf(String cuerpo) {
+        return ("%PDF-1.7\n" + cuerpo + "\n%%EOF\n").getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+    }
+
+    @Test
     void sinExpedientesNoSeConsulta() {
         Usuario usuario = new Usuario();
         usuario.setId(5);

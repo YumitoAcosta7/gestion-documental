@@ -302,9 +302,11 @@ public class HomeController {
         }
     }
 
-    // Auditoría B3: el PDF se muestra en el navegador, pero aislado del origen de la aplicación
-    // (CSP sandbox): si trajera JavaScript, no podría usar la sesión ni leer otras páginas
-    static final String POLITICA_PDF = "sandbox";
+    // Auditoría B3: los PDF no llevan la CSP general (object-src 'none' impediría el visor del navegador)
+    // ni "sandbox" (Chrome y Edge no muestran un PDF aislado). La protección está en la carga:
+    // ArchivoService rechaza los PDF con JavaScript o acciones que abren programas. Esta política solo
+    // impide que otro sitio muestre el PDF dentro de la suya.
+    static final String POLITICA_PDF = "frame-ancestors 'self'";
 
     private ResponseEntity<Resource> responderPdf(java.nio.file.Path ruta, String nombre) {
         if (ruta == null) {
