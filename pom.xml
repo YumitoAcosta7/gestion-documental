@@ -72,6 +72,12 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Usuarios simulados y token CSRF en las pruebas de autorización (MatrizAutorizacionTest) -->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
 		
 		<!-- Spring Security -->
 		<dependency>
