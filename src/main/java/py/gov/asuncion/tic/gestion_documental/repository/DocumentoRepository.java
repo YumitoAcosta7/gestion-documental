@@ -139,8 +139,9 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     int MAXIMO_RESULTADOS_BUSQUEDA = 500;
 
     // El texto también busca en el bibliorato (código, descripción o texto histórico).
-    // Solo devuelve expedientes que el usuario puede ver: el ámbito se filtra en la misma consulta (auditoría B2)
-    @Query(value = CTE_AMBITO + CTE_CONJUNTOS + """
+    // Solo devuelve expedientes que el usuario puede ver: el ámbito se filtra en la misma consulta (auditoría B2),
+    // expediente por expediente sobre los que coinciden, en orden de fecha, hasta juntar el máximo
+    @Query(value = CTE_AMBITO + """
         SELECT d.* FROM documentos d LEFT JOIN biblioratos b ON b.id = d.bibliorato_id
          WHERE (CAST(:texto AS text) IS NULL
                 OR d.codigo_cuti ILIKE '%' || CAST(:texto AS text) || '%'
@@ -156,7 +157,7 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
            AND (CAST(:biblioratoId AS integer) IS NULL OR b.id = CAST(:biblioratoId AS integer))
            AND (CAST(:fechaDesde AS timestamp) IS NULL OR d.fecha_hora_ingreso >= CAST(:fechaDesde AS timestamp))
            AND (CAST(:fechaHasta AS timestamp) IS NULL OR d.fecha_hora_ingreso <= CAST(:fechaHasta AS timestamp))
-           AND\s""" + EN_ACC + """
+           AND\s""" + DOCUMENTO_ACCESIBLE + """
 
          ORDER BY d.fecha_hora_ingreso DESC, d.id DESC
          LIMIT\s""" + MAXIMO_RESULTADOS_BUSQUEDA, nativeQuery = true)
