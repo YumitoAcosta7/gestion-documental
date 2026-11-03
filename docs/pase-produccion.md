@@ -188,4 +188,7 @@ Después, arrancar la versión anterior de la aplicación.
   - consola sin errores;
   - administración con 18 feriados;
   - panel de pases con **8 pases del piloto de la DTIC** (agosto y septiembre de 2026, de 33 a 58 días hábiles sin acuse). Los resuelven la Coordinación de TIC y las dependencias receptoras: confirmar, rechazar o retirar.
-- **Quedan:** los pasos 6 (segundo administrador), 7 (feriados trasladables) y 8 (contraseñas).
+- **Paso 6, 13:42 a 13:43:** segunda administradora `zlobo` (Zaimy Lobo), con `ADMIN_SISTEMA` sobre la Intendencia y sus subordinadas.
+  - La pidió `juan.acosta` (asignación 12) y la aprobó el DBA con `aprobar_asignacion.sh`.
+  - En la auditoría: `SOLICITUD_ASIGNACION` y `APROBACION_ASIGNACION_DBA`.
+- **Quedan:** los pasos 7 (feriados trasladables) y 8 (contraseñas).
