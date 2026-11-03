@@ -74,6 +74,9 @@ public class DocumentoService {
     @Autowired
     private AuditoriaSistemaRepository auditoriaSistemaRepository;
 
+    @Autowired
+    private FeriadoService feriadoService;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
 
@@ -1493,11 +1496,13 @@ public class DocumentoService {
                 .map(ActuacionDocumento::getDependenciaReceptoraPase).filter(java.util.Objects::nonNull)
                 .map(Dependencia::getId).distinct().toList()));
         LocalDate hoy = LocalDate.now();
+        // pendientes viene ordenada por fecha: el primero es el más viejo
+        Set<LocalDate> feriados = feriadoService.feriadosEntre(pendientes.get(0).getFechaHoraActuacion().toLocalDate(), hoy);
         List<PaseDemorado> resultado = new ArrayList<>();
         for (ActuacionDocumento a : pendientes) {
             Dependencia receptora = a.getDependenciaReceptoraPase();
             boolean sinReceptor = receptora == null || Boolean.FALSE.equals(receptora.getActivo()) || !conReceptor.contains(receptora.getId());
-            long dias = diasHabilesEntre(a.getFechaHoraActuacion().toLocalDate(), hoy);
+            long dias = FeriadoService.diasHabilesEntre(a.getFechaHoraActuacion().toLocalDate(), hoy, feriados);
             if (sinReceptor || dias >= slaDiasCritico) {
                 resultado.add(new PaseDemorado(a.getId(), a.getDocumento().getId(), a.getDocumento().getCodigoCuti(),
                         a.getDependenciaEmisora().getNombreVisible(), receptora != null ? receptora.getNombreVisible() : "(sin receptora)",
@@ -1675,13 +1680,24 @@ public class DocumentoService {
         }
 
         LocalDate hoy = LocalDate.now();
+        Map<Long, LocalDate> bases = new HashMap<>();
         for (Documento d : activos) {
             LocalDateTime base = d.getFechaHoraIngreso();
             LocalDateTime mov = ultimoMovimiento.get(d.getId());
             if (mov != null && (base == null || mov.isAfter(base))) {
                 base = mov;
             }
-            long dias = base != null ? diasHabilesEntre(base.toLocalDate(), hoy) : 0;
+            if (base != null) {
+                bases.put(d.getId(), base.toLocalDate());
+            }
+        }
+        // Los feriados de todo el período en una sola consulta
+        Set<LocalDate> feriados = bases.values().stream().min(LocalDate::compareTo)
+                .map(desde -> feriadoService.feriadosEntre(desde, hoy)).orElse(Set.of());
+
+        for (Documento d : activos) {
+            LocalDate base = bases.get(d.getId());
+            long dias = base != null ? FeriadoService.diasHabilesEntre(base, hoy, feriados) : 0;
 
             boolean urgente = d.getPrioridad() == Prioridad.URGENTE;
             int advertencia = urgente ? slaUrgenteDiasAdvertencia : slaDiasAdvertencia;
@@ -1692,15 +1708,9 @@ public class DocumentoService {
         return resultado;
     }
 
-    // Días hábiles (lunes a viernes) transcurridos. No contempla feriados.
+    // Días hábiles (lunes a viernes) transcurridos, sin feriados. El cálculo con feriados está en FeriadoService.
     static long diasHabilesEntre(LocalDate desde, LocalDate hasta) {
-        long dias = 0;
-        for (LocalDate f = desde.plusDays(1); !f.isAfter(hasta); f = f.plusDays(1)) {
-            if (f.getDayOfWeek() != java.time.DayOfWeek.SATURDAY && f.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
-                dias++;
-            }
-        }
-        return dias;
+        return FeriadoService.diasHabilesEntre(desde, hasta, Set.of());
     }
 
     // 🏆 Carga segmentada de Documentos Finalizados por Rol/Dependencia

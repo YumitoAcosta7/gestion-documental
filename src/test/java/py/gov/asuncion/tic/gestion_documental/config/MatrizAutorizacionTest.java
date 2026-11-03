@@ -46,6 +46,7 @@ class MatrizAutorizacionTest {
     @MockitoBean ArchivoService archivoService;
     @MockitoBean BiblioratoService biblioratoService;
     @MockitoBean AdministracionService administracionService;
+    @MockitoBean FeriadoService feriadoService;
     @MockitoBean DocumentoRepository documentoRepository;
     @MockitoBean AdjuntoDocumentoRepository adjuntoDocumentoRepository;
 
@@ -64,6 +65,7 @@ class MatrizAutorizacionTest {
             new Puerta(HttpMethod.GET, "/admin/usuarios", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             new Puerta(HttpMethod.POST, "/admin/asignaciones/1/aprobar", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             new Puerta(HttpMethod.POST, "/admin/pases/1/retirar", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
+            new Puerta(HttpMethod.POST, "/admin/feriados", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             new Puerta(HttpMethod.POST, "/documentos/guardar", EnumSet.of(Accion.REGISTRAR_INGRESO)),
             new Puerta(HttpMethod.POST, "/documentos/salida", EnumSet.of(Accion.REGISTRAR_SALIDA)),
             new Puerta(HttpMethod.POST, "/documentos/salida-directa", EnumSet.of(Accion.REGISTRAR_SALIDA)),

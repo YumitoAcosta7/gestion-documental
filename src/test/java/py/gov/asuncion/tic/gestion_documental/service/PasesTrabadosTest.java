@@ -33,6 +33,7 @@ class PasesTrabadosTest {
     @Mock AuditoriaService auditoriaService;
     @Mock AuditoriaSistemaRepository auditoriaSistemaRepository;
     @Mock CanalService canalService;
+    @Mock FeriadoService feriadoService;
     @InjectMocks DocumentoService servicio;
 
     private final Usuario admin = new Usuario();

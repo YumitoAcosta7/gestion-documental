@@ -11,6 +11,7 @@ import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 import py.gov.asuncion.tic.gestion_documental.service.AdministracionService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
+import py.gov.asuncion.tic.gestion_documental.service.FeriadoService;
 
 import java.time.LocalDate;
 
@@ -22,12 +23,14 @@ public class AdministracionController {
 
     private final AdministracionService administracionService;
     private final DocumentoService documentoService;
+    private final FeriadoService feriadoService;
     private final UsuarioRepository usuarioRepository;
 
     public AdministracionController(AdministracionService administracionService, DocumentoService documentoService,
-                                    UsuarioRepository usuarioRepository) {
+                                    FeriadoService feriadoService, UsuarioRepository usuarioRepository) {
         this.administracionService = administracionService;
         this.documentoService = documentoService;
+        this.feriadoService = feriadoService;
         this.usuarioRepository = usuarioRepository;
     }
 
@@ -48,6 +51,7 @@ public class AdministracionController {
         }
         model.addAttribute("pendientes", administracionService.pendientesDeAprobacion(admin));
         model.addAttribute("pasesTrabados", documentoService.pasesTrabados(admin));
+        model.addAttribute("feriados", feriadoService.calendario(admin));
         model.addAttribute("auditoria", administracionService.auditoriaReciente(admin));
         return "admin";
     }
@@ -161,6 +165,31 @@ public class AdministracionController {
             ra.addFlashAttribute("error", e.getMessage());
         }
         return "redirect:/admin/usuarios";
+    }
+
+    // 📅 Calendario de feriados (días que no cuentan para los plazos)
+    @PostMapping("/feriados")
+    public String agregarFeriado(@RequestParam("fecha") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+                                 @RequestParam("descripcion") String descripcion, Authentication auth, RedirectAttributes ra) {
+        try {
+            feriadoService.agregar(fecha, descripcion, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Feriado agregado.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios#feriados";
+    }
+
+    @PostMapping("/feriados/{fecha}/baja")
+    public String quitarFeriado(@PathVariable("fecha") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+                                Authentication auth, RedirectAttributes ra) {
+        try {
+            feriadoService.quitar(fecha, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Feriado quitado.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios#feriados";
     }
 
     // Auditoría M2: retiro de un pase que nadie puede recibir
