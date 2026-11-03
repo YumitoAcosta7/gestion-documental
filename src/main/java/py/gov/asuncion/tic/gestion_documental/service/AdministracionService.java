@@ -183,6 +183,13 @@ public class AdministracionService {
     // Cualquier usuario cambia su propia contraseña (obligatorio tras un alta o un reseteo)
     @Transactional
     public void cambiarContrasenaPropia(Usuario usuario, String actual, String nueva, String repetida) {
+        cambiarContrasenaPropia(usuario, actual, nueva, repetida, null);
+    }
+
+    // sesionActual: la sesión desde la que se cambia, que sigue abierta. Las demás del usuario se cierran:
+    // si alguien conocía la contraseña anterior y había entrado, queda afuera.
+    @Transactional
+    public void cambiarContrasenaPropia(Usuario usuario, String actual, String nueva, String repetida, String sesionActual) {
         Usuario u = usuarioRepository.findById(usuario.getId())
                 .orElseThrow(() -> new IllegalStateException("Usuario no encontrado."));
         if (actual == null || !passwordEncoder.matches(actual, u.getPasswordHash())) {
@@ -200,7 +207,9 @@ public class AdministracionService {
         u.setPasswordHash(passwordEncoder.encode(nueva));
         u.setDebeCambiarContrasena(false);
         usuarioRepository.save(u);
-        auditar(u, "CAMBIO_CONTRASENA", "USUARIO", u.getId().longValue(), u.getUsername() + " cambió su contraseña");
+        int cerradas = expirarSesiones(u.getUsername(), sesionActual);
+        auditar(u, "CAMBIO_CONTRASENA", "USUARIO", u.getId().longValue(), u.getUsername() + " cambió su contraseña"
+                + (cerradas > 0 ? "; se cerraron " + cerradas + " sesiones abiertas en otros equipos" : ""));
     }
 
     // =====================================================================
@@ -426,11 +435,23 @@ public class AdministracionService {
 
     // Cierra todas las sesiones abiertas del usuario (auditoría A2): la siguiente petición vuelve al inicio de sesión
     private void expirarSesiones(String username) {
+        expirarSesiones(username, null);
+    }
+
+    // Cierra las sesiones del usuario salvo la indicada (null: todas). Devuelve cuántas cerró.
+    private int expirarSesiones(String username, String salvoSesion) {
+        int cerradas = 0;
         for (Object principal : sessionRegistry.getAllPrincipals()) {
             if (principal instanceof UserDetails detalle && detalle.getUsername().equals(username)) {
-                sessionRegistry.getAllSessions(principal, false).forEach(org.springframework.security.core.session.SessionInformation::expireNow);
+                for (var sesion : sessionRegistry.getAllSessions(principal, false)) {
+                    if (!sesion.getSessionId().equals(salvoSesion)) {
+                        sesion.expireNow();
+                        cerradas++;
+                    }
+                }
             }
         }
+        return cerradas;
     }
 
     private void exigirAdministrador(Usuario admin) {

@@ -33,6 +33,7 @@ class PasesTrabadosTest {
     @Mock AuditoriaService auditoriaService;
     @Mock AuditoriaSistemaRepository auditoriaSistemaRepository;
     @Mock CanalService canalService;
+    @Mock FeriadoService feriadoService;
     @InjectMocks DocumentoService servicio;
 
     private final Usuario admin = new Usuario();
@@ -71,16 +72,38 @@ class PasesTrabadosTest {
     }
 
     @Test
-    void elPanelMuestraLosTrabadosYLosFueraDePlazo() {
-        List<ActuacionDocumento> pendientes = List.of(
-                pase(1, sinUsuarios, 0),   // trabado aunque sea de hoy
-                pase(2, dgaf, 30),         // fuera de plazo
-                pase(3, dgaf, 0));         // en plazo y con receptor: no se muestra
-        when(actuacionRepository.findPasesPendientes()).thenReturn(pendientes);
-        var lista = servicio.pasesTrabados(admin);
-        assertEquals(List.of(1L, 2L), lista.stream().map(DocumentoService.PaseDemorado::actuacionId).toList());
-        assertTrue(lista.get(0).sinReceptor());
-        assertFalse(lista.get(1).sinReceptor());
+    void elPanelPideALaBaseLosFueraDePlazoYLosQueNadieRecibe() {
+        // Hay pases pendientes hacia la DGAF (con receptor) y hacia una unidad sin usuarios
+        when(actuacionRepository.receptorasDePasesPendientes(1, true)).thenReturn(List.of(101, 90));
+        when(actuacionRepository.contarPasesDemorados(eq(1), eq(true), any(), eq(List.of(90)))).thenReturn(250L);
+        List<ActuacionDocumento> primeros = List.of(pase(2, dgaf, 30), pase(1, sinUsuarios, 0));
+        when(actuacionRepository.pasesDemorados(eq(1), eq(true), any(), eq(List.of(90)), eq(200))).thenReturn(primeros);
+
+        var aviso = servicio.pasesTrabados(admin);
+
+        assertEquals(250, aviso.total(), "el total lo cuenta la base");
+        assertEquals(List.of(2L, 1L), aviso.pases().stream().map(DocumentoService.PaseDemorado::actuacionId).toList());
+        assertFalse(aviso.pases().get(0).sinReceptor());
+        assertTrue(aviso.pases().get(1).sinReceptor());
+    }
+
+    @Test
+    void sinPasesPendientesNoHayAviso() {
+        when(actuacionRepository.receptorasDePasesPendientes(anyInt(), anyBoolean())).thenReturn(List.of());
+        assertEquals(0, servicio.pasesEmitidosDemorados(admin).total());
+        verify(actuacionRepository, never()).pasesDemorados(anyInt(), anyBoolean(), any(), any(), anyInt());
+    }
+
+    @Test
+    void elPlazoSeCuentaEnDiasHabilesDescontandoFeriados() {
+        // Lunes 18 de mayo de 2026, plazo de 10 días hábiles. Sin feriados, vence con los del lunes 4;
+        // con el jueves 14 y viernes 15 (Independencia), retrocede dos días hábiles: jueves 30 de abril
+        java.time.LocalDate lunes = java.time.LocalDate.of(2026, 5, 18);
+        when(feriadoService.feriadosEntre(any(), any())).thenReturn(java.util.Set.of());
+        assertEquals(java.time.LocalDate.of(2026, 5, 4), servicio.inicioDelPlazoVencido(lunes));
+        when(feriadoService.feriadosEntre(any(), any())).thenReturn(
+                java.util.Set.of(java.time.LocalDate.of(2026, 5, 14), java.time.LocalDate.of(2026, 5, 15)));
+        assertEquals(java.time.LocalDate.of(2026, 4, 30), servicio.inicioDelPlazoVencido(lunes));
     }
 
     @Test

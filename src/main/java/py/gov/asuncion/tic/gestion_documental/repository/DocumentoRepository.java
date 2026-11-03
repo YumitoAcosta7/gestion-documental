@@ -23,7 +23,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     long countByPrioridadAndEstadoActualNotIn(Prioridad prioridad, java.util.Collection<EstadoDocumento> estados);
 
     // Método para obtener los documentos emitidos/creados por tu propia dependencia
-    List<Documento> findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
+    // Los 50 más recientes (auditoría B2: las listas de la pantalla no crecen sin límite)
+    List<Documento> findTop50ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
 
     // 🔒 Bloquea la fila del expediente hasta el fin de la transacción (SELECT ... FOR UPDATE).
     // Serializa las operaciones simultáneas sobre un mismo expediente (derivar, anular, confirmar...).
@@ -86,6 +87,37 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
                            OR (p.dependencia_receptora_pase_id IN (SELECT id FROM propia) AND NOT p.anulada))))
         """;
 
+    // 📦 Conjuntos de expedientes para las listas y contadores (auditoría B2, medido con 200.000 expedientes):
+    // en lugar de comprobar expediente por expediente con EXISTS, se arma una vez cada conjunto con los índices
+    // de origen, emisora y receptora, y las listas lo cruzan. Se agrega después de CTE_AMBITO; PostgreSQL solo
+    // calcula los que la consulta usa.
+    //   acc     = lo mismo que DOCUMENTO_ACCESIBLE (ámbito + propia dependencia)
+    //   recibir = con un pase esperando acuse dirigido al ámbito
+    //   emitio  = con alguna actuación emitida por el ámbito
+    String CTE_CONJUNTOS = """
+        , vistas AS (
+            SELECT id FROM deps UNION SELECT id FROM propia
+        ), acc AS (
+            SELECT d.id FROM documentos d WHERE d.dependencia_origen_id IN (SELECT id FROM vistas)
+            UNION
+            SELECT d.id FROM documentos d JOIN usuarios uc ON uc.id = d.usuario_carga_ingreso_id
+             WHERE uc.dependencia_id IN (SELECT id FROM deps)
+            UNION
+            SELECT a.documento_id FROM actuaciones_documento a WHERE a.dependencia_emisora_id IN (SELECT id FROM vistas)
+            UNION
+            SELECT a.documento_id FROM actuaciones_documento a
+             WHERE NOT a.anulada AND a.dependencia_receptora_pase_id IN (SELECT id FROM vistas)
+        ), recibir AS (
+            SELECT DISTINCT a.documento_id AS id FROM actuaciones_documento a
+             WHERE a.tipo_actuacion = 'PASE_INTERNO' AND NOT a.pase_confirmado AND NOT a.anulada
+               AND a.dependencia_receptora_pase_id IN (SELECT id FROM deps)
+        ), emitio AS (
+            SELECT DISTINCT a.documento_id AS id FROM actuaciones_documento a WHERE a.dependencia_emisora_id IN (SELECT id FROM deps)
+        )
+        """;
+
+    String EN_ACC = "d.id IN (SELECT id FROM acc)";
+
     @Query(value = CTE_AMBITO + "SELECT EXISTS (SELECT 1 FROM documentos d WHERE d.id = :documentoId AND " + DOCUMENTO_EN_AMBITO + ")",
            nativeQuery = true)
     boolean existeEnAmbito(@Param("usuarioId") Integer usuarioId, @Param("documentoId") Long documentoId);
@@ -96,17 +128,19 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
            nativeQuery = true)
     List<Long> idsAccesibles(@Param("usuarioId") Integer usuarioId, @Param("ids") java.util.Collection<Long> ids);
 
-    // Historial de finalizados: los 200 más recientes que el usuario puede ver (auditoría B2: la lista
-    // ya no crece sin límite; los anteriores se encuentran con el buscador)
+    // Historial de finalizados: los 50 más recientes que el usuario puede ver (auditoría B2: la lista
+    // ya no crece sin límite; los anteriores se encuentran con el buscador). Recorre los finalizados por fecha con
+    // el índice de V19 y comprueba el acceso de cada uno hasta juntar 50: no arma el conjunto completo.
     @Query(value = CTE_AMBITO + "SELECT d.* FROM documentos d WHERE d.estado_actual = 'FINALIZADO' AND "
-                 + DOCUMENTO_ACCESIBLE + " ORDER BY d.fecha_hora_salida DESC NULLS LAST, d.id DESC LIMIT 200", nativeQuery = true)
+                 + DOCUMENTO_ACCESIBLE + " ORDER BY d.fecha_hora_salida DESC NULLS LAST, d.id DESC LIMIT 50", nativeQuery = true)
     List<Documento> findFinalizadosAccesibles(@Param("usuarioId") Integer usuarioId);
 
     // Máximo de resultados del buscador: para más, el usuario afina los filtros
     int MAXIMO_RESULTADOS_BUSQUEDA = 500;
 
     // El texto también busca en el bibliorato (código, descripción o texto histórico).
-    // Solo devuelve expedientes que el usuario puede ver: el ámbito se filtra en la misma consulta (auditoría B2)
+    // Solo devuelve expedientes que el usuario puede ver: el ámbito se filtra en la misma consulta (auditoría B2),
+    // expediente por expediente sobre los que coinciden, en orden de fecha, hasta juntar el máximo
     @Query(value = CTE_AMBITO + """
         SELECT d.* FROM documentos d LEFT JOIN biblioratos b ON b.id = d.bibliorato_id
          WHERE (CAST(:texto AS text) IS NULL
@@ -123,7 +157,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
            AND (CAST(:biblioratoId AS integer) IS NULL OR b.id = CAST(:biblioratoId AS integer))
            AND (CAST(:fechaDesde AS timestamp) IS NULL OR d.fecha_hora_ingreso >= CAST(:fechaDesde AS timestamp))
            AND (CAST(:fechaHasta AS timestamp) IS NULL OR d.fecha_hora_ingreso <= CAST(:fechaHasta AS timestamp))
-           AND """ + DOCUMENTO_ACCESIBLE + """
+           AND\s""" + DOCUMENTO_ACCESIBLE + """
+
          ORDER BY d.fecha_hora_ingreso DESC, d.id DESC
          LIMIT\s""" + MAXIMO_RESULTADOS_BUSQUEDA, nativeQuery = true)
     List<Documento> buscarMulticriterio(

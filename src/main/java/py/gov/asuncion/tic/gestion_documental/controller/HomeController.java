@@ -101,22 +101,51 @@ public class HomeController {
         return "index";
     }
 
+    // ⏱️ Diagnóstico de rendimiento (solo si app.diagnostico.server-timing=true, perfil de pruebas):
+    // la respuesta lleva la cabecera estándar Server-Timing con lo que tardó cada parte de la pantalla
+    @org.springframework.beans.factory.annotation.Value("${app.diagnostico.server-timing:false}")
+    private boolean serverTiming;
+
+    private static final class Cronometro {
+        private final Map<String, Long> tiempos = new java.util.LinkedHashMap<>();
+
+        <T> T medir(String nombre, java.util.function.Supplier<T> paso) {
+            long inicio = System.nanoTime();
+            try {
+                return paso.get();
+            } finally {
+                tiempos.merge(nombre, (System.nanoTime() - inicio) / 1_000_000, Long::sum);
+            }
+        }
+
+        void medir(String nombre, Runnable paso) {
+            medir(nombre, () -> { paso.run(); return null; });
+        }
+
+        String cabecera() {
+            return tiempos.entrySet().stream().map(e -> e.getKey() + ";dur=" + e.getValue())
+                    .collect(java.util.stream.Collectors.joining(", "));
+        }
+    }
+
     // Datos comunes de la pantalla principal (bandejas, KPI, catálogos), para el inicio y la búsqueda
     private void cargarPantallaPrincipal(Model model, Usuario usuario, List<Documento> resultadosBusqueda,
                                          BandejaService.Bandeja bandeja, int pagina) {
+        Cronometro c = new Cronometro();
         model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
         model.addAttribute("usuarioLogueado", usuario);
-        model.addAttribute("rolesUsuario", politicaAcceso.descripcionRoles(usuario));
-        model.addAttribute("areaUsuario", usuario != null ? canalService.cabeceraDelUsuario(usuario) : null);
+        model.addAttribute("rolesUsuario", c.medir("roles", () -> politicaAcceso.descripcionRoles(usuario)));
+        model.addAttribute("areaUsuario", c.medir("area", () -> usuario != null ? canalService.cabeceraDelUsuario(usuario) : null));
 
         // 📥 Bandejas paginadas por ámbito, "Todos" incluida (auditoría B2)
         List<Documento> activos = List.of();
         BandejaService.Resumen resumen = null;
         if (usuario != null) {
-            Page<Documento> paginaBandeja = bandejaService.listar(usuario, bandeja, pagina);
+            resumen = c.medir("resumen", () -> bandejaService.resumen(usuario));
+            long total = resumen.bandejas().getOrDefault(bandeja.name(), 0L);
+            Page<Documento> paginaBandeja = c.medir("bandeja", () -> bandejaService.listar(usuario, bandeja, pagina, total));
             activos = paginaBandeja.getContent();
             model.addAttribute("paginaBandeja", paginaBandeja);
-            resumen = bandejaService.resumen(usuario);
         }
         model.addAttribute("bandejas", BandejaService.Bandeja.values());
         model.addAttribute("bandejaActual", bandeja);
@@ -124,19 +153,26 @@ public class HomeController {
         // Indicadores del panel: del ámbito del usuario, no de toda la institución
         model.addAttribute("metricas", resumen != null ? resumen.indicadores() : java.util.Map.of());
         // ⏳ Pases que emitió su ámbito y siguen sin acuse fuera de plazo, o que nadie puede recibir (auditoría M2)
-        model.addAttribute("pasesDemorados", documentoService.pasesEmitidosDemorados(usuario));
+        model.addAttribute("pasesDemorados", c.medir("demorados", () -> documentoService.pasesEmitidosDemorados(usuario)));
         model.addAttribute("documentos", activos);
-        agregarIndicadoresSla(model, activos, resultadosBusqueda);
-        agregarDatosArchivo(model, usuario);
-        model.addAttribute("documentosFinalizados", documentoService.obtenerDocumentosFinalizadosParaUsuario(usuario));
+        List<Documento> paraSla = activos;
+        c.medir("sla", () -> agregarIndicadoresSla(model, paraSla, resultadosBusqueda));
+        c.medir("archivo", () -> agregarDatosArchivo(model, usuario));
+        model.addAttribute("documentosFinalizados", c.medir("finalizados", () -> documentoService.obtenerDocumentosFinalizadosParaUsuario(usuario)));
 
         boolean conDependencia = usuario != null && usuario.getDependencia() != null;
-        model.addAttribute("documentosSalida", conDependencia
-                ? documentoRepository.findByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
-                : List.of());
+        model.addAttribute("documentosSalida", c.medir("salidas", () -> conDependencia
+                ? documentoRepository.findTop50ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
+                : List.<Documento>of()));
 
-        model.addAttribute("dependenciasAgrupadas", documentoService.obtenerDependenciasAgrupadas());
-        model.addAttribute("tiposDoc", documentoService.obtenerTiposDocumentoActivos());
+        model.addAttribute("dependenciasAgrupadas", c.medir("dependencias", () -> documentoService.obtenerDependenciasAgrupadas()));
+        model.addAttribute("tiposDoc", c.medir("tipos", () -> documentoService.obtenerTiposDocumentoActivos()));
+
+        if (serverTiming && org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()
+                instanceof org.springframework.web.context.request.ServletRequestAttributes atributos
+                && atributos.getResponse() != null) {
+            atributos.getResponse().setHeader("Server-Timing", c.cabecera());
+        }
     }
 
     /**

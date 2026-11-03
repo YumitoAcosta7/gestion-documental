@@ -107,7 +107,10 @@ Un `ADMIN_SISTEMA` puede asignarse a sí mismo `MESA_ENTRADA` sobre la Intendenc
 - Bloqueo de 15 minutos tras 5 intentos fallidos (`LimiteIntentosService`), sin revelar si el usuario existe.
 - El reseteo y la baja cierran las sesiones abiertas (`SessionRegistry`).
 - La sesión vence tras 30 minutos sin actividad.
-- **Queda:** contar también por IP, y que al cambiar la propia contraseña se cierren las otras sesiones.
+- **Bloqueo por IP:** 20 fallos con cualquier usuario en 15 minutos (`app.login.intentos-maximos-ip`) bloquean esa dirección 15 minutos.
+  - Un ingreso correcto no reinicia ese conteo.
+  - Detrás de un proxy inverso, hace falta `server.forward-headers-strategy=native` para ver la IP real.
+- Al cambiar la propia contraseña se cierran las sesiones abiertas en otros equipos.
 - Pruebas: `LimiteIntentosServiceTest` y `AdministracionServiceTest`.
 - El reseteo o el cambio de contraseña no cierran las otras sesiones del usuario: no hay `SessionRegistry`.
 - No hay límite de intentos de inicio de sesión ni bloqueo temporal.
@@ -258,7 +261,26 @@ Hoy hay **0 pases sin receptora en producción**, así que no hay exposición.
 - El buscador filtra el ámbito en la propia consulta y devuelve como máximo 500 resultados. El archivo físico verifica el acceso por lotes de 1000 (`idsAccesibles`).
 - El historial de finalizados muestra los 200 más recientes; los anteriores se encuentran con el buscador.
 - V16 crea los índices indicados abajo, más `dependencia_origen_id` y `usuarios.dependencia_id`.
-- Falta medir con volumen real (prueba 9 de la sección 3).
+- **Medición con volumen (03/11/2026).**
+  - Datos: 200 000 expedientes y 1 000 000 de actuaciones sintéticos (`db/pruebas/cargar_volumen.sh`).
+  - Usuario: mesa de la DTIC, que ve 55 635 expedientes activos. Los pases sintéticos van a dependencias al azar, así que la DTIC participa en el 28 % de los expedientes; con datos reales sería mucho menos, salvo en la Intendencia.
+  - Medición: cabecera `Server-Timing` por sección, solo con el perfil de pruebas.
+
+  | Parte | Antes | Después |
+  |---|---|---|
+  | Página principal completa | 7,6 s | 1,5 s |
+  | Lista de cada bandeja | hasta 0,9 s | 12 a 84 ms |
+  | Historial de finalizados | 0,7 s | 7 ms |
+  | Aviso de pases demorados | 1,8 s | 0,18 s |
+  | Contadores e indicadores | 4,7 s | ~1 s |
+
+  - Cambios:
+    - Los conjuntos de expedientes visibles, por recibir y emitidos se arman una vez, con índices (`CTE_CONJUNTOS`), en lugar de un `EXISTS` por expediente.
+    - Los contadores cruzan esos conjuntos con `LEFT JOIN` y dan el total de cada bandeja.
+    - Las listas recorren por fecha y comprueban el acceso hasta juntar la página.
+    - El aviso de pases lo filtra y cuenta la base.
+    - Finalizados y salidas muestran las 50 más recientes, y V19 agrega el índice de finalizados.
+  - *Pendiente:* los contadores rondan 1 s cuando el ámbito abarca decenas de miles de expedientes activos. Si hiciera falta, se pueden cargar después de mostrar la página.
 - La marca de demora crítica cuenta solo la página que se muestra.
 - Cada carga de pantalla ejecuta 5 consultas con `CTE_AMBITO`: la lista y los 4 contadores.
 - "Todos" no está paginada.
@@ -361,7 +383,7 @@ Todas sobre la base de pruebas, con `@PruebaConBaseDePruebas` y `@Transactional`
 - [x] A4: las respuestas a informes se vinculan a su pase; el cierre forzado anula los pases pendientes.
 - [ ] A5: la bitácora pertenece a otro rol y resiste `TRUNCATE`, `DISABLE TRIGGER` y `DROP` desde la aplicación.
 - [x] M1–M5 resueltos (queda el retiro administrativo de pases y el aviso de plazos, de M2).
-- [ ] Índices de B2 creados (✅ V16) y bandejas medidas con volumen real.
+- [x] Índices de B2 creados (V16, V19) y bandejas medidas con 200 000 expedientes (B2).
 - [x] Matriz de autorización automatizada en verde (`MatrizAutorizacionTest`: perfil × endpoint, sin sesión, sin CSRF y cabeceras).
 - [ ] HTTPS, cookies seguras, CSP y SRI configurados.
 - [ ] Respaldos de la base y de la carpeta de PDF probados con una restauración real.

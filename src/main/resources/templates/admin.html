@@ -304,14 +304,14 @@
     <div class="card border-0 shadow-sm mt-3">
         <div class="card-header bg-white fw-bold">
             <i class="bi bi-hourglass-split me-1"></i>Pases trabados o fuera de plazo
-            <span class="badge bg-secondary ms-1" th:text="${#lists.size(pasesTrabados)}">0</span>
+            <span class="badge bg-secondary ms-1" th:text="${pasesTrabados.total()}">0</span>
             <div class="small fw-normal text-muted">Pases sin acuse con demora crítica, o hacia una dependencia sin usuarios ni asignaciones vigentes. Solo se pueden retirar estos últimos; el resto lo resuelven las dependencias.</div>
         </div>
         <div class="card-body p-0" style="max-height: 40vh; overflow-y: auto;">
             <table class="table table-sm align-middle mb-0 small">
                 <thead class="table-light"><tr><th>CUTI</th><th>Emisora ➔ receptora</th><th>Tipo</th><th>Enviado</th><th>Días hábiles</th><th></th></tr></thead>
                 <tbody>
-                <tr th:each="p : ${pasesTrabados}">
+                <tr th:each="p : ${pasesTrabados.pases()}">
                     <td class="fw-semibold" th:text="${p.cuti()}">CUTI</td>
                     <td th:text="${p.emisora() + ' ➔ ' + p.receptora()}">emisora ➔ receptora</td>
                     <td th:text="${p.tipoPase()}">TRAMITE</td>
@@ -325,9 +325,47 @@
                         <span th:unless="${p.sinReceptor()}" class="text-muted">Fuera de plazo</span>
                     </td>
                 </tr>
-                <tr th:if="${#lists.isEmpty(pasesTrabados)}"><td colspan="6" class="text-muted p-3">No hay pases trabados ni fuera de plazo.</td></tr>
+                <tr th:if="${pasesTrabados.total() == 0}"><td colspan="6" class="text-muted p-3">No hay pases trabados ni fuera de plazo.</td></tr>
+                <tr th:if="${pasesTrabados.total() > #lists.size(pasesTrabados.pases())}">
+                    <td colspan="6" class="text-muted p-2" th:text="${'Se muestran los ' + #lists.size(pasesTrabados.pases()) + ' más antiguos de ' + pasesTrabados.total() + '.'}">Se muestran los más antiguos.</td>
+                </tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- ===================== Calendario de feriados ===================== -->
+    <div class="card border-0 shadow-sm mt-3" id="feriados">
+        <div class="card-header bg-white fw-bold">
+            <i class="bi bi-calendar-x me-1"></i>Feriados y asuetos
+            <div class="small fw-normal text-muted">No cuentan como días hábiles para la demora de los expedientes ni para los plazos de los pases. Los feriados trasladables y los asuetos se cargan según el decreto de cada año.</div>
+        </div>
+        <div class="card-body p-0">
+            <form th:action="@{/admin/feriados}" method="post" class="d-flex flex-wrap gap-2 p-2 border-bottom bg-light">
+                <input type="date" name="fecha" class="form-control form-control-sm" style="width: 11rem" required>
+                <input name="descripcion" class="form-control form-control-sm" style="max-width: 24rem" required minlength="3" maxlength="150" placeholder="Motivo (ej.: Paz del Chaco, asueto por decreto N° …)">
+                <button class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Agregar</button>
+            </form>
+            <div style="max-height: 35vh; overflow-y: auto;">
+                <table class="table table-sm align-middle mb-0 small">
+                    <thead class="table-light"><tr><th>Fecha</th><th>Día</th><th>Motivo</th><th>Cargado por</th><th></th></tr></thead>
+                    <tbody>
+                    <tr th:each="f : ${feriados}" th:class="${f.fecha.isBefore(hoy) ? 'text-muted' : ''}">
+                        <td class="text-nowrap" th:text="${#temporals.format(f.fecha, 'dd/MM/yyyy')}">fecha</td>
+                        <td th:text="${#temporals.dayOfWeekName(f.fecha)}">día</td>
+                        <td th:text="${f.descripcion}">motivo</td>
+                        <td th:text="${f.creadoPor != null ? f.creadoPor.username : 'Carga inicial'}">admin</td>
+                        <td>
+                            <form th:action="@{/admin/feriados/{fecha}/baja(fecha=${f.fecha})}" method="post" class="m-0"
+                                  th:attr="data-confirmar=${'¿Quitar el feriado del ' + #temporals.format(f.fecha, 'dd/MM/yyyy') + '? Ese día volverá a contar como hábil.'}">
+                                <button class="btn btn-outline-danger btn-sm py-0" title="Quitar"><i class="bi bi-x-lg"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(feriados)}"><td colspan="5" class="text-muted p-3">No hay feriados cargados para este año.</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 

@@ -74,6 +74,9 @@ public class DocumentoService {
     @Autowired
     private AuditoriaSistemaRepository auditoriaSistemaRepository;
 
+    @Autowired
+    private FeriadoService feriadoService;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
 
@@ -1470,41 +1473,74 @@ public class DocumentoService {
     public record PaseDemorado(Long actuacionId, Long documentoId, String cuti, String emisora, String receptora,
                                TipoPase tipoPase, LocalDateTime fecha, long diasHabiles, boolean sinReceptor) {}
 
+    // Cuántos pases demorados hay en total y los más viejos, que son los que se muestran
+    public record AvisoPases(long total, List<PaseDemorado> pases) {
+        public static final AvisoPases NINGUNO = new AvisoPases(0, List.of());
+    }
+
+    static final int PASES_EN_AVISO = 10;
+    static final int PASES_EN_PANEL = 200;
+
     // Aviso para la mesa que emitió: sus pases fuera de plazo o trabados
-    public List<PaseDemorado> pasesEmitidosDemorados(Usuario usuario) {
+    public AvisoPases pasesEmitidosDemorados(Usuario usuario) {
         if (usuario == null) {
-            return List.of();
+            return AvisoPases.NINGUNO;
         }
-        return demorados(actuacionDocumentoRepository.findPasesPendientesEmitidos(usuario.getId()));
+        return demorados(usuario, false, PASES_EN_AVISO);
     }
 
-    // Panel del administrador: todos los pases trabados o fuera de plazo de la institución.
+    // Panel del administrador: los pases trabados o fuera de plazo de toda la institución.
     // Solo datos de circulación (CUTI, dependencias, fecha): no el contenido del expediente.
-    public List<PaseDemorado> pasesTrabados(Usuario admin) {
+    public AvisoPases pasesTrabados(Usuario admin) {
         politicaAcceso.exigir(admin, Accion.ADMINISTRAR_SISTEMA, "Solo un administrador del sistema puede ver los pases trabados.");
-        return demorados(actuacionDocumentoRepository.findPasesPendientes());
+        return demorados(admin, true, PASES_EN_PANEL);
     }
 
-    private List<PaseDemorado> demorados(List<ActuacionDocumento> pendientes) {
-        if (pendientes.isEmpty()) {
-            return List.of();
+    // La base filtra y cuenta: con volumen real hay miles de pases pendientes (medido con 200.000 expedientes)
+    private AvisoPases demorados(Usuario usuario, boolean todos, int maximo) {
+        List<Integer> receptoras = actuacionDocumentoRepository.receptorasDePasesPendientes(usuario.getId(), todos);
+        if (receptoras.isEmpty()) {
+            return AvisoPases.NINGUNO;
         }
-        Set<Integer> conReceptor = new HashSet<>(dependenciaRepository.findConReceptor(pendientes.stream()
-                .map(ActuacionDocumento::getDependenciaReceptoraPase).filter(java.util.Objects::nonNull)
-                .map(Dependencia::getId).distinct().toList()));
+        Set<Integer> conReceptor = new HashSet<>(dependenciaRepository.findConReceptor(receptoras));
+        List<Integer> sinReceptor = new ArrayList<>(receptoras.stream().filter(id -> !conReceptor.contains(id)).toList());
+        if (sinReceptor.isEmpty()) {
+            sinReceptor.add(-1); // IN () no es SQL válido
+        }
         LocalDate hoy = LocalDate.now();
-        List<PaseDemorado> resultado = new ArrayList<>();
-        for (ActuacionDocumento a : pendientes) {
-            Dependencia receptora = a.getDependenciaReceptoraPase();
-            boolean sinReceptor = receptora == null || Boolean.FALSE.equals(receptora.getActivo()) || !conReceptor.contains(receptora.getId());
-            long dias = diasHabilesEntre(a.getFechaHoraActuacion().toLocalDate(), hoy);
-            if (sinReceptor || dias >= slaDiasCritico) {
-                resultado.add(new PaseDemorado(a.getId(), a.getDocumento().getId(), a.getDocumento().getCodigoCuti(),
-                        a.getDependenciaEmisora().getNombreVisible(), receptora != null ? receptora.getNombreVisible() : "(sin receptora)",
-                        a.getTipoPase(), a.getFechaHoraActuacion(), dias, sinReceptor));
-            }
+        LocalDateTime limite = inicioDelPlazoVencido(hoy).plusDays(1).atStartOfDay();
+
+        long total = actuacionDocumentoRepository.contarPasesDemorados(usuario.getId(), todos, limite, sinReceptor);
+        if (total == 0) {
+            return AvisoPases.NINGUNO;
         }
-        return resultado;
+        List<ActuacionDocumento> pases = actuacionDocumentoRepository.pasesDemorados(usuario.getId(), todos, limite, sinReceptor, maximo);
+        Set<LocalDate> feriados = feriadoService.feriadosEntre(pases.get(0).getFechaHoraActuacion().toLocalDate(), hoy);
+        List<PaseDemorado> resultado = new ArrayList<>();
+        for (ActuacionDocumento a : pases) {
+            Dependencia receptora = a.getDependenciaReceptoraPase();
+            resultado.add(new PaseDemorado(a.getId(), a.getDocumento().getId(), a.getDocumento().getCodigoCuti(),
+                    a.getDependenciaEmisora().getNombreVisible(), receptora != null ? receptora.getNombreVisible() : "(sin receptora)",
+                    a.getTipoPase(), a.getFechaHoraActuacion(),
+                    FeriadoService.diasHabilesEntre(a.getFechaHoraActuacion().toLocalDate(), hoy, feriados),
+                    receptora == null || !conReceptor.contains(receptora.getId())));
+        }
+        return new AvisoPases(total, resultado);
+    }
+
+    // Último día en que pudo emitirse un pase para que hoy ya lleve app.sla.dias-critico días hábiles
+    // sin acuse: los emitidos ese día o antes están fuera de plazo
+    LocalDate inicioDelPlazoVencido(LocalDate hoy) {
+        Set<LocalDate> feriados = feriadoService.feriadosEntre(hoy.minusDays(slaDiasCritico * 3L + 30), hoy);
+        LocalDate desde = hoy;
+        int contados = 0;
+        while (contados < slaDiasCritico) {
+            if (FeriadoService.diasHabilesEntre(desde.minusDays(1), desde, feriados) == 1) {
+                contados++;
+            }
+            desde = desde.minusDays(1);
+        }
+        return desde;
     }
 
     // El administrador retira un pase que nadie puede recibir (la receptora no tiene usuarios ni asignaciones
@@ -1675,13 +1711,24 @@ public class DocumentoService {
         }
 
         LocalDate hoy = LocalDate.now();
+        Map<Long, LocalDate> bases = new HashMap<>();
         for (Documento d : activos) {
             LocalDateTime base = d.getFechaHoraIngreso();
             LocalDateTime mov = ultimoMovimiento.get(d.getId());
             if (mov != null && (base == null || mov.isAfter(base))) {
                 base = mov;
             }
-            long dias = base != null ? diasHabilesEntre(base.toLocalDate(), hoy) : 0;
+            if (base != null) {
+                bases.put(d.getId(), base.toLocalDate());
+            }
+        }
+        // Los feriados de todo el período en una sola consulta
+        Set<LocalDate> feriados = bases.values().stream().min(LocalDate::compareTo)
+                .map(desde -> feriadoService.feriadosEntre(desde, hoy)).orElse(Set.of());
+
+        for (Documento d : activos) {
+            LocalDate base = bases.get(d.getId());
+            long dias = base != null ? FeriadoService.diasHabilesEntre(base, hoy, feriados) : 0;
 
             boolean urgente = d.getPrioridad() == Prioridad.URGENTE;
             int advertencia = urgente ? slaUrgenteDiasAdvertencia : slaDiasAdvertencia;
@@ -1692,15 +1739,9 @@ public class DocumentoService {
         return resultado;
     }
 
-    // Días hábiles (lunes a viernes) transcurridos. No contempla feriados.
+    // Días hábiles (lunes a viernes) transcurridos, sin feriados. El cálculo con feriados está en FeriadoService.
     static long diasHabilesEntre(LocalDate desde, LocalDate hasta) {
-        long dias = 0;
-        for (LocalDate f = desde.plusDays(1); !f.isAfter(hasta); f = f.plusDays(1)) {
-            if (f.getDayOfWeek() != java.time.DayOfWeek.SATURDAY && f.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
-                dias++;
-            }
-        }
-        return dias;
+        return FeriadoService.diasHabilesEntre(desde, hasta, Set.of());
     }
 
     // 🏆 Carga segmentada de Documentos Finalizados por Rol/Dependencia
