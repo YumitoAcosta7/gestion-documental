@@ -58,6 +58,9 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
 | `V14__bitacoras_inmutables.sql` | Auditoría A4 y A5. Agrega la anulación `CIERRE_EXCEPCIONAL` y protege las dos bitácoras contra modificación, borrado y `TRUNCATE`. El cambio de dueño lo hace un superusuario con `db/seguridad/proteger_bitacoras.sh` |
 | `V15__organigrama_concurrente_y_receptora.sql` | Auditoría M3 y M4. Serializa los cambios del organigrama (bloqueo transaccional en el trigger de `ruta`) y exige la dependencia receptora en todo pase y devolución |
 | `V16__rendimiento_organigrama_y_bandejas.sql` | Auditoría B1 y B2. Versión del organigrama, que permite a la aplicación tenerlo en memoria hasta que cambie, e índices de bandejas y ámbito |
+| `V22__buscador_trigramas.sql` | Instala `pg_trgm`, si el rol puede, y crea índices de trigramas para buscar texto en CUTI, asunto, números y ubicación. Si no puede instalarla, avisa y no falla |
+| `V21__legajo_salida.sql` | Legajo de la salida: qué informes y memos del expediente componen la respuesta remitida |
+| `V20__indice_actuacion_padre.sql` | Índice de `actuacion_padre_id`, que vincula cada respuesta con su pedido de informe |
 | `V19__indice_finalizados.sql` | Índice del historial de finalizados (los 50 más recientes, ordenados por fecha de salida) |
 | `V18__feriados.sql` | Calendario de feriados (no cuentan como días hábiles), con los nacionales de fecha fija de 2026 y 2027. Los trasladables y los asuetos se cargan desde la administración |
 | `V17__doble_control_asignaciones.sql` | Auditoría C2. Estado de aprobación de las asignaciones y restricciones: solo una aprobada puede estar activa, y nadie aprueba lo que pidió ni lo que lo beneficia |
@@ -70,6 +73,15 @@ Todos los PDF, incluidos los históricos, están en `app.upload.dir`. Los archiv
    sudo -u postgres bash aprobar_asignacion.sh gestion_documental <id>
    ```
    Queda en la auditoría de administración como `APROBACION_ASIGNACION_DBA`.
+
+**Huella encadenada de las bitácoras.**
+- Se instala con `db/seguridad/reforzar_bitacoras.sh`, como postgres, después de `proteger_bitacoras.sh`. Se puede repetir.
+- Cada fila nueva de las dos bitácoras lleva una huella SHA-256 de la huella anterior y su contenido. La de administración guarda además la IP del usuario.
+- Para comprobar que nadie alteró ni borró filas:
+  ```bash
+  sudo -u postgres bash reforzar_bitacoras.sh gestion_documental --verificar
+  ```
+  Tiene que decir `ÍNTEGRA` en las dos. Conviene guardar fuera del servidor la "última huella" que informa, cada semana: así también se detectaría el borrado de las últimas filas.
 
 **Ambiente de pruebas:** perfil `pruebas` (`application-pruebas.properties`), con base y carpeta de PDF propias. La preparación está en `docs/ambiente-pruebas.md`.
 
