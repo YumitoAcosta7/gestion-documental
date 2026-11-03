@@ -300,6 +300,37 @@
         </div>
     </div>
 
+    <!-- ===================== Pases trabados (auditoría M2) ===================== -->
+    <div class="card border-0 shadow-sm mt-3">
+        <div class="card-header bg-white fw-bold">
+            <i class="bi bi-hourglass-split me-1"></i>Pases trabados o fuera de plazo
+            <span class="badge bg-secondary ms-1" th:text="${#lists.size(pasesTrabados)}">0</span>
+            <div class="small fw-normal text-muted">Pases sin acuse con demora crítica, o hacia una dependencia sin usuarios ni asignaciones vigentes. Solo se pueden retirar estos últimos; el resto lo resuelven las dependencias.</div>
+        </div>
+        <div class="card-body p-0" style="max-height: 40vh; overflow-y: auto;">
+            <table class="table table-sm align-middle mb-0 small">
+                <thead class="table-light"><tr><th>CUTI</th><th>Emisora ➔ receptora</th><th>Tipo</th><th>Enviado</th><th>Días hábiles</th><th></th></tr></thead>
+                <tbody>
+                <tr th:each="p : ${pasesTrabados}">
+                    <td class="fw-semibold" th:text="${p.cuti()}">CUTI</td>
+                    <td th:text="${p.emisora() + ' ➔ ' + p.receptora()}">emisora ➔ receptora</td>
+                    <td th:text="${p.tipoPase()}">TRAMITE</td>
+                    <td class="text-nowrap" th:text="${#temporals.format(p.fecha(), 'dd/MM/yyyy HH:mm')}">fecha</td>
+                    <td th:text="${p.diasHabiles()}">0</td>
+                    <td>
+                        <form th:if="${p.sinReceptor()}" th:action="@{/admin/pases/{id}/retirar(id=${p.actuacionId()})}" method="post" class="d-flex gap-1 m-0">
+                            <input name="motivo" class="form-control form-control-sm" style="width: 12rem" required minlength="10" placeholder="Motivo (mín. 10 caracteres)">
+                            <button class="btn btn-outline-danger btn-sm text-nowrap" title="La receptora no tiene quién lo reciba"><i class="bi bi-x-circle me-1"></i>Retirar</button>
+                        </form>
+                        <span th:unless="${p.sinReceptor()}" class="text-muted">Fuera de plazo</span>
+                    </td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(pasesTrabados)}"><td colspan="6" class="text-muted p-3">No hay pases trabados ni fuera de plazo.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- ===================== Auditoría ===================== -->
     <div class="card border-0 shadow-sm mt-3">
         <div class="card-header bg-white fw-bold"><i class="bi bi-shield-check me-1"></i>Auditoría de administración <span class="text-muted small fw-normal">(últimos 100 movimientos; no se puede modificar)</span></div>

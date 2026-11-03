@@ -47,6 +47,7 @@ public class AdministracionController {
             model.addAttribute("asignaciones", administracionService.asignacionesDe(usuarioId, admin));
         }
         model.addAttribute("pendientes", administracionService.pendientesDeAprobacion(admin));
+        model.addAttribute("pasesTrabados", documentoService.pasesTrabados(admin));
         model.addAttribute("auditoria", administracionService.auditoriaReciente(admin));
         return "admin";
     }
@@ -157,6 +158,20 @@ public class AdministracionController {
             administracionService.rechazarAsignacion(id, motivo, actual(auth));
             ra.addFlashAttribute("mensajeExito", "Solicitud rechazada.");
         } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios";
+    }
+
+    // Auditoría M2: retiro de un pase que nadie puede recibir
+    @PostMapping("/pases/{id}/retirar")
+    public String retirarPase(@PathVariable("id") Long id, @RequestParam("motivo") String motivo,
+                              Authentication auth, RedirectAttributes ra) {
+        try {
+            var pase = documentoService.retirarPaseTrabado(id, motivo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Pase retirado del expediente " + pase.getDocumento().getCodigoCuti()
+                    + ". La dependencia emisora puede derivarlo de nuevo.");
+        } catch (IllegalArgumentException | IllegalStateException | org.springframework.security.access.AccessDeniedException e) {
             ra.addFlashAttribute("error", e.getMessage());
         }
         return "redirect:/admin/usuarios";
