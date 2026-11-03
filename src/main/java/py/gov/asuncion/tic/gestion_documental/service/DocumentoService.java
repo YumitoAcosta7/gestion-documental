@@ -207,6 +207,15 @@ public class DocumentoService {
         return doc;
     }
 
+    // 🛡️ Auditoría M1: mientras un pase de trámite espera acuse, el original está "en camino". Darle salida,
+    // finalizarlo o devolverlo dejaría dos movimientos del original cruzados; primero se confirma o se retira el pase.
+    private void exigirSinTramitePendiente(Documento doc, String accion) {
+        if (actuacionDocumentoRepository.existePaseTramitePendiente(doc.getId())) {
+            throw new IllegalStateException("No se puede " + accion + " mientras hay un pase de trámite esperando acuse: "
+                    + "el original está en camino. Espere la confirmación o retire ese pase.");
+        }
+    }
+
     // 🛡️ La supervisión de pases (mesa de entrada) vale solo para los pases de su ámbito:
     // tiene que poder actuar por la dependencia emisora o por la receptora
     private boolean supervisaPase(Usuario usuario, ActuacionDocumento pase) {
@@ -216,9 +225,15 @@ public class DocumentoService {
     }
 
     // 🧭 Lo que muestra el modal de derivación: desde dónde se deriva y a dónde permite el canal
-    public record DestinoPase(Integer id, String nombre, String sigla, String movimiento) {}
+    // conReceptor = false: nadie usa todavía el sistema en esa dependencia (el modal la muestra deshabilitada)
+    public record DestinoPase(Integer id, String nombre, String sigla, String movimiento, boolean conReceptor) {}
 
     public record OpcionesDerivacion(String custodia, boolean puedeDerivar, List<DestinoPase> destinos) {}
+
+    // Auditoría M2: no se deriva a dependencias sin nadie que reciba el pase (se puede desactivar mientras
+    // se incorporan las direcciones, si se decide seguir enviando pases a áreas que todavía usan papel)
+    @Value("${app.canal.exigir-receptor:true}")
+    private boolean exigirReceptor;
 
     public OpcionesDerivacion obtenerOpcionesDerivacion(Long documentoId, Usuario usuario) {
         verificarAccesoDocumento(usuario, documentoId);
@@ -229,13 +244,17 @@ public class DocumentoService {
         Organigrama organigrama = canalService.organigrama();
         // Un pase a otra dirección llega a su mesa de entrada: se muestra el nombre de la dirección,
         // no el de su "Unidad de Secretaría Administrativa", que se repite en todas
-        List<DestinoPase> destinos = !puede ? List.of() : organigrama.destinos(custodia.getId()).stream()
+        List<Organigrama.Destino> canal = !puede ? List.of() : organigrama.destinos(custodia.getId());
+        java.util.Set<Integer> conReceptor = canal.isEmpty() ? java.util.Set.of()
+                : new java.util.HashSet<>(dependenciaRepository.findConReceptor(canal.stream().map(d -> d.nodo().id()).toList()));
+        List<DestinoPase> destinos = canal.stream()
                 .map(d -> {
                     Organigrama.Nodo efectivo = organigrama.nodoEfectivo(d.nodo());
                     boolean esMesa = !efectivo.id().equals(d.nodo().id());
                     return new DestinoPase(d.nodo().id(),
                             esMesa ? efectivo.nombre() + " (mesa de entrada)" : d.nodo().nombre(),
-                            esMesa ? efectivo.sigla() : d.nodo().sigla(), d.movimiento().name());
+                            esMesa ? efectivo.sigla() : d.nodo().sigla(), d.movimiento().name(),
+                            !exigirReceptor || conReceptor.contains(d.nodo().id()));
                 })
                 .toList();
         return new OpcionesDerivacion(custodia.getNombreVisible(), puede, destinos);
@@ -520,6 +539,10 @@ public class DocumentoService {
         //    (la mesa de su dirección, por ejemplo); si no, por la dependencia del usuario
         Dependencia custodia = custodiaDe(documento);
         Dependencia depActual = canalService.puedeActuarPor(usuarioActual, custodia) ? custodia : usuarioActual.getDependencia();
+        // Devolver el original mientras hay un trámite en curso dejaría dos entregas del original cruzadas
+        if (depActual.getId().equals(custodia.getId())) {
+            exigirSinTramitePendiente(documento, "devolver");
+        }
         ActuacionDocumento ultimoPase = actuacionDocumentoRepository
                 .findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(documentoId, depActual.getId());
 
@@ -623,6 +646,16 @@ public class DocumentoService {
             if (!organigrama.puedePasar(custodia.getId(), depId)) {
                 throw new AccessDeniedException("El canal no permite pasar de " + custodia.getNombreVisible() + " a la dependencia seleccionada (ID "
                         + depId + "): el expediente sube por su dependencia superior y pasa entre direcciones por sus mesas de entrada.");
+            }
+        }
+        // Auditoría M2: sin nadie que lo reciba, el pase quedaría pendiente para siempre
+        if (exigirReceptor) {
+            java.util.Set<Integer> conReceptor = new java.util.HashSet<>(dependenciaRepository.findConReceptor(destinos));
+            List<String> sinReceptor = destinos.stream().filter(id -> !conReceptor.contains(id))
+                    .map(id -> organigrama.nodo(id).nombre()).toList();
+            if (!sinReceptor.isEmpty()) {
+                throw new IllegalStateException("Nadie usa todavía el sistema en: " + String.join(", ", sinReceptor)
+                        + ". El pase quedaría sin recibir; envíelo en papel o pida que se habiliten usuarios.");
             }
         }
         if (tipoPase == TipoPase.TRAMITE && actuacionDocumentoRepository.existePaseTramitePendiente(documentoId)) {
@@ -800,6 +833,7 @@ public class DocumentoService {
                                                MultipartFile archivoAcuse, 
                                                Usuario usuarioSesion) {
         Documento doc = exigirCustodia(documentoId, usuarioSesion, "registrar la salida de");
+        exigirSinTramitePendiente(doc, "registrar la salida");
         validarNoFinalizado(doc, "registrar la salida de");
         if (doc.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("Un documento informativo archivado no tiene salida exterior.");
@@ -847,6 +881,7 @@ public class DocumentoService {
     @Transactional
     public Documento confirmarEntregaYAcuse(Long documentoId, MultipartFile archivoAcuse, Usuario usuarioSesion) {
         Documento doc = exigirCustodia(documentoId, usuarioSesion, "confirmar el acuse final de");
+        exigirSinTramitePendiente(doc, "confirmar el acuse final");
 
         if (doc.getEstadoActual() != EstadoDocumento.PENDIENTE_SALIDA || doc.getFechaHoraSalida() == null) {
             throw new IllegalStateException("Solo se puede confirmar el acuse de un expediente en PENDIENTE_SALIDA con la salida física ya registrada.");
@@ -1004,11 +1039,7 @@ public class DocumentoService {
         // Solo confirma la dependencia receptora (o quien supervisa los pases del ámbito)
         Dependencia receptora = actuacion.getDependenciaReceptoraPase();
         Dependencia depUsuario = usuarioSesion != null ? usuarioSesion.getDependencia() : null;
-        boolean esReceptora = depUsuario != null && (receptora != null
-                ? receptora.getId().equals(depUsuario.getId())
-                // Pases antiguos sin receptora: se identifica por la descripción "➔ <dependencia>"
-                : actuacion.getDescripcionResumen() != null
-                    && actuacion.getDescripcionResumen().contains("➔ " + depUsuario.getNombre() + ":"));
+        boolean esReceptora = depUsuario != null && receptora != null && receptora.getId().equals(depUsuario.getId());
         // La mesa de una dirección recibe en su nombre: cuenta como receptora quien actúa por ella
         esReceptora = esReceptora || (receptora != null && canalService.puedeActuarPor(usuarioSesion, receptora));
         if (!esReceptora && !supervisaPase(usuarioSesion, actuacion)) {
@@ -1356,10 +1387,7 @@ public class DocumentoService {
             return false;
         }
         Dependencia receptora = act.getDependenciaReceptoraPase();
-        return receptora != null
-                ? canalService.puedeActuarPor(usuario, receptora)
-                : act.getDescripcionResumen() != null
-                    && act.getDescripcionResumen().contains("➔ " + usuario.getDependencia().getNombre() + ":");
+        return receptora != null && canalService.puedeActuarPor(usuario, receptora);
     }
 
     @Transactional

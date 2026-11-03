@@ -166,7 +166,8 @@ A futuro, conviene copiar periódicamente la bitácora fuera de la base, por eje
 
 ### MEDIO
 
-**M1 — Movimientos del original con un trámite pendiente.**
+**M1 — Movimientos del original con un trámite pendiente.** ✅ **Corregido (02/11/2026).**
+- La salida, el acuse final y la devolución del original se rechazan mientras haya un pase de trámite esperando acuse (`exigirSinTramitePendiente`).
 
 La devolución, la salida exterior y el acuse final no controlan `existePaseTramitePendiente`. Ejemplo:
 1. Se emite un trámite hacia la dependencia B.
@@ -177,7 +178,10 @@ Queda un recorrido incoherente, con dos "dueños" sucesivos del original.
 
 *Mitigación:* bloquear esas acciones mientras haya un trámite pendiente, o anularlo automáticamente con motivo.
 
-**M2 — Bloqueo por pases sin receptor.**
+**M2 — Bloqueo por pases sin receptor.** ✅ **Corregido en lo principal (02/11/2026).**
+- No se deriva a dependencias sin usuarios activos ni asignaciones vigentes que las abarquen; el modal las muestra deshabilitadas.
+- Se puede desactivar con `app.canal.exigir-receptor=false` durante la incorporación gradual.
+- **Queda:** la acción de administración para retirar pases trabados y el aviso de pases fuera de plazo.
 
 Si la receptora de un trámite se da de baja, o se queda sin usuarios, el pase queda pendiente para siempre y bloquea nuevos trámites. Hoy solo lo destraba `SUPERVISAR_PASES`, que es justamente el permiso global de C1.
 
@@ -186,7 +190,9 @@ Si la receptora de un trámite se da de baja, o se queda sin usuarios, el pase q
 - Agregar al panel de administración una acción "retirar pase", acotada y auditada.
 - Avisar cuando un pase supere el SLA.
 
-**M3 — `ruta` del organigrama con movimientos concurrentes.**
+**M3 — `ruta` del organigrama con movimientos concurrentes.** ✅ **Corregido (02/11/2026).**
+- V15 serializa las altas y los movimientos del organigrama con `pg_advisory_xact_lock`.
+- La consulta de verificación de abajo sigue sirviendo como control periódico.
 
 Dos cambios de superior simultáneos sobre nodos de la misma rama pueden dejar rutas desactualizadas en el subárbol: cada transacción recalcula a partir de la ruta que ve.
 
@@ -200,7 +206,9 @@ WITH RECURSIVE a AS (SELECT id, '/' || id || '/' r FROM dependencias WHERE depen
 SELECT d.id FROM dependencias d JOIN a ON a.id = d.id WHERE d.ruta <> a.r;   -- debe devolver 0 filas
 ```
 
-**M4 — Coincidencia por nombre en pases antiguos.**
+**M4 — Coincidencia por nombre en pases antiguos.** ✅ **Corregido (02/11/2026).**
+- Se quitó la búsqueda por nombre de las consultas y de la confirmación y el rechazo de pases.
+- V15 exige la dependencia receptora en todo pase y devolución.
 
 Las consultas de acceso y de bandejas mantienen el respaldo `LIKE '%➔ <nombre>:%'` para pases sin receptora. Con el organigrama completo hay **22 nombres repetidos que abarcan 134 dependencias**, por ejemplo 55 "Unidad de Secretaría Administrativa". Si existiera un pase así, otra dirección con el mismo nombre lo vería.
 
@@ -208,7 +216,9 @@ Hoy hay **0 pases sin receptora en producción**, así que no hay exposición.
 
 *Mitigación:* quitar ese respaldo y agregar `CHECK (tipo_actuacion NOT IN ('PASE_INTERNO','PASE_CONFIRMADO','DEVOLUCION') OR dependencia_receptora_pase_id IS NOT NULL)`.
 
-**M5 — Alcance por defecto del OPERADOR.**
+**M5 — Alcance por defecto del OPERADOR.** ✅ **Corregido (02/11/2026).**
+- `CanalService.puedeActuarPor` no extiende el `OPERADOR` a las subordinadas.
+- La pantalla de administración propone "incluye subordinadas" solo para mesa de entrada, responsable y administrador.
 
 `incluye_subordinadas` vale `TRUE` por defecto. Un `OPERADOR` asignado a una dirección actúa por todas sus subordinadas (confirmar pases, devolver) en `CanalService.puedeActuarPor`.
 
@@ -259,7 +269,7 @@ CREATE INDEX idx_documentos_ingreso ON documentos (fecha_hora_ingreso DESC, id D
 |---|---|---|
 | Inmediata, antes de sumar otra dirección | C1, C2, A1 (✅ corregidos; falta el doble control de C2) | 1–2 días |
 | Antes del piloto con Hacienda | A2, A3, A4 (✅ corregidos), A5 (falta el script en el servidor), M1 | 3–4 días |
-| Antes del despliegue general | M2, M3, M4, M5, B1, B2 | 3–5 días |
+| Antes del despliegue general | M1–M5 (✅ corregidos; quedan los pendientes de M2), B1, B2 | 3–5 días |
 | Con el pase a HTTPS | B3 | 1 día |
 
 ## 3. Pruebas de integración recomendadas
@@ -307,7 +317,7 @@ Todas sobre la base de pruebas, con `@PruebaConBaseDePruebas` y `@Transactional`
 - [x] A3: las suplencias quedan acotadas a lo que tiene el titular y no se solapan.
 - [x] A4: las respuestas a informes se vinculan a su pase; el cierre forzado anula los pases pendientes.
 - [ ] A5: la bitácora pertenece a otro rol y resiste `TRUNCATE`, `DISABLE TRIGGER` y `DROP` desde la aplicación.
-- [ ] M1–M5 resueltos o aceptados por escrito.
+- [x] M1–M5 resueltos (queda el retiro administrativo de pases y el aviso de plazos, de M2).
 - [ ] Índices de B2 creados y bandejas medidas con volumen real.
 - [ ] Matriz de autorización automatizada en verde.
 - [ ] HTTPS, cookies seguras, CSP y SRI configurados.

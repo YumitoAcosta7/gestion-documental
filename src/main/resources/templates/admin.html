@@ -199,7 +199,8 @@
                         <div class="row g-2">
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold">Rol</label>
-                                <select name="rol" class="form-select form-select-sm" required>
+                                <!-- Mesa de entrada y responsable abarcan por defecto las subordinadas; operador y consulta, no -->
+                                <select name="rol" class="form-select form-select-sm" required onchange="document.getElementById('chkSub').checked = (this.value === 'MESA_ENTRADA' || this.value === 'RESPONSABLE' || this.value === 'ADMIN_SISTEMA');">
                                     <option value="MESA_ENTRADA">Mesa de entrada</option>
                                     <option value="RESPONSABLE">Responsable</option>
                                     <option value="OPERADOR" selected>Operador</option>
@@ -214,7 +215,7 @@
                                     <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
                                 </select>
                                 <div class="form-check mt-1">
-                                    <input class="form-check-input" type="checkbox" name="incluyeSubordinadas" value="true" id="chkSub" checked>
+                                    <input class="form-check-input" type="checkbox" name="incluyeSubordinadas" value="true" id="chkSub">
                                     <label class="form-check-label small" for="chkSub">Incluye las dependencias subordinadas</label>
                                 </div>
                             </div>

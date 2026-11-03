@@ -88,8 +88,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     List<Documento> findFinalizadosEnAmbito(@Param("usuarioId") Integer usuarioId);
 
     // 🛡️ FILTRO DE TRÁMITES ACTIVOS POR DEPENDENCIA
-    // Se usa la dependencia receptora del pase; la descripción "➔ <dependencia>:" solo
-    // se consulta para pases antiguos que no tienen dependencia receptora cargada.
+    // Se usa la dependencia receptora del pase (obligatoria desde V15: ya no se busca por el nombre
+    // en la descripción, que se repite entre dependencias)
     @Query("""
         SELECT DISTINCT d FROM Documento d
         LEFT JOIN ActuacionDocumento a ON a.documento.id = d.id
@@ -98,7 +98,6 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
           AND (
                a.dependenciaEmisora.id = :dependenciaId
                OR (r.id = :dependenciaId AND a.anulada = false)
-               OR (r IS NULL AND a.anulada = false AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
         ORDER BY d.fechaHoraIngreso DESC
     """)
@@ -113,7 +112,6 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
           AND (
                a.dependenciaEmisora.id = :dependenciaId
                OR (r.id = :dependenciaId AND a.anulada = false)
-               OR (r IS NULL AND a.anulada = false AND LOWER(a.descripcionResumen) LIKE LOWER(CONCAT('%➔ ', (SELECT dep.nombre FROM Dependencia dep WHERE dep.id = :dependenciaId), ':%')))
               )
         ORDER BY d.fechaHoraSalida DESC
     """)
