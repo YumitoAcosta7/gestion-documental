@@ -1,0 +1,7 @@
+[Unit]
+Description=Respaldo de Gestión Documental (base y PDF)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash /opt/gestion-documental/respaldar.sh

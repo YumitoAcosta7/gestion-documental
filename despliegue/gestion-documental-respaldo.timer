@@ -1,0 +1,10 @@
+[Unit]
+Description=Respaldo diario de Gestión Documental
+
+[Timer]
+OnCalendar=*-*-* 22:00:00
+# Si el servidor estaba apagado a esa hora, lo hace al encender
+Persistent=true
+
+[Install]
+WantedBy=timers.target

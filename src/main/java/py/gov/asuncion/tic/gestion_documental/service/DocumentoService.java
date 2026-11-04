@@ -1388,7 +1388,7 @@ public class DocumentoService {
         return adjuntoDocumentoRepository.save(AdjuntoDocumento.builder()
                 .documento(act.getDocumento())
                 .actuacion(act)
-                .nombreArchivo(Paths.get(act.getRutaCopiaSelladaPdf()).getFileName().toString())
+                .nombreArchivo(ArchivoService.nombreDeArchivo(act.getRutaCopiaSelladaPdf()))
                 .rutaAlmacenamiento(ruta != null ? ruta.toString() : act.getRutaCopiaSelladaPdf())
                 .tipoAdjunto("PASE_CONFIRMADO".equals(act.getTipoActuacion()) ? "ACUSE_PASE" : "COPIA_SELLADA")
                 .tamanioBytes(tamanio)
