@@ -80,6 +80,9 @@ public class DocumentoService {
     @Autowired
     private LegajoSalidaRepository legajoSalidaRepository;
 
+    @Autowired
+    private AuditoriaDocumentoRepository auditoriaDocumentoRepository;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
 
@@ -201,6 +204,27 @@ public class DocumentoService {
         return actuacionDocumentoRepository.existeParticipacionDependencia(documentoId, depId);
     }
 
+    // Situación de cada expediente de una página de la bandeja: acción principal y acciones disponibles
+    public Map<Long, SituacionExpediente> situaciones(Usuario usuario, List<Documento> documentos) {
+        if (usuario == null || documentos.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<ActuacionDocumento>> porDocumento = new HashMap<>();
+        for (ActuacionDocumento a : actuacionDocumentoRepository.findDeDocumentos(documentos.stream().map(Documento::getId).toList())) {
+            porDocumento.computeIfAbsent(a.getDocumento().getId(), k -> new ArrayList<>()).add(a);
+        }
+        java.util.function.Predicate<Dependencia> actuaPor = canalService.alcance(usuario);
+        SituacionExpediente.Permisos permisos = new SituacionExpediente.Permisos(
+                politicaAcceso.puede(usuario, Accion.REGISTRAR_ACTUACION), politicaAcceso.puede(usuario, Accion.DERIVAR),
+                politicaAcceso.puede(usuario, Accion.REGISTRAR_SALIDA), politicaAcceso.puede(usuario, Accion.FORZAR_CIERRE));
+        Map<Long, SituacionExpediente> resultado = new HashMap<>();
+        for (Documento d : documentos) {
+            resultado.put(d.getId(), SituacionExpediente.de(d, custodiaDe(d), porDocumento.getOrDefault(d.getId(), List.of()),
+                    actuaPor, usuario.getDependencia(), permisos));
+        }
+        return resultado;
+    }
+
     // Los expedientes de la lista que el usuario puede ver, conservando el orden. Misma regla que
     // puedeAccederDocumento, resuelta con una consulta por cada 1000 expedientes (auditoría B2)
     public List<Documento> filtrarAccesibles(Usuario usuario, List<Documento> documentos) {
@@ -316,6 +340,13 @@ public class DocumentoService {
         String prefijo = String.format("%s-%d-", sigla, anio);
         int numero = documentoRepository.siguienteCorrelativoCuti(cabecera.id(), anio, prefijo + "%");
         return String.format("%s%06d", prefijo, numero);
+    }
+
+    // Con la salida registrada el original ya no está en la institución: solo queda confirmar el acuse o corregir la salida
+    private void exigirSalidaNoRegistrada(Documento doc, String accion) {
+        if (doc.getFechaHoraSalida() != null) {
+            throw new IllegalStateException("No se puede " + accion + ": la salida ya está registrada. Confirme el acuse o, si fue un error, corrija la salida.");
+        }
     }
 
     private void validarNoFinalizado(Documento doc, String accion) {
@@ -598,6 +629,7 @@ public class DocumentoService {
             documento.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("No se puede devolver un documento finalizado, pendiente de salida o archivado.");
         }
+        exigirSalidaNoRegistrada(documento, "devolver el expediente");
 
         if (usuarioActual == null || usuarioActual.getDependencia() == null) {
             throw new IllegalStateException("El usuario actual no tiene una dependencia asignada para devolver expedientes.");
@@ -707,6 +739,7 @@ public class DocumentoService {
         Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
                 .orElseThrow(() -> new RuntimeException("Documento no encontrado: " + documentoId));
         validarNoFinalizado(doc, "derivar");
+        exigirSalidaNoRegistrada(doc, "derivar el expediente");
 
         // 🧭 Canal jerárquico: se deriva desde quien tiene el original y solo a los destinos que permite el organigrama
         Dependencia custodia = custodiaDe(doc);
@@ -851,6 +884,8 @@ public class DocumentoService {
         exigirSinTramitePendiente(doc, "registrar la salida");
         List<ActuacionDocumento> legajo = validarLegajo(documentoId, tipoRemision, informes);
         validarNoFinalizado(doc, "registrar la salida de");
+        // Registrarla de nuevo pisaría los datos anteriores sin dejar motivo: para eso está corregirSalida
+        exigirSalidaNoRegistrada(doc, "registrar otra salida");
         if (doc.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("Un documento informativo archivado no tiene salida exterior.");
         }
@@ -908,6 +943,68 @@ public class DocumentoService {
         return docGuardado;
     }
 
+    // Deja sin efecto una salida mal cargada, antes del acuse, para registrarla bien o seguir el trámite.
+    // Los datos anteriores y el motivo quedan en la bitácora, que es inmutable; el acuse de esa salida deja de estar vigente.
+    @Transactional
+    public Documento corregirSalida(Long documentoId, String motivo, Usuario usuario) {
+        politicaAcceso.exigir(usuario, Accion.REGISTRAR_SALIDA, "No está habilitado para corregir la salida del expediente.");
+        validarMotivo(motivo, 10, "el motivo de la corrección");
+        Documento doc = exigirCustodia(documentoId, usuario, "corregir la salida de");
+        exigirSinTramitePendiente(doc, "corregir la salida");
+        validarNoFinalizado(doc, "corregir la salida de");
+        if (doc.getFechaHoraSalida() == null) {
+            throw new IllegalStateException("El expediente no tiene una salida registrada para corregir.");
+        }
+
+        String motivoLimpio = motivo.trim();
+        String datosAnteriores = "N° " + doc.getNroNotaSalida() + ", entregada a " + doc.getPersonaRetiraSalida()
+                + " por " + doc.getFuncionarioEntregaFisico()
+                + (doc.getDependenciaDestinoSalida() != null ? ", destino " + doc.getDependenciaDestinoSalida().getNombreVisible() : "")
+                + ", registrada el " + doc.getFechaHoraSalida();
+
+        EstadoDocumento estadoAnterior = doc.getEstadoActual();
+        doc.setNroNotaSalida(null);
+        doc.setFechaHoraSalida(null);
+        doc.setPersonaRetiraSalida(null);
+        doc.setFuncionarioEntregaFisico(null);
+        doc.setDependenciaDestinoSalida(null);
+        doc.setUsuarioCargaSalida(null);
+        doc.setFechaHoraCargaSalida(null);
+        if (estadoAnterior == EstadoDocumento.PENDIENTE_SALIDA) {
+            doc.setEstadoActual(estadoAntesDeLaSalida(documentoId));
+        }
+        documentoRepository.save(doc);
+
+        // El legajo describía esa salida; la bitácora conserva su detalle (evento LEGAJO_SALIDA)
+        legajoSalidaRepository.deleteAll(legajoSalidaRepository.findByDocumento(documentoId));
+        adjuntoDocumentoRepository.findByDocumentoIdAndActuacionIsNullOrderByFechaHoraSubidaAsc(documentoId).stream()
+                .filter(a -> Boolean.TRUE.equals(a.getVigente()) && "ACUSE_SALIDA".equals(a.getTipoAdjunto()))
+                .forEach(a -> {
+                    a.setVigente(false);
+                    a.setMotivoReemplazo(motivoLimpio);
+                    adjuntoDocumentoRepository.save(a);
+                });
+
+        auditoriaService.registrarEvento(doc, "CORRECCION_SALIDA", estadoAnterior, doc.getEstadoActual(),
+                "Salida dejada sin efecto (" + datosAnteriores + "). Motivo: " + motivoLimpio, usuario, null);
+        return doc;
+    }
+
+    // El estado que tenía el expediente cuando se registró la última salida, según la bitácora
+    private EstadoDocumento estadoAntesDeLaSalida(Long documentoId) {
+        return auditoriaDocumentoRepository.findByDocumentoIdOrderByFechaHoraDesc(documentoId).stream()
+                .filter(e -> "SALIDA_EXTERNA".equals(e.getTipoEvento()) && e.getEstadoAnterior() != null)
+                .findFirst()
+                .map(e -> {
+                    try {
+                        return EstadoDocumento.valueOf(e.getEstadoAnterior());
+                    } catch (IllegalArgumentException ignorado) {
+                        return EstadoDocumento.EN_REVISION;
+                    }
+                })
+                .orElse(EstadoDocumento.EN_REVISION);
+    }
+
     // Los informes del legajo tienen que ser informes o memos vigentes del mismo expediente.
     // Con remisión directa (sin nota de la Dirección), el legajo es la respuesta: no puede ir vacío.
     private List<ActuacionDocumento> validarLegajo(Long documentoId, String tipoRemision, List<Long> informes) {
@@ -919,10 +1016,7 @@ public class DocumentoService {
             throw new IllegalArgumentException("En la remisión directa marque al menos un informe o memo que compone la respuesta.");
         }
         Map<Long, ActuacionDocumento> delExpediente = new HashMap<>();
-        actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
-                .filter(a -> !Boolean.TRUE.equals(a.getAnulada()))
-                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
-                .forEach(a -> delExpediente.put(a.getId(), a));
+        actuacionesParaLegajo(documentoId).forEach(a -> delExpediente.put(a.getId(), a));
         List<ActuacionDocumento> legajo = new ArrayList<>();
         for (Long id : ids) {
             ActuacionDocumento a = delExpediente.get(id);
@@ -932,6 +1026,14 @@ public class DocumentoService {
             legajo.add(a);
         }
         return legajo;
+    }
+
+    // Lo que puede integrar el legajo de una salida. La misma lista alimenta el formulario y la validación
+    public List<ActuacionDocumento> actuacionesParaLegajo(Long documentoId) {
+        return actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
+                .filter(a -> !Boolean.TRUE.equals(a.getAnulada()))
+                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
+                .toList();
     }
 
     // Actuaciones que integran el legajo de una salida: id de actuación -> "Salida N° …"
@@ -1044,6 +1146,8 @@ public class DocumentoService {
             }
             // El original está en camino a otra dependencia: nadie lo modifica hasta que se confirme o se retire el pase
             exigirSinTramitePendiente(doc, "registrar actuaciones");
+            // La respuesta a un pedido de informe sí se admite: quien lo responde no controla cuándo salió el original
+            exigirSalidaNoRegistrada(doc, "registrar actuaciones");
         }
         if (!tieneElOriginal && ubicacionBibliorato != null && !ubicacionBibliorato.isBlank()) {
             throw new IllegalArgumentException("La ubicación física del original la registra la dependencia que lo tiene.");

@@ -15,6 +15,15 @@ import java.util.Optional;
 public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDocumento, Long> {
     List<ActuacionDocumento> findByDocumentoIdOrderByFechaHoraActuacionAsc(Long documentoId);
 
+    // Las actuaciones de una página de la bandeja, en una sola consulta (situación de cada expediente)
+    @Query("""
+        SELECT a FROM ActuacionDocumento a JOIN FETCH a.dependenciaEmisora
+        LEFT JOIN FETCH a.dependenciaReceptoraPase LEFT JOIN FETCH a.actuacionPadre
+        WHERE a.documento.id IN :documentoIds
+        ORDER BY a.fechaHoraActuacion
+    """)
+    List<ActuacionDocumento> findDeDocumentos(@Param("documentoIds") java.util.Collection<Long> documentoIds);
+
     ActuacionDocumento findTopByDocumentoIdAndDependenciaReceptoraPaseIdOrderByFechaHoraActuacionDesc(Long documentoId, Integer dependenciaReceptoraId);
 
     // 🛡️ ¿La dependencia emitió o recibió alguna actuación del documento? (mismo criterio que las bandejas)

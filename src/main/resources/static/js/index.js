@@ -368,6 +368,10 @@
                     if (button) {
                         modalActuacion.querySelector('#actuacionDocId').value = button.getAttribute('data-doc-id');
                         modalActuacion.querySelector('#labelCutiActuacion').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+                        // "Responder informe" ya propone el tipo que responde el pedido
+                        if (button.getAttribute('data-tipo-actuacion')) {
+                            modalActuacion.querySelector('[name=tipoActuacion]').value = button.getAttribute('data-tipo-actuacion');
+                        }
                     }
                 });
             }
@@ -542,6 +546,17 @@
                     if (button) {
                         modalAcuse.querySelector('#acuseDocId').value = button.getAttribute('data-doc-id');
                         modalAcuse.querySelector('#labelCutiAcuse').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+                    }
+                });
+            }
+
+            const modalCorregirSalida = document.getElementById('modalCorregirSalida');
+            if (modalCorregirSalida) {
+                modalCorregirSalida.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (button) {
+                        modalCorregirSalida.querySelector('#corregirSalidaDocId').value = button.getAttribute('data-doc-id');
+                        modalCorregirSalida.querySelector('#labelCutiCorregirSalida').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
                     }
                 });
             }

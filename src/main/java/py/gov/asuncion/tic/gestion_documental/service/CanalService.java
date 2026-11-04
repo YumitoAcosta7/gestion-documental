@@ -95,10 +95,20 @@ public class CanalService {
         if (usuario == null || dependencia == null) {
             return false;
         }
+        return actuaPor(usuario, asignacionRepository.findVigentes(usuario.getId(), LocalDate.now()), dependencia);
+    }
+
+    // La misma regla para muchas dependencias, con una sola consulta de asignaciones (una página de la bandeja)
+    public java.util.function.Predicate<Dependencia> alcance(Usuario usuario) {
+        List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
+        return dependencia -> dependencia != null && actuaPor(usuario, vigentes, dependencia);
+    }
+
+    private static boolean actuaPor(Usuario usuario, List<Asignacion> vigentes, Dependencia dependencia) {
         if (usuario.getDependencia() != null && usuario.getDependencia().getId().equals(dependencia.getId())) {
             return true;
         }
-        for (Asignacion a : asignacionRepository.findVigentes(usuario.getId(), LocalDate.now())) {
+        for (Asignacion a : vigentes) {
             if (!ROLES_QUE_TRAMITAN.contains(a.getRol())) {
                 continue;
             }
