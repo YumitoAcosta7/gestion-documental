@@ -53,7 +53,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 4. **Cuentas nominales.**
    - **Hoy:** en producción hay cuentas genéricas: `director_tic`, `jefe_bd`, `jefe_operativo`, `jefe_soporte`, `encargado_soporte`, `secretaria_tic`. Una bitácora que registra "Jefe Dpto." no identifica a una persona y no sirve como prueba.
    - **Hace falta:** crear una cuenta por persona y dar de baja las genéricas. La baja conserva su historial.
-   - **Falta confirmar el doble control:** que cada administrador use solo su cuenta, con una contraseña que solo esa persona conozca (`docs/pase-produccion.md`, 04/11/2026, 13:07).
+   - **Hoy el doble control no es real:** Juan Carlos Acosta operó también `zlobo` y `zlobo.admin` durante la separación de cuentas. Antes del piloto, Zaimy Lobo cambia esas dos contraseñas, y cada administrador usa solo su cuenta (`docs/pase-produccion.md`, 04/11/2026, 13:07).
    - **Separar administrar de tramitar (decisión D3): hecho el 04/11/2026,** antes de instalar la V28. Administran `juan.admin` y `zlobo.admin`; `juan.acosta` (`RESPONSABLE`) y `zlobo` (`MESA_ENTRADA`) solo tramitan. La consulta de la sección "Cuentas" de `docs/auditoria-logica-negocio.md` debe seguir saliendo vacía.
 5. **Autenticación de la base de producción.**
    - Cambiar la contraseña con `\password gestion_documental` y guardarla en SCRAM.
@@ -62,7 +62,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 6. **Datos del piloto anterior.**
    - Resolver los pases sin acuse desde agosto y septiembre (8 en la base). Administración → Pases trabados muestra 7, porque no incluye el de `TIC-2026-000003`, que está finalizado.
    - Revisar los expedientes que muestre `db/herramientas/revisar_pendientes_salida.sql`.
-   - Decidir si esos expedientes de prueba (CUTI `TIC-2026-…`) se cierran o se mantienen.
+   - **Todos los expedientes de producción son de prueba, según informó el usuario el 04/11/2026; todavía no hay ninguno real.** Decidir antes del piloto si se cierran o si se empieza con una base limpia, conservando un respaldo de la actual.
    - `TIC-2026-000003` es de prueba, según informó el usuario: su acuse vigente es un PDF cualquiera, sin valor de constancia. Si estos expedientes se conservan, deben quedar identificados como datos de prueba (`docs/pase-produccion.md`, 04/11/2026, 13:07).
 
 ## Antes del "Go", sin ser bloqueantes
