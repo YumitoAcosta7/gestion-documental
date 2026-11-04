@@ -41,7 +41,10 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 4. **Cuentas nominales.**
    - **Hoy:** en producción hay cuentas genéricas: `director_tic`, `jefe_bd`, `jefe_operativo`, `jefe_soporte`, `encargado_soporte`, `secretaria_tic`. Una bitácora que registra "Jefe Dpto." no identifica a una persona y no sirve como prueba.
    - **Hace falta:** crear una cuenta por persona y dar de baja las genéricas. La baja conserva su historial.
-5. **Contraseña de la base de producción.** Cambiarla con `\password gestion_documental` y actualizar `application-local.properties`. Es el paso 8 de `docs/pase-produccion.md`.
+5. **Autenticación de la base de producción.**
+   - Cambiar la contraseña con `\password gestion_documental` y guardarla en SCRAM.
+   - Quitar la regla `trust` de `127.0.0.1`, encontrada el 03/11/2026: cualquier programa del servidor podía entrar como superusuario sin contraseña.
+   - Los pasos están en `docs/despliegue-servidor.md`, sección 1b.
 6. **Datos del piloto anterior.**
    - Resolver los 8 pases sin acuse desde agosto y septiembre. Aparecen en Administración → Pases trabados.
    - Revisar los expedientes que muestre `db/herramientas/revisar_pendientes_salida.sql`.

@@ -1,0 +1,28 @@
+# Gestión Documental como servicio del sistema. Lo instala despliegue/instalar.sh.
+[Unit]
+Description=Gestión Documental - Municipalidad de Asunción
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gestion_documental
+Group=gestion_documental
+WorkingDirectory=/opt/gestion-documental
+# Contraseña de la base y configuración: fuera del repositorio, legible solo por root y este usuario
+EnvironmentFile=/etc/gestion-documental/entorno
+ExecStart=/usr/bin/env java -Xms256m -Xmx1g -jar /opt/gestion-documental/gestion-documental.jar
+# Spring Boot termina bien con SIGTERM; Java responde con el código 143
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+
+# Endurecimiento: solo puede escribir en la carpeta de PDF
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gestion-documental
+
+[Install]
+WantedBy=multi-user.target

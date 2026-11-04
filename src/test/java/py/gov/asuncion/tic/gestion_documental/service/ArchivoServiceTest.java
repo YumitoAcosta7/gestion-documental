@@ -66,6 +66,21 @@ class ArchivoServiceTest {
     }
 
     @Test
+    void lasRutasGuardadasEnWindowsSeResuelvenEnCualquierSistema() throws Exception {
+        java.nio.file.Files.write(carpeta.resolve("ACUSE_1.pdf"), PDF_VALIDO);
+
+        // Rutas como las que guardó la aplicación cuando corría en Windows, y como las que guarda en Linux
+        assertEquals(carpeta.resolve("ACUSE_1.pdf"), servicio.resolver("C:\\gestion-documental-uploads\\acuses\\ACUSE_1.pdf"));
+        assertEquals(carpeta.resolve("ACUSE_1.pdf"), servicio.resolver("C:/gestion-documental-uploads/acuses/ACUSE_1.pdf"));
+        assertEquals(carpeta.resolve("ACUSE_1.pdf"), servicio.resolver("/var/lib/gestion-documental/pdf/ACUSE_1.pdf"));
+        assertEquals(carpeta.resolve("ACUSE_1.pdf"), servicio.resolver("ACUSE_1.pdf"));
+
+        // Solo cuenta el nombre: una ruta guardada no puede sacar la lectura de la carpeta de PDF
+        assertEquals("secreto.txt", ArchivoService.nombreDeArchivo("..\\..\\secreto.txt"));
+        assertNull(servicio.resolver("..\\..\\secreto.txt"));
+    }
+
+    @Test
     void pdfCompletoSeAcepta() {
         assertDoesNotThrow(() -> servicio.validarPdf(pdf("ok.pdf", PDF_VALIDO)));
     }

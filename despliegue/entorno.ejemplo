@@ -1,0 +1,18 @@
+# Configuración de producción. instalar.sh la copia a /etc/gestion-documental/entorno (permisos 640).
+# Complete DB_PASSWORD allí: este ejemplo no lleva contraseñas y es el único que va al repositorio.
+
+DB_PASSWORD=COMPLETAR
+
+# La base está en el mismo servidor
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/gestion_documental
+
+# Carpeta de todos los PDF: incluirla en los respaldos
+APP_UPLOAD_DIR=/var/lib/gestion-documental/pdf
+
+# La aplicación solo escucha en el propio servidor: desde la red se entra por nginx, con HTTPS
+SERVER_ADDRESS=127.0.0.1
+SERVER_PORT=8080
+SERVER_FORWARD_HEADERS_STRATEGY=native
+
+# La cookie de sesión solo viaja cifrada
+APP_COOKIE_SEGURA=true

@@ -336,7 +336,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
 - **Pruebas automatizadas:** 105, incluidas la matriz de autorización (`MatrizAutorizacionTest`), la revisión de las consultas nativas (`ConsultasNativasTest`) y la gobernanza del expediente (`GobernanzaExpedienteTest`).
 
-**Prueba de campo:** el veredicto y los bloqueantes están en [docs/viabilidad-piloto.md](docs/viabilidad-piloto.md).
+**Prueba de campo:** el veredicto y los bloqueantes están en [docs/viabilidad-piloto.md](docs/viabilidad-piloto.md). El despliegue en el servidor, con servicio, HTTPS y respaldos, está en [docs/despliegue-servidor.md](docs/despliegue-servidor.md).
 
 **Pendientes en producción** (pasos 7 y 8 de [docs/pase-produccion.md](docs/pase-produccion.md)):
 - Feriados trasladables y asuetos de 2026, según el decreto.

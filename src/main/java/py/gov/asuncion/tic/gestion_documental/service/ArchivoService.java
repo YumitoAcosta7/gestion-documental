@@ -247,7 +247,14 @@ public class ArchivoService {
         if (rutaGuardada == null || rutaGuardada.isBlank()) {
             return null;
         }
-        Path candidato = Paths.get(uploadDir).resolve(Paths.get(rutaGuardada).getFileName());
+        Path candidato = Paths.get(uploadDir).resolve(nombreDeArchivo(rutaGuardada));
         return Files.isRegularFile(candidato) ? candidato : null;
+    }
+
+    // El nombre del archivo de una ruta guardada. La base puede tener rutas de Windows, escritas cuando la aplicación
+    // corría allí ("C:\carpeta\archivo.pdf"): en Linux "\" no separa carpetas, así que Path.getFileName() devolvería
+    // la ruta entera y el archivo no se encontraría. Por eso se aceptan los dos separadores en cualquier sistema.
+    public static String nombreDeArchivo(String rutaGuardada) {
+        return rutaGuardada.substring(Math.max(rutaGuardada.lastIndexOf('/'), rutaGuardada.lastIndexOf('\\')) + 1);
     }
 }
