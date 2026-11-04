@@ -6,13 +6,25 @@ Revisión del 03/11/2026, con producción en V22.
 
 **Todavía no.** El código está listo, la infraestructura no. Con los 6 bloqueantes de abajo resueltos, sí se puede iniciar un piloto acotado.
 
-Las reglas de negocio, la seguridad de la aplicación y la trazabilidad están en condiciones de operar con datos reales. Lo que falta es cómo se opera hoy:
+Las reglas de negocio, la seguridad de la aplicación y la trazabilidad están en condiciones de operar con datos reales. Al hacer esta revisión, lo que faltaba era la forma de operar (el avance está en la tabla de estado):
 - la aplicación de producción corre desde una PC de desarrollo;
 - sin HTTPS;
 - sin respaldos automáticos;
 - con varias cuentas genéricas.
 
 Un fallo de esa PC o una contraseña capturada en la red comprometerían expedientes reales.
+
+
+## Estado de los bloqueantes (03/11/2026)
+
+| # | Bloqueante | Estado |
+|---|---|---|
+| 1 | Servidor de aplicación | ✅ Servicio en 192.168.129.73 |
+| 2 | HTTPS | ✅ Con certificado interno. Falta que TIC lo instale en los equipos, o reemplazarlo por uno institucional |
+| 3 | Respaldos | 🟡 Diarios y con restauración de la base probada. **Falta la copia a otro equipo** (`RESPALDO_DESTINO`) |
+| 4 | Cuentas nominales | ❌ Pendiente: siguen las 6 genéricas |
+| 5 | Autenticación de la base | ✅ Contraseña cambiada, SCRAM y sin `trust` |
+| 6 | Datos del piloto anterior | 🟡 `revisar_pendientes_salida.sql` no encontró casos. Faltan los 8 pases sin acuse |
 
 ## Lo que está listo
 

@@ -318,7 +318,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 
 ## 8. 🎯 ESTADO ACTUAL Y PENDIENTES
 
-**Estado (03/11/2026):** producción y pruebas en la migración **V22**, con la huella encadenada instalada en las bitácoras de las dos bases. Administradores del sistema: `juan.acosta` y `zlobo`. Pase y registro en [docs/pase-produccion.md](docs/pase-produccion.md).
+**Estado (03/11/2026):** producción y pruebas en la migración **V22**, con la huella encadenada instalada en las bitácoras de las dos bases. Producción corre como servicio en el servidor (`https://192.168.129.73`). Administradores del sistema: `juan.acosta` y `zlobo`. Pase y registro en [docs/pase-produccion.md](docs/pase-produccion.md).
 
 **Hecho:**
 - **Fase 2, etapas 2.1 y 2.2:** organigrama, asignaciones, ámbito, custodia, canal jerárquico, tipos de pase, CUTI por cabecera, documentos propios y bandejas paginadas.
@@ -338,9 +338,9 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 
 **Prueba de campo:** el veredicto y los bloqueantes están en [docs/viabilidad-piloto.md](docs/viabilidad-piloto.md). El despliegue en el servidor, con servicio, HTTPS y respaldos, está en [docs/despliegue-servidor.md](docs/despliegue-servidor.md).
 
-**Pendientes en producción** (pasos 7 y 8 de [docs/pase-produccion.md](docs/pase-produccion.md)):
+**Pendientes en producción:**
 - Feriados trasladables y asuetos de 2026, según el decreto.
-- Cambio de la contraseña de la base de producción (la de pruebas se cambió el 03/11/2026).
+- Copia de los respaldos a otro equipo, cuentas nominales en lugar de las genéricas (ver `docs/viabilidad-piloto.md`).
 - 8 pases del piloto de la DTIC (agosto y septiembre de 2026) sin acuse: los resuelven las dependencias.
 
 **Tareas periódicas:**
@@ -348,9 +348,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 
 **Pendientes técnicos:**
 - **Contadores:** rondan 1 s cuando el ámbito abarca decenas de miles de expedientes activos. Se pueden cargar después de mostrar la página.
-- **HTTPS:** al pasar, definir `APP_COOKIE_SEGURA=true`.
-- **Respaldos programados** de la base y de la carpeta de PDF, probados con una restauración real.
+- **Certificado institucional:** reemplazar el interno, o instalarlo en los equipos.
 - **Bitácora de inicios de sesión:** hoy los exitosos y fallidos solo quedan en el registro de la aplicación.
 - **Análisis de seguridad:** OWASP ZAP y OWASP Dependency-Check.
 - **Inicio de sesión con LDAP de Carbonio.** Necesita los datos de conexión y una cuenta de servicio.
-- **Funcional:** revisar a mano los expedientes que pasaron a `PENDIENTE_SALIDA` antes de la corrección del conteo de informes, por ejemplo TIC-2026-000001.

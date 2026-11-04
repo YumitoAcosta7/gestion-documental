@@ -37,7 +37,10 @@ if [ -z "$VERSION_JAVA" ] || [ "$VERSION_JAVA" -lt 25 ]; then
     echo "Hace falta Java 25 o superior (hay: ${VERSION_JAVA:-ninguno})." >&2
     exit 1
 fi
-command -v nginx > /dev/null || { echo "Falta nginx." >&2; exit 1; }
+# Lo que usan el proxy, el certificado y los respaldos: una instalación mínima puede no traerlos
+for programa in nginx openssl sudo tar rsync; do
+    command -v "$programa" > /dev/null || { echo "Falta $programa: instálelo con  dnf install -y $programa" >&2; exit 1; }
+done
 
 # Usuario y carpetas
 id gestion_documental > /dev/null 2>&1 || useradd --system --no-create-home --shell /sbin/nologin gestion_documental
