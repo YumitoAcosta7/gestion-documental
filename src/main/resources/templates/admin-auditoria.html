@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoría de administración - Gestión Documental</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" integrity="sha384-QuGBSgV5Im3DzL2z+8Ko9/hqNy/N0O7zwvXAtfd1MvPKWa/UbeLV65cfm4BV5Wgq" crossorigin="anonymous">
+</head>
+<body class="bg-light">
+<div class="container-fluid py-3 px-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 bg-white px-3 py-2 rounded-3 shadow-sm border">
+        <div>
+            <h4 class="fw-bold m-0"><i class="bi bi-shield-check text-primary me-2"></i>Auditoría de administración</h4>
+            <div class="small text-muted">Usuarios, asignaciones, contraseñas y traslados. No se puede modificar.</div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="small fw-semibold" th:text="${admin.username}">admin</span>
+            <a th:href="@{/admin/usuarios}" class="btn btn-outline-secondary btn-sm rounded-pill px-3"><i class="bi bi-arrow-left me-1"></i>Administración</a>
+            <form th:action="@{/logout}" method="post" class="m-0">
+                <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3" aria-label="Salir"><i class="bi bi-box-arrow-right"></i></button>
+            </form>
+        </div>
+    </div>
+
+    <div th:if="${error}" class="alert alert-danger py-2" th:text="${error}">Error</div>
+
+    <form th:action="@{/admin/auditoria}" method="get" class="row g-2 align-items-end bg-white border rounded-3 shadow-sm p-2 m-0 mb-3 small">
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-0" for="desde">Desde</label>
+            <input type="date" id="desde" name="desde" class="form-control form-control-sm" th:value="${desde}">
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-0" for="hasta">Hasta</label>
+            <input type="date" id="hasta" name="hasta" class="form-control form-control-sm" th:value="${hasta}">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label mb-0" for="usuario">Cuenta que actuó</label>
+            <input id="usuario" name="usuario" class="form-control form-control-sm" maxlength="100" placeholder="Ej.: juan.admin" th:value="${usuario}">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label mb-0" for="accion">Acción</label>
+            <select id="accion" name="accion" class="form-select form-select-sm">
+                <option value="">Todas</option>
+                <option th:each="a : ${acciones}" th:value="${a}" th:text="${a}" th:selected="${a == accion}">ACCION</option>
+            </select>
+        </div>
+        <div class="col-md-2 d-flex gap-1">
+            <button class="btn btn-primary btn-sm flex-grow-1"><i class="bi bi-search me-1"></i>Buscar</button>
+            <a th:href="@{/admin/auditoria}" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+        </div>
+    </form>
+
+    <div class="card border-0 shadow-sm" th:if="${resultado != null}">
+        <div class="card-header bg-white small">
+            <strong th:text="${resultado.totalElements}">0</strong>
+            <span th:text="${resultado.totalElements == 1 ? 'movimiento' : 'movimientos'}">movimientos</span>
+        </div>
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-sm mb-0 small">
+                <thead class="table-light"><tr><th>Fecha</th><th>Quién</th><th>Acción</th><th>Detalle</th></tr></thead>
+                <tbody>
+                <tr th:each="e : ${resultado.content}">
+                    <td class="text-nowrap" th:text="${#temporals.format(e.fechaHora, 'dd/MM/yyyy HH:mm')}">fecha</td>
+                    <td th:text="${e.usuario.username}">usuario</td>
+                    <td><span class="badge bg-light text-dark border" th:text="${e.accion}">ACCION</span></td>
+                    <td th:text="${e.detalle}">detalle</td>
+                </tr>
+                <tr th:if="${resultado.empty}"><td colspan="4" class="text-muted p-3">No hay movimientos con estos filtros.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center small" th:if="${resultado.totalPages > 1}">
+            <a th:if="${resultado.hasPrevious()}" class="btn btn-outline-secondary btn-sm"
+               th:href="@{/admin/auditoria(desde=${desde},hasta=${hasta},usuario=${usuario},accion=${accion},pagina=${resultado.number - 1})}">Más recientes</a>
+            <span th:unless="${resultado.hasPrevious()}"></span>
+            <span th:text="${'Página ' + (resultado.number + 1) + ' de ' + resultado.totalPages}">Página 1 de 1</span>
+            <a th:if="${resultado.hasNext()}" class="btn btn-outline-secondary btn-sm"
+               th:href="@{/admin/auditoria(desde=${desde},hasta=${hasta},usuario=${usuario},accion=${accion},pagina=${resultado.number + 1})}">Más antiguos</a>
+            <span th:unless="${resultado.hasNext()}"></span>
+        </div>
+    </div>
+</div>
+</body>
+</html>
