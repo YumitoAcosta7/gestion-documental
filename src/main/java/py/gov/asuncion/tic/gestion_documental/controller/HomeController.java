@@ -298,6 +298,22 @@ public class HomeController {
     }
 
     /**
+     * ↩️ CORREGIR UNA SALIDA MAL CARGADA (la deja sin efecto, con motivo, antes del acuse)
+     */
+    @PostMapping("/documentos/corregir-salida")
+    public String corregirSalida(@RequestParam("documentoId") Long documentoId,
+                                 @RequestParam("motivo") String motivo,
+                                 RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.corregirSalida(documentoId, motivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Salida dejada sin efecto. Ya puede registrarla de nuevo o seguir el trámite.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al corregir la salida: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
      * ✅ CONFIRMAR ACUSE FINAL
      */
     @PostMapping("/documentos/confirmar-acuse")

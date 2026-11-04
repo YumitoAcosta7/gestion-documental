@@ -96,7 +96,7 @@ public class SecurityConfig {
                 .requestMatchers("/css/**", "/js/**", "/images/**", "/login").permitAll()
                 .requestMatchers("/admin/**").hasAuthority(Accion.ADMINISTRAR_SISTEMA.autoridad())
                 .requestMatchers("/documentos/guardar").hasAuthority(Accion.REGISTRAR_INGRESO.autoridad())
-                .requestMatchers("/documentos/salida", "/documentos/confirmar-acuse", "/documentos/reemplazar-acuse")
+                .requestMatchers("/documentos/salida", "/documentos/confirmar-acuse", "/documentos/reemplazar-acuse", "/documentos/corregir-salida")
                     .hasAuthority(Accion.REGISTRAR_SALIDA.autoridad())
                 .requestMatchers("/documentos/ubicacion", "/biblioratos/**").hasAuthority(Accion.GESTIONAR_ARCHIVO.autoridad())
                 .requestMatchers("/documentos/forzar-cierre").hasAuthority(Accion.FORZAR_CIERRE.autoridad())

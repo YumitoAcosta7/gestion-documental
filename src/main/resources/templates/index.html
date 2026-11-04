@@ -417,6 +417,7 @@
                                                         <li th:if="${s.puedeSalida() and s.tipoNombre != 'LISTO_SALIDA'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalSalida" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-box-arrow-right me-2"></i>Registrar salida</button></li>
                                                         <li th:if="${s.puedeAcuse() and s.tipoNombre != 'ESPERA_ACUSE'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalConfirmarAcuse" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-file-earmark-check me-2"></i>Confirmar acuse</button></li>
                                                         <li th:if="${s.paseRetirar() != null and s.tipoNombre != 'EN_CAMINO'}"><button type="button" class="dropdown-item" data-accion="anular-pase" data-tipo="RETIRAR" th:data-id="${s.paseRetirar()}"><i class="bi bi-x-circle me-2"></i>Retirar pase enviado</button></li>
+                                                        <li th:if="${s.puedeCorregirSalida()}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalCorregirSalida" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-pencil-square me-2"></i>Corregir salida</button></li>
                                                         <!-- Medida excepcional: al final y separada -->
                                                         <li th:if="${s.puedeCierre()}"><hr class="dropdown-divider"></li>
                                                         <li th:if="${s.puedeCierre()}"><button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#modalForzarCierre" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Cerrar informes y pasar a salida sin esperar todas las respuestas"><i class="bi bi-exclamation-octagon me-2"></i>Cierre excepcional</button></li>
@@ -1215,6 +1216,34 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check-circle me-1"></i> Confirmar y Finalizar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Corregir Salida -->
+    <div class="modal fade" id="modalCorregirSalida" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Corregir salida <span id="labelCutiCorregirSalida" class="text-muted"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form th:action="@{/documentos/corregir-salida}" method="post">
+                    <div class="modal-body">
+                        <input type="hidden" id="corregirSalidaDocId" name="documentoId" />
+                        <p class="small text-muted mb-3">
+                            La salida registrada queda sin efecto y el expediente vuelve al estado que tenía, para registrarla de nuevo o seguir el trámite. Los datos anteriores y el motivo quedan en la bitácora.
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold" for="corregirSalidaMotivo">Motivo *</label>
+                            <textarea class="form-control form-control-sm" id="corregirSalidaMotivo" name="motivo" rows="3" minlength="10" required placeholder="Ej: se cargó un número de nota equivocado"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger btn-sm">Dejar sin efecto</button>
                     </div>
                 </form>
             </div>

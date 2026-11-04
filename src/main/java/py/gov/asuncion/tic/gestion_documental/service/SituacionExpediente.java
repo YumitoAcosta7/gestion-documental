@@ -16,7 +16,8 @@ import java.util.function.Predicate;
 // cálculo decide qué se muestra, no qué se permite: cada operación se valida igual en el servidor.
 public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, Long paseRetirar, boolean puedeRechazar,
                                   boolean puedeAgregar, boolean puedeDerivar, boolean puedeDevolver,
-                                  boolean puedeSalida, boolean puedeAcuse, boolean puedeCierre) {
+                                  boolean puedeSalida, boolean puedeAcuse, boolean puedeCierre,
+                                  boolean puedeCorregirSalida) {
 
     public enum Tipo {
         RECIBIR,        // le enviaron un pase: confirmar la recepción
@@ -39,7 +40,7 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
     public boolean isConMenu() {
         return (puedeAgregar && tipo != Tipo.RESPONDER) || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
                 || (puedeSalida && tipo != Tipo.LISTO_SALIDA) || (puedeAcuse && tipo != Tipo.ESPERA_ACUSE)
-                || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre;
+                || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre || puedeCorregirSalida;
     }
 
     public static SituacionExpediente de(Documento doc, Dependencia custodia, List<ActuacionDocumento> actuaciones,
@@ -66,11 +67,13 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
         boolean originalDisponible = abierto && tieneOriginal && !enCamino;
         boolean salidaRegistrada = doc.getFechaHoraSalida() != null;
 
-        boolean puedeAgregar = permisos.actuacion() && abierto && (pedido != null || originalDisponible);
-        boolean puedeDerivar = (permisos.derivar() || permisos.actuacion()) && originalDisponible;
+        // Con la salida registrada el original ya salió: solo se responden pedidos, se confirma el acuse o se corrige la salida
+        boolean puedeAgregar = permisos.actuacion() && abierto && (pedido != null || (originalDisponible && !salidaRegistrada));
+        boolean puedeDerivar = (permisos.derivar() || permisos.actuacion()) && originalDisponible && !salidaRegistrada;
+        boolean puedeCorregirSalida = permisos.salida() && originalDisponible && salidaRegistrada;
         // Lo que todavía no se recibió no se devuelve: se confirma o se rechaza
         boolean puedeDevolver = permisos.actuacion() && abierto && estado != EstadoDocumento.PENDIENTE_SALIDA
-                && recibir == null && !(tieneOriginal && enCamino) && hayAQuienDevolver(actuaciones, tieneOriginal ? custodia : propia);
+                && recibir == null && !salidaRegistrada && !(tieneOriginal && enCamino) && hayAQuienDevolver(actuaciones, tieneOriginal ? custodia : propia);
         boolean puedeSalida = permisos.salida() && originalDisponible && !salidaRegistrada;
         boolean puedeAcuse = permisos.salida() && originalDisponible && estado == EstadoDocumento.PENDIENTE_SALIDA && salidaRegistrada;
         boolean puedeCierre = permisos.cierre() && originalDisponible && estado == EstadoDocumento.EN_ESPERA_INFORME;
@@ -90,6 +93,10 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
         } else if (puedeAcuse) {
             tipo = Tipo.ESPERA_ACUSE;
             detalle = "Salida registrada: falta el acuse";
+        } else if (salidaRegistrada && originalDisponible) {
+            // Expedientes derivados después de la salida, antes de que eso se bloqueara
+            tipo = Tipo.OTRA;
+            detalle = "Tiene una salida registrada: corríjala para continuar";
         } else if (puedeSalida && estado == EstadoDocumento.PENDIENTE_SALIDA) {
             tipo = Tipo.LISTO_SALIDA;
             detalle = "Listo para registrar la salida";
@@ -104,7 +111,7 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
         }
         return new SituacionExpediente(tipo, detalle, recibir != null ? recibir.getId() : null,
                 retirar != null ? retirar.getId() : null, puedeRechazar, puedeAgregar, puedeDerivar, puedeDevolver,
-                puedeSalida, puedeAcuse, puedeCierre);
+                puedeSalida, puedeAcuse, puedeCierre, puedeCorregirSalida);
     }
 
     private static boolean esPasePendiente(ActuacionDocumento a) {

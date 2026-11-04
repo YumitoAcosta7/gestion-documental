@@ -34,6 +34,8 @@ class GobernanzaExpedienteTest {
     @Mock AuditoriaService auditoriaService;
     @Mock PoliticaAcceso politicaAcceso;
     @Mock LegajoSalidaRepository legajoSalidaRepository;
+    @Mock AuditoriaDocumentoRepository auditoriaDocumentoRepository;
+    @Mock AdjuntoDocumentoRepository adjuntoRepository;
     @InjectMocks DocumentoService servicio;
 
     // Dirección de TIC (10) > Departamento Operativo (40); Dirección de Hacienda (20) pidió el informe
@@ -154,6 +156,83 @@ class GobernanzaExpedienteTest {
                 null, "DIRECTO_INFORME", List.of(), usuario), "remisión directa sin informes");
         assertThrows(IllegalArgumentException.class, () -> servicio.registrarSalidaDocumento(500L, "5/2026", null, "x", "y",
                 null, "DIRECTO_INFORME", List.of(999L), usuario), "un informe de otro expediente");
+        verify(documentoRepository, never()).save(any());
+    }
+
+    private void conSalidaRegistrada() {
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        when(canalService.organigrama()).thenReturn(null);
+        expediente.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
+        expediente.setNroNotaSalida("5/2026");
+        expediente.setPersonaRetiraSalida("Quien retira");
+        expediente.setFechaHoraSalida(LocalDateTime.now());
+    }
+
+    @Test
+    void conLaSalidaRegistradaNoSeTocaElExpediente() {
+        conSalidaRegistrada();
+        assertTrue(assertThrows(IllegalStateException.class, () -> registrar(hacienda, "PROVIDENCIA", "2/2026"))
+                .getMessage().contains("salida ya está registrada"));
+        assertTrue(assertThrows(IllegalStateException.class, () -> servicio.derivarDocumento(500L, List.of(10), "Motivo del pase", TipoPase.TRAMITE, usuario))
+                .getMessage().contains("salida ya está registrada"));
+        assertTrue(assertThrows(IllegalStateException.class, () -> servicio.registrarSalidaDocumento(500L, "6/2026", null, "x", "y", null, usuario))
+                .getMessage().contains("salida ya está registrada"), "no pisa los datos de la salida anterior");
+        assertEquals("5/2026", expediente.getNroNotaSalida());
+        verify(actuacionRepository, never()).save(any());
+    }
+
+    @Test
+    void laRespuestaAUnPedidoSeAdmiteAunqueElOriginalHayaSalido() {
+        pedidoInforme(1L, hacienda, operativo, 5);
+        conSalidaRegistrada();
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(false);
+        ActuacionDocumento respuesta = registrar(operativo, "INFORME_TECNICO", "10/2026");
+        assertNotNull(respuesta.getActuacionPadre());
+    }
+
+    @Test
+    void corregirLaSalidaLaDejaSinEfectoYLaAsientaEnLaBitacora() {
+        conSalidaRegistrada();
+        AuditoriaDocumento salida = new AuditoriaDocumento();
+        salida.setTipoEvento("SALIDA_EXTERNA");
+        salida.setEstadoAnterior("EN_ESPERA_INFORME");
+        when(auditoriaDocumentoRepository.findByDocumentoIdOrderByFechaHoraDesc(500L)).thenReturn(List.of(salida));
+        AdjuntoDocumento acuse = new AdjuntoDocumento();
+        acuse.setTipoAdjunto("ACUSE_SALIDA");
+        acuse.setVigente(true);
+        when(adjuntoRepository.findByDocumentoIdAndActuacionIsNullOrderByFechaHoraSubidaAsc(500L)).thenReturn(List.of(acuse));
+
+        servicio.corregirSalida(500L, "Se cargó mal el número de nota", usuario);
+
+        verify(politicaAcceso).exigir(eq(usuario), eq(Accion.REGISTRAR_SALIDA), any());
+        assertNull(expediente.getFechaHoraSalida());
+        assertNull(expediente.getNroNotaSalida());
+        assertEquals(EstadoDocumento.EN_ESPERA_INFORME, expediente.getEstadoActual(), "vuelve al estado anterior a la salida");
+        assertFalse(acuse.getVigente());
+        assertEquals("Se cargó mal el número de nota", acuse.getMotivoReemplazo());
+        verify(legajoSalidaRepository).deleteAll(any());
+        verify(auditoriaService).registrarEvento(eq(expediente), eq("CORRECCION_SALIDA"), eq(EstadoDocumento.PENDIENTE_SALIDA),
+                eq(EstadoDocumento.EN_ESPERA_INFORME), argThat(d -> d.contains("5/2026") && d.contains("Se cargó mal")), eq(usuario), isNull());
+    }
+
+    @Test
+    void corregirLaSalidaTieneSusLimites() {
+        conSalidaRegistrada();
+        assertThrows(IllegalArgumentException.class, () -> servicio.corregirSalida(500L, "corto", usuario), "sin un motivo válido");
+
+        when(actuacionRepository.existePaseTramitePendiente(500L)).thenReturn(true);
+        assertThrows(IllegalStateException.class, () -> servicio.corregirSalida(500L, "Motivo suficiente", usuario), "original en camino");
+        when(actuacionRepository.existePaseTramitePendiente(500L)).thenReturn(false);
+
+        expediente.setEstadoActual(EstadoDocumento.FINALIZADO);
+        assertThrows(IllegalStateException.class, () -> servicio.corregirSalida(500L, "Motivo suficiente", usuario), "con el acuse ya confirmado");
+
+        expediente.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
+        expediente.setFechaHoraSalida(null);
+        assertThrows(IllegalStateException.class, () -> servicio.corregirSalida(500L, "Motivo suficiente", usuario), "sin salida registrada");
+
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(false);
+        assertThrows(AccessDeniedException.class, () -> servicio.corregirSalida(500L, "Motivo suficiente", usuario), "sin el original");
         verify(documentoRepository, never()).save(any());
     }
 }

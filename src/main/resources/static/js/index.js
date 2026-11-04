@@ -550,6 +550,17 @@
                 });
             }
 
+            const modalCorregirSalida = document.getElementById('modalCorregirSalida');
+            if (modalCorregirSalida) {
+                modalCorregirSalida.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (button) {
+                        modalCorregirSalida.querySelector('#corregirSalidaDocId').value = button.getAttribute('data-doc-id');
+                        modalCorregirSalida.querySelector('#labelCutiCorregirSalida').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+                    }
+                });
+            }
+
             // Modal Historial con Carga Dinámica y Agrupación Jerárquica en Árbol
             const modalHistorialBs = new bootstrap.Modal(document.getElementById('modalHistorial'));
             document.querySelectorAll('.btn-ver-historial').forEach(btn => {

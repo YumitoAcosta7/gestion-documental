@@ -119,6 +119,30 @@ class SituacionExpedienteTest {
     }
 
     @Test
+    void conLaSalidaRegistradaSoloQuedaElAcuseOCorregirla() {
+        Documento d = doc(EstadoDocumento.PENDIENTE_SALIDA);
+        d.setFechaHoraSalida(LocalDateTime.now());
+        SituacionExpediente s = de(d, nosotros, mesa);
+        assertTrue(s.puedeAcuse() && s.puedeCorregirSalida());
+        assertFalse(s.puedeAgregar() || s.puedeDerivar() || s.puedeDevolver());
+
+        assertFalse(de(d, nosotros, operador).puedeCorregirSalida(), "sin el permiso de salida");
+        assertFalse(de(d, otra, mesa).puedeCorregirSalida(), "sin el original");
+        assertFalse(de(doc(EstadoDocumento.PENDIENTE_SALIDA), nosotros, mesa).puedeCorregirSalida(), "sin salida registrada");
+    }
+
+    @Test
+    void unExpedienteDerivadoDespuesDeLaSalidaSePuedeDestrabar() {
+        Documento d = doc(EstadoDocumento.EN_REVISION);
+        d.setFechaHoraSalida(LocalDateTime.now());
+        SituacionExpediente s = de(d, nosotros, mesa);
+        assertEquals(Tipo.OTRA, s.tipo());
+        assertTrue(s.detalle().contains("corríjala"));
+        assertTrue(s.puedeCorregirSalida() && s.isConMenu());
+        assertFalse(s.puedeAcuse() || s.puedeDerivar());
+    }
+
+    @Test
     void devolverSoloSiHayAQuienYNoSeDevolvio() {
         ActuacionDocumento recibido = pase(4, otra, nosotros, TipoPase.TRAMITE, true, 5);
         assertTrue(de(doc(EstadoDocumento.EN_REVISION), nosotros, mesa, recibido).puedeDevolver());
