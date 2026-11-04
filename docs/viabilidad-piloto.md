@@ -63,7 +63,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
    - Resolver los pases sin acuse desde agosto y septiembre (8 en la base). Administración → Pases trabados muestra 7, porque no incluye el de `TIC-2026-000003`, que está finalizado.
    - Revisar los expedientes que muestre `db/herramientas/revisar_pendientes_salida.sql`.
    - Decidir si esos expedientes de prueba (CUTI `TIC-2026-…`) se cierran o se mantienen.
-   - Reemplazar el acuse final de `TIC-2026-000003` por el escaneo real, o dejar constancia si el papel no existe: el vigente es un PDF cualquiera, subido para reponer el faltante. `revisar_pdf.sh` no informa faltantes y "Verificar" dice "Íntegro", pero eso no prueba que sea el documento correcto (`docs/pase-produccion.md`, 04/11/2026, 13:07).
+   - `TIC-2026-000003` es de prueba, según informó el usuario: su acuse vigente es un PDF cualquiera, sin valor de constancia. Si estos expedientes se conservan, deben quedar identificados como datos de prueba (`docs/pase-produccion.md`, 04/11/2026, 13:07).
 
 ## Antes del "Go", sin ser bloqueantes
 

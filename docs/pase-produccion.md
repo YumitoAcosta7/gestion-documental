@@ -243,7 +243,7 @@ Después, arrancar la versión anterior de la aplicación.
   - `juan.acosta` y `zlobo`: ven su bandeja y ya no tienen Administración.
   - `juan.admin` ve la bandeja vacía, sin expedientes.
   - Acuse de `TIC-2026-000003`: "Verificar" dice "Íntegro" en la versión vigente y "Falta el archivo" en la reemplazada, como se esperaba.
-- **El acuse vigente de `TIC-2026-000003` no es el documento real:** el usuario informó que subió un PDF cualquiera para reponerlo. "Íntegro" solo prueba que el archivo no cambió desde que se subió. Hay que reemplazarlo por el escaneo real, o dejar constancia si el papel no existe.
+- **El acuse vigente de `TIC-2026-000003` no es el documento real:** el usuario informó que subió un PDF cualquiera para reponerlo. "Íntegro" solo prueba que el archivo no cambió desde que se subió. El usuario informó que `TIC-2026-000003` es un expediente de prueba: es un dato de prueba, sin valor de constancia, y no hay papel que escanear.
 - **Dónde están los respaldos:** solo en el servidor, en `/var/backups/gestion_documental`. No hay copia en otro equipo.
 - **De 8 a 7 pases en el panel:** ninguno se confirmó ni se anuló: los 8 siguen sin acuse en la base. El panel, desde el PR #34, no muestra los pases de un expediente finalizado, y `TIC-2026-000003`, con un pase sin acuse, está `FINALIZADO`: esa es la diferencia.
 - **Separación de cuentas, 12:57 a 13:04, según la auditoría:**
