@@ -6,24 +6,18 @@
     <title>Administración - Gestión Documental</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" integrity="sha384-QuGBSgV5Im3DzL2z+8Ko9/hqNy/N0O7zwvXAtfd1MvPKWa/UbeLV65cfm4BV5Wgq" crossorigin="anonymous">
+    <link rel="stylesheet" th:href="@{/css/institucional.css}">
 </head>
-<body class="bg-light">
+<body class="con-lateral">
+<aside th:replace="~{fragments/marca :: lateralAdmin('usuarios')}"></aside>
 <div class="container-fluid py-3 px-4">
 
-    <!-- Encabezado -->
-    <div class="d-flex justify-content-between align-items-center mb-3 bg-white px-3 py-2 rounded-3 shadow-sm border">
+    <div class="cabecera">
         <div>
-            <h4 class="fw-bold m-0"><i class="bi bi-people-fill text-primary me-2"></i>Administración</h4>
-            <div class="small text-muted">Usuarios, asignaciones y suplencias</div>
+            <h1 class="cabecera-titulo">Administración</h1>
+            <div class="cabecera-detalle">Usuarios, asignaciones y suplencias</div>
         </div>
-        <div class="d-flex align-items-center gap-2">
-            <span class="small fw-semibold" th:text="${admin.username}">admin</span>
-            <a th:href="@{/admin/auditoria}" class="btn btn-outline-secondary btn-sm rounded-pill px-3"><i class="bi bi-shield-check me-1"></i>Auditoría</a>
-            <a th:href="@{/cuenta/contrasena}" class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Cambiar mi contraseña" aria-label="Cambiar mi contraseña"><i class="bi bi-key"></i></a>
-            <form th:action="@{/logout}" method="post" class="m-0">
-                <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3"><i class="bi bi-box-arrow-right"></i></button>
-            </form>
-        </div>
+        <span class="small fw-semibold" th:text="${admin.username}">admin</span>
     </div>
 
     <!-- Mensajes -->
@@ -225,7 +219,7 @@
                     <form th:if="${seleccionado.activo}" th:action="@{/admin/usuarios/{id}/contrasena(id=${seleccionado.id})}" method="post" class="m-0"
                           th:data-confirmar="${seleccionadoSensible ? 'Es una cuenta sensible: se pedirá la aprobación de otro administrador. ¿Continuar?' : 'Se generará una contraseña temporal nueva y la actual dejará de servir. ¿Continuar?'}">
                         <div class="d-flex gap-1">
-                            <input th:if="${seleccionadoSensible}" type="text" name="motivo" class="form-control form-control-sm" minlength="10" required placeholder="Motivo (cuenta sensible)" aria-label="Motivo del restablecimiento">
+                            <input th:if="${seleccionadoSensible}" type="text" name="motivo" class="form-control form-control-sm" minlength="10" required placeholder="Motivo" title="Es una cuenta sensible: la aprueba otro administrador" aria-label="Motivo del restablecimiento">
                             <button class="btn btn-outline-warning btn-sm text-nowrap"><i class="bi bi-key me-1"></i>Restablecer contraseña</button>
                         </div>
                     </form>
@@ -299,7 +293,7 @@
                             <td>
                                 <form th:if="${a.activa}" th:action="@{/admin/asignaciones/{id}/baja(id=${a.id})}" method="post" class="d-flex gap-1">
                                     <input type="hidden" name="usuarioId" th:value="${seleccionado.id}">
-                                    <input name="motivo" class="form-control form-control-sm" style="width: 9rem" required minlength="5" placeholder="Motivo">
+                                    <input name="motivo" class="form-control form-control-sm" style="width: 6.5rem" required minlength="5" placeholder="Motivo">
                                     <button class="btn btn-outline-danger btn-sm" title="Quitar asignación"><i class="bi bi-x-lg"></i></button>
                                 </form>
                             </td>
@@ -371,7 +365,7 @@
     </div>
 
     <!-- ===================== Pases trabados (auditoría M2) ===================== -->
-    <div class="card border-0 shadow-sm mt-3">
+    <div class="card border-0 shadow-sm mt-3" id="pases">
         <div class="card-header bg-white fw-bold">
             <i class="bi bi-hourglass-split me-1"></i>Pases trabados o fuera de plazo
             <span class="badge bg-secondary ms-1" th:text="${pasesTrabados.total()}">0</span>

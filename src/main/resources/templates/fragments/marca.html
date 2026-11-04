@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<body>
+
+<!-- El escudo se cambia solo aquí: colocar el archivo oficial en static/images y actualizar esta ruta -->
+<img th:fragment="escudo" th:src="@{/images/escudo-provisorio.svg}" alt="Municipalidad de Asunción" class="escudo escudo-claro">
+
+<div th:fragment="titulo" class="lateral-marca">
+    <img th:replace="~{fragments/marca :: escudo}">
+    <div>
+        <div class="lateral-nombre">Gestión Documental</div>
+        <div class="lateral-institucion">Municipalidad de Asunción</div>
+    </div>
+</div>
+
+<!-- Menú de las cuentas de administración. activa: usuarios o auditoria -->
+<aside th:fragment="lateralAdmin(activa)" class="lateral" aria-label="Menú de administración">
+    <div th:replace="~{fragments/marca :: titulo}"></div>
+    <nav class="lateral-nav">
+        <a th:href="@{/admin/usuarios}" class="lateral-item" th:classappend="${activa == 'usuarios' ? 'activo' : ''}"><i class="bi bi-people" aria-hidden="true"></i>Usuarios</a>
+        <a th:href="@{/admin/usuarios#pases}" class="lateral-item"><i class="bi bi-hourglass-split" aria-hidden="true"></i>Pases trabados</a>
+        <a th:href="@{/admin/usuarios#custodias}" class="lateral-item"><i class="bi bi-archive" aria-hidden="true"></i>Originales sin personal</a>
+        <a th:href="@{/admin/usuarios#feriados}" class="lateral-item"><i class="bi bi-calendar-x" aria-hidden="true"></i>Feriados</a>
+        <a th:href="@{/admin/auditoria}" class="lateral-item" th:classappend="${activa == 'auditoria' ? 'activo' : ''}"><i class="bi bi-shield-check" aria-hidden="true"></i>Auditoría</a>
+    </nav>
+    <div class="lateral-pie">
+        <a th:href="@{/cuenta/contrasena}" class="lateral-item"><i class="bi bi-key" aria-hidden="true"></i>Mi contraseña</a>
+        <form th:action="@{/logout}" method="post" class="m-0">
+            <button type="submit" class="lateral-item"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Salir</button>
+        </form>
+    </div>
+</aside>
+
+</body>
+</html>

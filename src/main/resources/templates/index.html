@@ -7,83 +7,63 @@
     <title th:text="${'Gestión Documental' + (areaUsuario != null && areaUsuario.sigla() != null ? ' - ' + areaUsuario.sigla() : '')}">Gestión Documental</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" integrity="sha384-QuGBSgV5Im3DzL2z+8Ko9/hqNy/N0O7zwvXAtfd1MvPKWa/UbeLV65cfm4BV5Wgq" crossorigin="anonymous">
+    <link rel="stylesheet" th:href="@{/css/institucional.css}">
     <style>
         body { background-color: #f4f6f9; font-family: 'Segoe UI', system-ui, sans-serif; }
         .kpi-card { border: none; border-radius: 10px; transition: transform 0.2s; }
         .kpi-card:hover { transform: translateY(-3px); }
-        .nav-tabs .nav-link.active { font-weight: bold; border-bottom: 3px solid #0d6efd; color: #0d6efd; }
+        .nav-tabs .nav-link.active { font-weight: bold; border-bottom: 3px solid var(--gd-primario); color: var(--gd-primario); }
 
         /* Estilos para el Árbol de Trazabilidad Jerárquico */
         .tree-container { font-family: 'Segoe UI', system-ui, sans-serif; padding-left: 5px; }
         .tree-node { position: relative; padding-left: 20px; margin-bottom: 12px; }
         .tree-node::before {
             content: ''; position: absolute; left: 6px; top: 0; bottom: -12px;
-            width: 2px; background-color: #0d6efd; opacity: 0.3;
+            width: 2px; background-color: var(--gd-primario); opacity: 0.3;
         }
         .tree-node:last-child::before { height: 20px; }
         .tree-node::after {
             content: ''; position: absolute; left: 6px; top: 20px;
-            width: 12px; height: 2px; background-color: #0d6efd; opacity: 0.3;
+            width: 12px; height: 2px; background-color: var(--gd-primario); opacity: 0.3;
         }
         .tree-card {
             border-radius: 8px; border: 1px solid #e3e6f0; background: #ffffff;
             box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.05); transition: all 0.2s ease;
         }
-        .tree-card:hover { border-color: #0d6efd; box-shadow: 0 0.25rem 0.5rem rgba(13, 110, 253, 0.15); }
+        .tree-card:hover { border-color: var(--gd-primario); box-shadow: 0 0.25rem 0.5rem rgba(15, 76, 74, 0.15); }
     </style>
 </head>
-<body class="p-3">
+<body class="con-lateral py-3">
+    <!-- Menú lateral: lo que puede hacer cada persona -->
+    <aside class="lateral" aria-label="Menú principal">
+        <div th:replace="~{fragments/marca :: titulo}"></div>
+        <nav class="lateral-nav">
+            <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_INGRESO')" type="button" class="lateral-item lateral-accion" data-bs-toggle="modal" data-bs-target="#modalNuevoDoc">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>Nuevo documento
+            </button>
+            <a th:href="@{/}" class="lateral-item activo"><i class="bi bi-inbox" aria-hidden="true"></i>Bandeja</a>
+            <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_ACTUACION')" type="button" class="lateral-item" data-bs-toggle="modal" data-bs-target="#modalDocumentoPropio">
+                <i class="bi bi-pencil-square" aria-hidden="true"></i>Documento propio
+            </button>
+            <button sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')" type="button" class="lateral-item" data-bs-toggle="modal" data-bs-target="#modalBiblioratos">
+                <i class="bi bi-archive" aria-hidden="true"></i>Biblioratos
+            </button>
+        </nav>
+        <div class="lateral-pie">
+            <a th:href="@{/cuenta/contrasena}" class="lateral-item"><i class="bi bi-key" aria-hidden="true"></i>Mi contraseña</a>
+            <form th:action="@{/logout}" method="post" class="m-0">
+                <button type="submit" class="lateral-item"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Salir</button>
+            </form>
+        </div>
+    </aside>
 
     <div class="container-fluid">
-        <!-- Header con Identificación de Sesión Minimalista y Botón de Salir -->
-        <div class="d-flex justify-content-between align-items-center mb-3 bg-white px-3 py-2 rounded-3 shadow-sm border">
-            <div>
-                <h4 class="fw-bold m-0"><i class="bi bi-journal-bookmark-fill text-primary me-2"></i>Gestión Documental</h4>
-                <div class="small text-muted" th:if="${areaUsuario != null}" th:text="${areaUsuario.nombre()}">Dirección</div>
-            </div>
-
-            <div class="d-flex align-items-center gap-2">
-                <!-- Información del Usuario Autenticado Compacta -->
-                <div class="d-flex align-items-center bg-light px-3 py-1 rounded-pill border me-1">
-                    <i class="bi bi-person-circle text-primary me-2"></i>
-                    <span class="fw-semibold small text-dark me-2" sec:authentication="name">usuario</span>
-                    <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2 py-1 align-middle" style="font-size: 0.7rem;" 
-                          th:text="${rolesUsuario}">
-                        ROL
-                    </span>
-                </div>
-
-                <!-- Botón Registrar Nuevo Documento (Visible para roles autorizados) -->
-                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_INGRESO')" class="btn btn-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalNuevoDoc">
-                    <i class="bi bi-plus-lg me-1"></i>Nuevo Documento
-                </button>
-
-                <!-- Documento propio: lo inicia cualquier dependencia y sale hacia su superior -->
-                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_ACTUACION')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalDocumentoPropio">
-                    <i class="bi bi-pencil-square me-1"></i>Documento propio
-                </button>
-
-                <!-- Catálogo de biblioratos (Dirección / Secretaría) -->
-                <button sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalBiblioratos">
-                    <i class="bi bi-archive me-1"></i>Biblioratos
-                </button>
-
-                <!-- Administración de usuarios y asignaciones -->
-                <a sec:authorize="hasAuthority('PERMISO_ADMINISTRAR_SISTEMA')" th:href="@{/admin/usuarios}" class="btn btn-outline-dark btn-sm rounded-pill px-3 fw-semibold">
-                    <i class="bi bi-people me-1"></i>Administración
-                </a>
-
-                <!-- Cambio de la propia contraseña -->
-                <a th:href="@{/cuenta/contrasena}" class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Cambiar mi contraseña">
-                    <i class="bi bi-key"></i>
-                </a>
-
-                <!-- Botón de Cerrar Sesión Compacto -->
-                <form th:action="@{/logout}" method="post" class="m-0">
-                    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-semibold" title="Cerrar Sesión">
-                        <i class="bi bi-box-arrow-right me-1"></i>Salir
-                    </button>
-                </form>
+        <!-- Dónde trabaja y con qué rol -->
+        <div class="cabecera">
+            <h1 class="cabecera-titulo" th:text="${areaUsuario != null ? areaUsuario.nombre() : 'Bandeja'}">Dirección</h1>
+            <div class="cabecera-detalle">
+                <i class="bi bi-person-circle me-1" aria-hidden="true"></i><span class="fw-semibold" sec:authentication="name">usuario</span>
+                <span class="ms-1" th:text="${rolesUsuario}">Rol</span>
             </div>
         </div>
 
@@ -361,10 +341,8 @@
                             <table class="table table-hover align-middle mb-0">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Cód. CUTI</th>
-                                        <th>N° Origen</th>
+                                        <th>Expediente</th>
                                         <th>Tipo</th>
-                                        <th>Prioridad</th>
                                         <th>Dependencia Origen</th>
                                         <th>Asunto</th>
                                         <th>Estado</th>
@@ -374,13 +352,14 @@
                                 </thead>
                                 <tbody>
                                     <tr th:each="doc : ${documentos}">
-                                        <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</td>
-                                        <td><span class="badge bg-light text-dark border" th:text="${doc.numeroDocumentoOrigen != null ? doc.numeroDocumentoOrigen : 'S/N'}">S/N</span></td>
-                                        <td><span class="badge bg-secondary" th:text="${doc.tipoDocumento?.nombre}">Nota</span></td>
+                                        <td class="text-nowrap">
+                                            <div class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</div>
+                                            <div class="small text-muted" th:text="${'N° ' + (doc.numeroDocumentoOrigen != null ? doc.numeroDocumentoOrigen : 'S/N')}">N° S/N</div>
+                                        </td>
                                         <td>
+                                            <div th:text="${doc.tipoDocumento?.nombre}">Nota</div>
                                             <span th:if="${doc.prioridad?.name() == 'URGENTE'}" class="badge bg-danger">URGENTE</span>
                                             <span th:if="${doc.prioridad?.name() == 'IMPORTANTE'}" class="badge bg-warning text-dark">IMPORTANTE</span>
-                                            <span th:if="${doc.prioridad?.name() == 'NORMAL'}" class="badge bg-info text-white">NORMAL</span>
                                         </td>
                                         <td th:text="${doc.dependenciaOrigen?.nombreVisible}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
@@ -451,7 +430,7 @@
                                         </td>
                                     </tr>
                                     <tr th:if="${#lists.isEmpty(documentos)}">
-                                        <td colspan="9" class="text-center py-4 text-muted">
+                                        <td colspan="7" class="text-center py-4 text-muted">
                                             <i class="bi bi-inbox fs-2 d-block mb-2"></i> No hay documentos en trámite activo actualmente.
                                         </td>
                                     </tr>

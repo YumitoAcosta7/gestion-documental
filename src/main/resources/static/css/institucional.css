@@ -1,0 +1,122 @@
+/* Identidad de Gestión Documental: tema Petróleo. Los colores se cambian solo aquí. */
+:root {
+    --gd-primario: #0F4C4A;
+    --gd-primario-oscuro: #0A3634;
+    --gd-primario-medio: #4F8582;
+    --gd-primario-suave: #E2F0EE;
+    --gd-fondo: #F4F5F6;
+    --gd-borde: #DDE0E3;
+    --gd-texto: #22272B;
+    --gd-texto-suave: #5A6168;
+    --gd-demora: #A33A2C;
+    --gd-lateral: 13rem;
+
+    --bs-primary: #0F4C4A;
+    --bs-primary-rgb: 15, 76, 74;
+    --bs-primary-bg-subtle: #E2F0EE;
+    --bs-primary-border-subtle: #A9CFCB;
+    --bs-primary-text-emphasis: #0A3634;
+    --bs-danger: #A33A2C;
+    --bs-danger-rgb: 163, 58, 44;
+    --bs-info: #3E6C7A;
+    --bs-info-rgb: 62, 108, 122;
+    --bs-link-color: #0F4C4A;
+    --bs-link-color-rgb: 15, 76, 74;
+    --bs-link-hover-color: #0A3634;
+    --bs-link-hover-color-rgb: 10, 54, 52;
+    --bs-body-bg: #F4F5F6;
+    --bs-body-color: #22272B;
+    --bs-body-font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --bs-focus-ring-color: rgba(15, 76, 74, .25);
+}
+
+.btn-primary {
+    --bs-btn-bg: #0F4C4A; --bs-btn-border-color: #0F4C4A;
+    --bs-btn-hover-bg: #0A3634; --bs-btn-hover-border-color: #0A3634;
+    --bs-btn-active-bg: #0A3634; --bs-btn-active-border-color: #0A3634;
+    --bs-btn-disabled-bg: #0F4C4A; --bs-btn-disabled-border-color: #0F4C4A;
+    --bs-btn-focus-shadow-rgb: 15, 76, 74;
+}
+.btn-outline-primary {
+    --bs-btn-color: #0F4C4A; --bs-btn-border-color: #0F4C4A;
+    --bs-btn-hover-bg: #0F4C4A; --bs-btn-hover-border-color: #0F4C4A;
+    --bs-btn-active-bg: #0F4C4A; --bs-btn-active-border-color: #0F4C4A;
+    --bs-btn-disabled-color: #0F4C4A; --bs-btn-disabled-border-color: #0F4C4A;
+    --bs-btn-focus-shadow-rgb: 15, 76, 74;
+}
+.btn-danger {
+    --bs-btn-bg: #A33A2C; --bs-btn-border-color: #A33A2C;
+    --bs-btn-hover-bg: #872F23; --bs-btn-hover-border-color: #872F23;
+    --bs-btn-active-bg: #872F23; --bs-btn-active-border-color: #872F23;
+}
+.btn-outline-danger {
+    --bs-btn-color: #A33A2C; --bs-btn-border-color: #A33A2C;
+    --bs-btn-hover-bg: #A33A2C; --bs-btn-hover-border-color: #A33A2C;
+    --bs-btn-active-bg: #A33A2C; --bs-btn-active-border-color: #A33A2C;
+}
+.form-control:focus, .form-select:focus {
+    border-color: var(--gd-primario-medio);
+    box-shadow: 0 0 0 .2rem rgba(15, 76, 74, .2);
+}
+.form-check-input:checked { background-color: var(--gd-primario); border-color: var(--gd-primario); }
+.nav-tabs .nav-link { color: var(--gd-texto-suave); }
+.nav-tabs .nav-link.active { color: var(--gd-primario); border-bottom: 3px solid var(--gd-primario); font-weight: 600; }
+.nav-pills { --bs-nav-pills-link-active-bg: #0F4C4A; --bs-nav-link-color: #0F4C4A; --bs-nav-link-hover-color: #0A3634; }
+.page-link { color: var(--gd-primario); }
+.active > .page-link, .page-link.active { background-color: var(--gd-primario); border-color: var(--gd-primario); }
+.dropdown-item.active, .dropdown-item:active { background-color: var(--gd-primario); }
+
+/* Indicadores: blancos, con el color solo como señal */
+.kpi-card.kpi-card { background-color: #fff !important; color: var(--gd-texto) !important; border-top: 3px solid var(--gd-primario-medio); border-radius: 8px; }
+.kpi-card.bg-warning { border-top-color: #C08A1E; }
+.kpi-card.bg-info { border-top-color: var(--bs-info); }
+.kpi-card.bg-danger { border-top-color: var(--gd-demora); }
+.kpi-card:hover { transform: none; }
+
+/* Menú lateral */
+.con-lateral { padding-left: var(--gd-lateral); background-color: var(--gd-fondo); }
+.lateral {
+    position: fixed; inset: 0 auto 0 0; width: var(--gd-lateral); z-index: 1030;
+    display: flex; flex-direction: column; overflow-y: auto;
+    padding: 1rem .75rem; background-color: var(--gd-primario); color: #fff;
+}
+.lateral-marca { display: flex; flex-direction: column; gap: .5rem; padding: 0 .25rem .75rem; margin-bottom: .75rem; border-bottom: 1px solid rgba(255, 255, 255, .2); }
+.lateral-nombre { font-weight: 600; font-size: 1rem; line-height: 1.2; }
+.lateral-institucion { font-size: .75rem; color: #CFE3E1; }
+.lateral-nav { display: flex; flex-direction: column; gap: .125rem; }
+.lateral-pie { margin-top: auto; padding-top: .75rem; display: flex; flex-direction: column; gap: .125rem; border-top: 1px solid rgba(255, 255, 255, .2); }
+.lateral-item {
+    display: flex; align-items: center; gap: .5rem; width: 100%; padding: .45rem .5rem;
+    background: none; border: 0; border-radius: 6px; color: #fff; font-size: .875rem; text-align: left; text-decoration: none;
+}
+.lateral-item:hover, .lateral-item:focus-visible { background-color: rgba(255, 255, 255, .12); color: #fff; }
+.lateral-item.activo { background-color: rgba(255, 255, 255, .18); font-weight: 600; }
+.lateral-accion { background-color: #fff; color: var(--gd-primario-oscuro); font-weight: 600; margin-bottom: .375rem; }
+.lateral-accion:hover, .lateral-accion:focus-visible { background-color: var(--gd-primario-suave); color: var(--gd-primario-oscuro); }
+
+.cabecera {
+    display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
+    padding: .625rem 1rem; margin-bottom: 1rem;
+    background-color: #fff; border: 1px solid var(--gd-borde); border-radius: 8px;
+}
+.cabecera-titulo { font-weight: 600; font-size: 1.05rem; margin: 0; }
+.cabecera-detalle { font-size: .8125rem; color: var(--gd-texto-suave); }
+
+.escudo { display: block; width: 2.75rem; height: auto; }
+.escudo-claro { background-color: #fff; border-radius: 6px; padding: .2rem; }
+
+/* Acceso y cambio de contraseña */
+.acceso { background-color: var(--gd-fondo); border-top: 4px solid var(--gd-primario); }
+.acceso .escudo { width: 4rem; margin: 0 auto .75rem; }
+.acceso-pie { font-size: .75rem; color: var(--gd-texto-suave); text-align: center; margin: 1rem 0 0; }
+
+@media (max-width: 991.98px) {
+    .con-lateral { padding-left: 0; }
+    .lateral { position: static; width: 100%; }
+    .lateral-marca { flex-direction: row; align-items: center; }
+    .lateral-nav, .lateral-pie { flex-direction: row; flex-wrap: wrap; }
+    .lateral-item { width: auto; }
+    .lateral-accion { margin-bottom: 0; }
+}
+
+.list-group { --bs-list-group-active-bg: #0F4C4A; --bs-list-group-active-border-color: #0F4C4A; }
