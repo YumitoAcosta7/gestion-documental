@@ -350,7 +350,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
   - un ingreso mal cargado se corrige con motivo (`CORRECCION_INGRESO`), antes de la salida; un expediente sin movimientos se anula con motivo (`ANULADO`, V25), sin borrarse y sin reutilizar el CUTI;
   - un finalizado se reabre con motivo y la aprobación de otra persona con `FORZAR_CIERRE` (`solicitudes_reapertura`, V26); vuelve a esperar el acuse;
   - restablecer la contraseña de una cuenta sensible requiere la aprobación de otro administrador (`solicitudes_contrasena`, V27), que recibe la temporal;
-  - quien solo administra no tramita ni ve expedientes, y una cuenta no puede sumar administrar y tramitar: si una persona hace las dos cosas, usa dos cuentas;
+  - una cuenta con `ADMIN_SISTEMA` solo administra, aunque tenga otras asignaciones: no tramita ni ve expedientes, y no puede sumar otro rol. Si una persona hace las dos cosas, usa dos cuentas;
   - el duplicado (origen y número) se controla por cabecera: otra dirección registra el mismo documento con su propio CUTI;
   - al finalizar, los pases sin recibir se anulan (`CIERRE_EXPEDIENTE`, V23).
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.

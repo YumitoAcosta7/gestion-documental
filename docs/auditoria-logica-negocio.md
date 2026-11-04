@@ -225,8 +225,21 @@ Bloque 2, en PR separados:
   - "Anular expediente" (estado `ANULADO`, migración V25), mismas personas, solo sin movimientos. No se borra, el CUTI no se reutiliza, su número queda libre y se liberan las fojas.
 - **A6 y D3, reabrir un finalizado:** la pide quien tiene `FORZAR_CIERRE` y el original, con motivo, y la aprueba otra persona con ese permiso (`solicitudes_reapertura`, migración V26). La base impide aprobar la propia y que haya dos pendientes. Al aprobarse vuelve a `PENDIENTE_SALIDA` con su salida registrada, y el acuse final deja de estar vigente, sin borrarse. Los pases anulados al finalizar no se restituyen.
 - **A5 caso 3, contraseñas de cuentas sensibles:** se consideran sensibles las cuentas con una asignación que requiere doble control. Las pide un administrador con motivo y las aprueba otro, que no sea el dueño de la cuenta (`solicitudes_contrasena`, migración V27). Quien aprueba recibe la temporal, una sola vez, y no se guarda. Con un solo administrador se hace igual, y la auditoría lo dice.
-- **M6 y D3, aislar al administrador:** quien solo tiene `ADMIN_SISTEMA` no tramita, no actúa por su dependencia y no ve expedientes. Una cuenta no puede sumar administrar y tramitar: el servidor lo rechaza. Las cuentas que ya tienen las dos cosas no se tocan solas; **`juan.acosta` y `zlobo` están en esa situación en producción** (consulta del 04/11/2026) y hay que separarlas: ver `docs/viabilidad-piloto.md`.
+- **M6 y D3, aislar al administrador:** una cuenta con `ADMIN_SISTEMA` vigente solo administra, aunque tenga otras asignaciones: no tramita, no actúa por ninguna dependencia y no ve expedientes. Una cuenta no puede sumar administrar y tramitar: el servidor lo rechaza. **`juan.acosta` y `zlobo` tienen los dos roles en producción** (consulta del 04/11/2026) y hay que separarlos antes de instalar: ver `docs/viabilidad-piloto.md`.
+- **Riesgo que sigue abierto (M12):** un administrador no puede darse permisos a su propia cuenta, pero sí crear una cuenta nueva y recibir su temporal: sin asignaciones ya trabaja como operador de su dependencia, y puede recibir roles de trámite sin aprobación fuera de las mesas y cabeceras. También puede restablecer la contraseña de una cuenta común y entrar en su nombre.
 - **Pendiente:** M7.
+
+### Cuentas
+
+Ninguna cuenta debería tener los dos roles. Esta consulta, de solo lectura, debe salir vacía:
+
+```sql
+SELECT u.username, string_agg(DISTINCT a.rol, ', ') AS roles
+  FROM usuarios u JOIN asignaciones a ON a.usuario_id = u.id
+ WHERE u.activo AND a.activa AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)
+ GROUP BY u.username
+HAVING bool_or(a.rol = 'ADMIN_SISTEMA') AND bool_or(a.rol <> 'ADMIN_SISTEMA');
+```
 
 ## Plan propuesto
 

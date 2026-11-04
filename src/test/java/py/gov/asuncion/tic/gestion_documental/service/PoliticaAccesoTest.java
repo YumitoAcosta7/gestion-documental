@@ -48,18 +48,24 @@ class PoliticaAccesoTest {
 
     @Test
     void variasAsignacionesSumanAcciones() {
-        Usuario u = usuarioCon(RolAsignacion.RESPONSABLE, RolAsignacion.ADMIN_SISTEMA);
-        assertEquals(EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION, Accion.FORZAR_CIERRE, Accion.VER_AUDITORIA,
-                Accion.ADMINISTRAR_SISTEMA), politica.acciones(u));
+        Usuario u = usuarioCon(RolAsignacion.RESPONSABLE, RolAsignacion.OPERADOR);
+        assertEquals(EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION, Accion.FORZAR_CIERRE, Accion.VER_AUDITORIA),
+                politica.acciones(u));
     }
 
     @Test
-    void quienSoloAdministraNoTramita() {
+    void unaCuentaDeAdministracionSoloAdministra() {
         Usuario u = usuarioCon(RolAsignacion.ADMIN_SISTEMA);
         assertEquals(EnumSet.of(Accion.ADMINISTRAR_SISTEMA), politica.acciones(u));
-        assertTrue(politica.esSoloAdministrador(u));
-        assertFalse(politica.esSoloAdministrador(usuarioCon(RolAsignacion.RESPONSABLE, RolAsignacion.ADMIN_SISTEMA)), "las cuentas anteriores con los dos roles");
-        assertFalse(politica.esSoloAdministrador(usuarioCon()));
+        assertTrue(politica.administraElSistema(u));
+        assertFalse(politica.administraElSistema(usuarioCon()));
+    }
+
+    @Test
+    void aunqueTengaOtrasAsignacionesNoTramita() {
+        Usuario u = usuarioCon(RolAsignacion.MESA_ENTRADA, RolAsignacion.ADMIN_SISTEMA);
+        assertEquals(EnumSet.of(Accion.ADMINISTRAR_SISTEMA), politica.acciones(u));
+        assertTrue(politica.administraElSistema(u));
     }
 
     @Test

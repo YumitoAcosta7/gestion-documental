@@ -47,23 +47,27 @@ public class PoliticaAcceso {
             return EnumSet.noneOf(Accion.class);
         }
         List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
+        // Auditoría M6: una cuenta de administración solo administra, aunque tenga otras asignaciones
+        if (vigentes.stream().anyMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA)) {
+            return EnumSet.of(Accion.ADMINISTRAR_SISTEMA);
+        }
         Set<Accion> acciones = EnumSet.noneOf(Accion.class);
         vigentes.forEach(a -> acciones.addAll(ACCIONES_POR_ROL.get(a.getRol())));
         // Sin ninguna asignación, trabaja como operador de su dependencia: lo mismo que considera el ámbito de
-        // visibilidad (DocumentoRepository.CTE_AMBITO). Quien solo administra no tramita (auditoría M6)
+        // visibilidad (DocumentoRepository.CTE_AMBITO)
         if (vigentes.isEmpty()) {
             acciones.addAll(SIN_ASIGNACIONES);
         }
         return acciones;
     }
 
-    // Administra el sistema y no tiene ninguna asignación de trámite: no ve expedientes ni actúa por ninguna dependencia
-    public boolean esSoloAdministrador(Usuario usuario) {
+    // Una cuenta de administración no ve expedientes ni actúa por ninguna dependencia
+    public boolean administraElSistema(Usuario usuario) {
         if (usuario == null || usuario.getId() == null) {
             return false;
         }
-        List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
-        return !vigentes.isEmpty() && vigentes.stream().allMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA);
+        return asignacionRepository.findVigentes(usuario.getId(), LocalDate.now()).stream()
+                .anyMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA);
     }
 
     public boolean puede(Usuario usuario, Accion accion) {
