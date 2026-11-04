@@ -34,11 +34,34 @@ Hace falta:
 - **Puertos 80, 443 y 8080 libres.** Si otro sistema los usa, resolverlo antes de seguir.
 - **Espacio** para la aplicación, los PDF y 30 días de respaldos.
 
-Comprobar además que la aplicación pueda entrar a la base por `localhost` (pide la contraseña de producción):
-```bash
-psql -h localhost -U gestion_documental -d gestion_documental -c "SELECT 1"
-```
-Si responde `Ident authentication failed`, usar en `SPRING_DATASOURCE_URL` la dirección `192.168.129.73` en lugar de `localhost`.
+## 1b. Autenticación de PostgreSQL (obligatorio)
+
+**Lo encontrado el 03/11/2026 en el servidor:**
+- `password_encryption` estaba en `md5`, pero la conexión por `localhost` exige `scram-sha-256`. Una contraseña guardada en md5 se rechaza con `password authentication failed`, aunque sea la correcta. El motivo real solo figura en el registro: `does not have a valid SCRAM secret`.
+- `pg_hba.conf` tenía `trust` para `127.0.0.1`: cualquier programa del servidor podía entrar a la base como superusuario, sin contraseña. Con la aplicación en el mismo servidor, una falla en ella daría control total de la base, incluidas las bitácoras. El puerto 5432 no era accesible con esa regla desde otros equipos, pero sí desde cualquier proceso local.
+
+**Corrección:**
+
+1. Guardar las contraseñas en SCRAM. Es compatible con las reglas `md5` que ya existen:
+   ```bash
+   sudo -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'scram-sha-256'" -c "SELECT pg_reload_conf()"
+   ```
+2. Volver a definir la contraseña de cada usuario, para que quede en el formato nuevo:
+   ```bash
+   sudo -u postgres psql -c "\password gestion_documental"
+   ```
+   ```bash
+   psql -h localhost -U gestion_documental -d gestion_documental -c "SELECT 1"
+   ```
+3. Antes de quitar `trust`, ver si alguien conecta por esa vía:
+   ```bash
+   sudo -u postgres psql -c "SELECT usename, datname, client_addr, application_name FROM pg_stat_activity WHERE client_addr = '127.0.0.1'"
+   ```
+4. Quitar `trust`, con copia del archivo. Los scripts de esta guía usan `sudo -u postgres`, por socket local (`peer`), y no se ven afectados:
+   ```bash
+   H=$(sudo -u postgres psql -tAc "SHOW hba_file"); cp -p "$H" "$H.antes_scram" && sed -i -E '/^host[[:space:]].*127\.0\.0\.1\/32/ s/trust/scram-sha-256/' "$H" && sudo -u postgres psql -c "SELECT pg_reload_conf()" -c "SELECT line_number, type, address, auth_method, error FROM pg_hba_file_rules"
+   ```
+   Ninguna línea tiene que decir `trust`, y la columna `error` tiene que estar vacía.
 
 ## 2. Empaquetar y copiar (PC)
 
