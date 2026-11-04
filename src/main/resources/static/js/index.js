@@ -368,6 +368,10 @@
                     if (button) {
                         modalActuacion.querySelector('#actuacionDocId').value = button.getAttribute('data-doc-id');
                         modalActuacion.querySelector('#labelCutiActuacion').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+                        // "Responder informe" ya propone el tipo que responde el pedido
+                        if (button.getAttribute('data-tipo-actuacion')) {
+                            modalActuacion.querySelector('[name=tipoActuacion]').value = button.getAttribute('data-tipo-actuacion');
+                        }
                     }
                 });
             }

@@ -94,7 +94,7 @@ public class HomeController {
      */
 
     @GetMapping("/")
-    public String index(@RequestParam(value = "bandeja", defaultValue = "TODOS") BandejaService.Bandeja bandeja,
+    public String index(@RequestParam(value = "bandeja", required = false) BandejaService.Bandeja bandeja,
                         @RequestParam(value = "pagina", defaultValue = "0") int pagina,
                         Model model) {
         cargarPantallaPrincipal(model, getUsuarioAutenticado(), List.of(), bandeja, pagina);
@@ -128,9 +128,21 @@ public class HomeController {
         }
     }
 
+    // Sin una bandeja elegida se abre donde hay trabajo: primero lo que hay que recibir, después lo que tiene en su poder
+    private static BandejaService.Bandeja bandejaInicial(BandejaService.Resumen resumen) {
+        if (resumen != null) {
+            for (BandejaService.Bandeja b : List.of(BandejaService.Bandeja.POR_RECIBIR, BandejaService.Bandeja.EN_MI_PODER)) {
+                if (resumen.bandejas().getOrDefault(b.name(), 0L) > 0) {
+                    return b;
+                }
+            }
+        }
+        return BandejaService.Bandeja.TODOS;
+    }
+
     // Datos comunes de la pantalla principal (bandejas, KPI, catálogos), para el inicio y la búsqueda
     private void cargarPantallaPrincipal(Model model, Usuario usuario, List<Documento> resultadosBusqueda,
-                                         BandejaService.Bandeja bandeja, int pagina) {
+                                         BandejaService.Bandeja bandejaPedida, int pagina) {
         Cronometro c = new Cronometro();
         model.addAttribute("nuevoDoc", new NuevoDocumentoDTO());
         model.addAttribute("usuarioLogueado", usuario);
@@ -139,14 +151,17 @@ public class HomeController {
 
         // 📥 Bandejas paginadas por ámbito, "Todos" incluida (auditoría B2)
         List<Documento> activos = List.of();
-        BandejaService.Resumen resumen = null;
+        BandejaService.Resumen resumen = usuario != null ? c.medir("resumen", () -> bandejaService.resumen(usuario)) : null;
+        BandejaService.Bandeja bandeja = bandejaPedida != null ? bandejaPedida : bandejaInicial(resumen);
         if (usuario != null) {
-            resumen = c.medir("resumen", () -> bandejaService.resumen(usuario));
             long total = resumen.bandejas().getOrDefault(bandeja.name(), 0L);
             Page<Documento> paginaBandeja = c.medir("bandeja", () -> bandejaService.listar(usuario, bandeja, pagina, total));
             activos = paginaBandeja.getContent();
             model.addAttribute("paginaBandeja", paginaBandeja);
         }
+        // 🧭 Para cada fila: la acción principal y solo las acciones que el servidor va a aceptar
+        List<Documento> deLaPagina = activos;
+        model.addAttribute("situaciones", c.medir("situaciones", () -> documentoService.situaciones(usuario, deLaPagina)));
         model.addAttribute("bandejas", BandejaService.Bandeja.values());
         model.addAttribute("bandejaActual", bandeja);
         model.addAttribute("contadoresBandejas", resumen != null ? resumen.bandejas() : java.util.Map.of());

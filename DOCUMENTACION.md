@@ -333,6 +333,10 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
   - justificación de cierre reservada;
   - huella encadenada de las bitácoras;
   - buscador con trigramas.
+- **Bandeja por situación** (`SituacionExpediente`):
+  - cada fila muestra una acción principal según lo que le toca hacer al usuario (confirmar recepción, responder informe, derivar, registrar salida, confirmar acuse), y el resto en el menú "Más";
+  - solo se ofrece lo que el servidor va a aceptar. El servidor valida cada operación igual;
+  - sin una bandeja elegida, abre en "Por recibir" si hay algo pendiente, si no en "En mi poder".
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
 - **Pruebas automatizadas:** 105, incluidas la matriz de autorización (`MatrizAutorizacionTest`), la revisión de las consultas nativas (`ConsultasNativasTest`) y la gobernanza del expediente (`GobernanzaExpedienteTest`).
 

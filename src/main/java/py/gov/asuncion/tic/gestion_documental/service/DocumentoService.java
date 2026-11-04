@@ -201,6 +201,27 @@ public class DocumentoService {
         return actuacionDocumentoRepository.existeParticipacionDependencia(documentoId, depId);
     }
 
+    // Situación de cada expediente de una página de la bandeja: acción principal y acciones disponibles
+    public Map<Long, SituacionExpediente> situaciones(Usuario usuario, List<Documento> documentos) {
+        if (usuario == null || documentos.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<ActuacionDocumento>> porDocumento = new HashMap<>();
+        for (ActuacionDocumento a : actuacionDocumentoRepository.findDeDocumentos(documentos.stream().map(Documento::getId).toList())) {
+            porDocumento.computeIfAbsent(a.getDocumento().getId(), k -> new ArrayList<>()).add(a);
+        }
+        java.util.function.Predicate<Dependencia> actuaPor = canalService.alcance(usuario);
+        SituacionExpediente.Permisos permisos = new SituacionExpediente.Permisos(
+                politicaAcceso.puede(usuario, Accion.REGISTRAR_ACTUACION), politicaAcceso.puede(usuario, Accion.DERIVAR),
+                politicaAcceso.puede(usuario, Accion.REGISTRAR_SALIDA), politicaAcceso.puede(usuario, Accion.FORZAR_CIERRE));
+        Map<Long, SituacionExpediente> resultado = new HashMap<>();
+        for (Documento d : documentos) {
+            resultado.put(d.getId(), SituacionExpediente.de(d, custodiaDe(d), porDocumento.getOrDefault(d.getId(), List.of()),
+                    actuaPor, usuario.getDependencia(), permisos));
+        }
+        return resultado;
+    }
+
     // Los expedientes de la lista que el usuario puede ver, conservando el orden. Misma regla que
     // puedeAccederDocumento, resuelta con una consulta por cada 1000 expedientes (auditoría B2)
     public List<Documento> filtrarAccesibles(Usuario usuario, List<Documento> documentos) {

@@ -362,7 +362,11 @@
                                         </td>
                                         <td th:text="${doc.dependenciaOrigen?.nombreVisible}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
-                                        <td><span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span></td>
+                                        <td>
+                                            <span class="badge bg-primary" th:text="${doc.estadoActual}">INGRESADO</span>
+                                            <!-- Dónde está y qué falta -->
+                                            <div th:if="${situaciones != null and situaciones[doc.id] != null}" class="small text-muted mt-1" th:text="${situaciones[doc.id].detalle()}">Está en …</div>
+                                        </td>
                                         <td th:with="ind=${sla != null ? sla[doc.id] : null}">
                                             <span class="d-block" th:text="${#temporals.format(doc.fechaHoraIngreso, 'dd/MM/yyyy HH:mm')}">03/08/2026 12:00</span>
                                             <!-- ⏱️ Días hábiles sin movimiento (amarillo: advertencia, rojo: crítico) -->
@@ -371,65 +375,54 @@
                                                   th:text="${ind.diasHabiles() + (ind.diasHabiles() == 1 ? ' día' : ' días') + ' sin movimiento'}"
                                                   title="Días hábiles desde el último movimiento del expediente">0 días</span>
                                         </td>
-                                        <td class="text-center">
-                                            <div class="btn-group" role="group">
-                                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalAgregarActuacion" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
-                                                    <i class="bi bi-file-earmark-plus"></i> Actuación
+                                        <td class="text-end text-nowrap" th:with="s=${situaciones != null ? situaciones[doc.id] : null}">
+                                            <th:block th:if="${s != null}">
+                                                <!-- 🧭 Acción principal según la situación (SituacionExpediente) -->
+                                                <button th:if="${s.tipoNombre == 'RECIBIR'}" type="button" class="btn btn-sm btn-primary" data-accion="confirmar-pase" th:data-id="${s.paseRecibir()}"
+                                                        title="Confirmar con la copia sellada y firmada">
+                                                    <i class="bi bi-inbox-fill me-1"></i>Confirmar recepción
                                                 </button>
-                                                <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
-                                                    <i class="bi bi-clock-history"></i> Historial
+                                                <button th:if="${s.tipoNombre == 'RECIBIR' and s.puedeRechazar()}" type="button" class="btn btn-sm btn-outline-danger" data-accion="anular-pase" data-tipo="RECHAZAR" th:data-id="${s.paseRecibir()}"
+                                                        title="No corresponde a su dependencia">Rechazar</button>
+                                                <button th:if="${s.tipoNombre == 'EN_CAMINO' and s.paseRetirar() != null}" type="button" class="btn btn-sm btn-outline-warning" data-accion="anular-pase" data-tipo="RETIRAR" th:data-id="${s.paseRetirar()}"
+                                                        title="Retirar el pase enviado por error">
+                                                    <i class="bi bi-x-circle me-1"></i>Retirar pase
                                                 </button>
-                                                <button sec:authorize="hasAuthority('PERMISO_VER_AUDITORIA')" type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2 me-1 btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría inmutable">
-                                                    <i class="bi bi-shield-check"></i> Auditoría
+                                                <button th:if="${s.tipoNombre == 'RESPONDER'}" type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalAgregarActuacion" data-tipo-actuacion="INFORME_TECNICO" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
+                                                    <i class="bi bi-reply-fill me-1"></i>Responder informe
                                                 </button>
-
-                                                <!-- BOTÓN DEVOLVER -->
-                                                <button type="button" 
-                                                        th:if="${doc.estadoActual.name() != 'FINALIZADO' and doc.estadoActual.name() != 'PENDIENTE_SALIDA'}"
-                                                        class="btn btn-sm btn-outline-warning rounded-pill px-2 me-1 fw-bold" 
-                                                        data-accion="preparar-devolucion" th:data-id="${doc.id}"
-                                                        title="Devolver expediente a la dependencia emisora">
-                                                    <i class="bi bi-arrow-return-left"></i> Devolver
+                                                <button th:if="${s.tipoNombre == 'LISTO_SALIDA'}" type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalSalida" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
+                                                    <i class="bi bi-box-arrow-right me-1"></i>Registrar salida
                                                 </button>
-
-                                                <!-- BOTÓN DERIVAR RESTAURADO -->
-                                                <button sec:authorize="hasAnyAuthority('PERMISO_DERIVAR','PERMISO_REGISTRAR_ACTUACION')" title="Pasar el expediente o elevarlo a la dependencia superior (mismo CUTI)" type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 me-1" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
-                                                    <i class="bi bi-arrow-right-short"></i> Derivar / Elevar
+                                                <button th:if="${s.tipoNombre == 'ESPERA_ACUSE'}" type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalConfirmarAcuse" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
+                                                    <i class="bi bi-file-earmark-check me-1"></i>Confirmar acuse
                                                 </button>
-
-                                                <!-- BOTÓN SALIDA -->
-                                                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_SALIDA')" type="button"
-                                                        th:class="${doc.fechaHoraSalida != null ? 'btn btn-sm btn-success rounded-pill px-2 me-1' : 'btn btn-sm btn-outline-success rounded-pill px-2 me-1'}" 
-                                                        data-bs-toggle="modal" 
-                                                        data-bs-target="#modalSalida" 
-                                                        th:data-doc-id="${doc.id}" 
-                                                        th:data-doc-cuti="${doc.codigoCuti}">
-                                                    <i class="bi bi-box-arrow-right"></i> <span th:text="${doc.fechaHoraSalida != null ? 'Salida Registrada' : 'Salida'}">Salida</span>
+                                                <button th:if="${s.tipoNombre == 'EN_PODER'}" type="button" class="btn btn-sm btn-primary" title="Pasar el expediente o elevarlo a la dependencia superior (mismo CUTI)" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">
+                                                    <i class="bi bi-send me-1"></i>Derivar / Elevar
                                                 </button>
 
-                                                <!-- BOTÓN CONFIRMAR ACUSE -->
-                                                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_SALIDA')" type="button"
-                                                        th:if="${doc.estadoActual.name() == 'PENDIENTE_SALIDA'}"
-                                                        th:disabled="${doc.fechaHoraSalida == null}"
-                                                        th:class="${doc.fechaHoraSalida != null ? 'btn btn-sm btn-warning rounded-pill px-3 me-1 fw-bold text-dark' : 'btn btn-sm btn-secondary rounded-pill px-3 me-1 disabled opacity-50'}"
-                                                        data-bs-toggle="modal" 
-                                                        data-bs-target="#modalConfirmarAcuse" 
-                                                        th:data-doc-id="${doc.id}" 
-                                                        th:data-doc-cuti="${doc.codigoCuti}"
-                                                        th:title="${doc.fechaHoraSalida == null ? 'Primero debe registrar la salida física con el mensajero' : 'Subir acuse final firmado'}">
-                                                    <i class="bi bi-file-earmark-check"></i> Confirmar Acuse
+                                                <!-- Consulta: siempre disponible -->
+                                                <button type="button" class="btn btn-sm btn-outline-secondary btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver el recorrido y los documentos del expediente">Ver</button>
+                                                <button sec:authorize="hasAuthority('PERMISO_VER_AUDITORIA')" type="button" class="btn btn-sm btn-outline-secondary btn-ver-auditoria" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Ver bitácora de auditoría inmutable" aria-label="Ver bitácora de auditoría">
+                                                    <i class="bi bi-shield-check"></i>
                                                 </button>
 
-                                                <!-- BOTÓN CIERRE EXCEPCIONAL (solo Dirección / Secretaría) -->
-                                                <button sec:authorize="hasAuthority('PERMISO_FORZAR_CIERRE')" type="button"
-                                                        th:if="${doc.estadoActual.name() != 'PENDIENTE_SALIDA' and doc.estadoActual.name() != 'FINALIZADO'}"
-                                                        class="btn btn-sm btn-outline-danger rounded-pill px-2 me-1"
-                                                        data-bs-toggle="modal" data-bs-target="#modalForzarCierre"
-                                                        th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"
-                                                        title="Cerrar informes y pasar a salida sin esperar todas las respuestas">
-                                                    <i class="bi bi-exclamation-octagon"></i> Cierre excepcional
-                                                </button>
-                                            </div>
+                                                <!-- Lo demás que se puede hacer en esta situación -->
+                                                <div th:if="${s.conMenu}" class="dropdown d-inline-block">
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false">Más</button>
+                                                    <ul class="dropdown-menu dropdown-menu-end">
+                                                        <li th:if="${s.puedeAgregar()}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalAgregarActuacion" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-file-earmark-plus me-2"></i>Agregar actuación</button></li>
+                                                        <li th:if="${s.puedeDerivar() and s.tipoNombre != 'EN_PODER'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-send me-2"></i>Derivar / Elevar</button></li>
+                                                        <li th:if="${s.puedeDevolver()}"><button type="button" class="dropdown-item" data-accion="preparar-devolucion" th:data-id="${doc.id}"><i class="bi bi-arrow-return-left me-2"></i>Devolver a quien lo envió</button></li>
+                                                        <li th:if="${s.puedeSalida() and s.tipoNombre != 'LISTO_SALIDA'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalSalida" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-box-arrow-right me-2"></i>Registrar salida</button></li>
+                                                        <li th:if="${s.puedeAcuse() and s.tipoNombre != 'ESPERA_ACUSE'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalConfirmarAcuse" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-file-earmark-check me-2"></i>Confirmar acuse</button></li>
+                                                        <li th:if="${s.paseRetirar() != null and s.tipoNombre != 'EN_CAMINO'}"><button type="button" class="dropdown-item" data-accion="anular-pase" data-tipo="RETIRAR" th:data-id="${s.paseRetirar()}"><i class="bi bi-x-circle me-2"></i>Retirar pase enviado</button></li>
+                                                        <!-- Medida excepcional: al final y separada -->
+                                                        <li th:if="${s.puedeCierre()}"><hr class="dropdown-divider"></li>
+                                                        <li th:if="${s.puedeCierre()}"><button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#modalForzarCierre" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Cerrar informes y pasar a salida sin esperar todas las respuestas"><i class="bi bi-exclamation-octagon me-2"></i>Cierre excepcional</button></li>
+                                                    </ul>
+                                                </div>
+                                            </th:block>
                                         </td>
                                     </tr>
                                     <tr th:if="${#lists.isEmpty(documentos)}">
