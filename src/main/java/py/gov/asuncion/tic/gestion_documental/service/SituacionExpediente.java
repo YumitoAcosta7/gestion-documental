@@ -37,7 +37,7 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
     }
 
     public boolean isConMenu() {
-        return puedeAgregar || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
+        return (puedeAgregar && tipo != Tipo.RESPONDER) || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
                 || (puedeSalida && tipo != Tipo.LISTO_SALIDA) || (puedeAcuse && tipo != Tipo.ESPERA_ACUSE)
                 || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre;
     }
@@ -68,8 +68,9 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
 
         boolean puedeAgregar = permisos.actuacion() && abierto && (pedido != null || originalDisponible);
         boolean puedeDerivar = (permisos.derivar() || permisos.actuacion()) && originalDisponible;
+        // Lo que todavía no se recibió no se devuelve: se confirma o se rechaza
         boolean puedeDevolver = permisos.actuacion() && abierto && estado != EstadoDocumento.PENDIENTE_SALIDA
-                && !(tieneOriginal && enCamino) && hayAQuienDevolver(actuaciones, tieneOriginal ? custodia : propia);
+                && recibir == null && !(tieneOriginal && enCamino) && hayAQuienDevolver(actuaciones, tieneOriginal ? custodia : propia);
         boolean puedeSalida = permisos.salida() && originalDisponible && !salidaRegistrada;
         boolean puedeAcuse = permisos.salida() && originalDisponible && estado == EstadoDocumento.PENDIENTE_SALIDA && salidaRegistrada;
         boolean puedeCierre = permisos.cierre() && originalDisponible && estado == EstadoDocumento.EN_ESPERA_INFORME;

@@ -58,6 +58,7 @@ class SituacionExpedienteTest {
         assertEquals(7L, s.paseRecibir());
         assertTrue(s.puedeRechazar());
         assertFalse(s.puedeDerivar(), "el original todavía no es suyo");
+        assertFalse(s.puedeDevolver(), "lo que no se recibió se rechaza, no se devuelve");
     }
 
     @Test
@@ -88,6 +89,17 @@ class SituacionExpedienteTest {
         assertEquals(Tipo.RESPONDER, s.tipo());
         assertTrue(s.puedeAgregar());
         assertFalse(s.puedeDerivar());
+    }
+
+    @Test
+    void elMenuNoRepiteLaAccionDeResponder() {
+        ActuacionDocumento pedido = pase(3, otra, nosotros, TipoPase.INFORME, true, 5);
+        ActuacionDocumento devolucion = ActuacionDocumento.builder().id(5L).tipoActuacion("DEVOLUCION").anulada(false)
+                .dependenciaEmisora(nosotros).dependenciaReceptoraPase(otra).fechaHoraActuacion(LocalDateTime.now()).build();
+        SituacionExpediente s = de(doc(EstadoDocumento.EN_ESPERA_INFORME), otra, operador, pedido, devolucion);
+        assertEquals(Tipo.RESPONDER, s.tipo());
+        assertTrue(s.puedeAgregar());
+        assertFalse(s.isConMenu(), "sin otras acciones, Agregar no abre un menú que repite Responder");
     }
 
     @Test
