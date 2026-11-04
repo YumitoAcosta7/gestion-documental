@@ -693,6 +693,7 @@ public class HomeController {
                     ? act.getFechaHoraAnulacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : null);
 
             // Acciones que el usuario actual puede realizar sobre esta actuación
+            map.put("puedeConfirmar", documentoService.puedeConfirmarPase(act, usuario));
             map.put("puedeRetirar", documentoService.puedeRetirarPase(act, usuario));
             map.put("puedeRechazar", documentoService.puedeRechazarPase(act, usuario));
             map.put("puedeReemplazarPdf", documentoService.puedeReemplazarPdf(act, usuario));
