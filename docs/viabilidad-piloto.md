@@ -24,7 +24,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 | 3 | Respaldos | 🟡 Diarios y con restauración de la base probada. **Falta la copia a otro equipo** (`RESPALDO_DESTINO`) |
 | 4 | Cuentas nominales | 🟡 Administrar y tramitar ya están separados (`juan.admin` y `zlobo.admin`). **Faltan las cuentas por persona:** siguen las 6 genéricas |
 | 5 | Autenticación de la base | ✅ Contraseña cambiada, SCRAM y sin `trust` |
-| 6 | Datos del piloto anterior | 🟡 `revisar_pendientes_salida.sql` no encontró casos y `revisar_pdf.sh` no informa faltantes. Faltan los pases sin acuse: 7 en el panel el 04/11/2026 (eran 8) |
+| 6 | Datos del piloto anterior | 🟡 `revisar_pendientes_salida.sql` no encontró casos y `revisar_pdf.sh` no informa faltantes. Faltan los pases sin acuse: 8 en la base, 7 en el panel el 04/11/2026 |
 
 ## Lo que está listo
 
@@ -53,13 +53,14 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 4. **Cuentas nominales.**
    - **Hoy:** en producción hay cuentas genéricas: `director_tic`, `jefe_bd`, `jefe_operativo`, `jefe_soporte`, `encargado_soporte`, `secretaria_tic`. Una bitácora que registra "Jefe Dpto." no identifica a una persona y no sirve como prueba.
    - **Hace falta:** crear una cuenta por persona y dar de baja las genéricas. La baja conserva su historial.
+   - **Falta confirmar el doble control:** que cada administrador use solo su cuenta, con una contraseña que solo esa persona conozca (`docs/pase-produccion.md`, 04/11/2026, 13:07).
    - **Separar administrar de tramitar (decisión D3): hecho el 04/11/2026,** antes de instalar la V28. Administran `juan.admin` y `zlobo.admin`; `juan.acosta` (`RESPONSABLE`) y `zlobo` (`MESA_ENTRADA`) solo tramitan. La consulta de la sección "Cuentas" de `docs/auditoria-logica-negocio.md` debe seguir saliendo vacía.
 5. **Autenticación de la base de producción.**
    - Cambiar la contraseña con `\password gestion_documental` y guardarla en SCRAM.
    - Quitar la regla `trust` de `127.0.0.1`, encontrada el 03/11/2026: cualquier programa del servidor podía entrar como superusuario sin contraseña.
    - Los pasos están en `docs/despliegue-servidor.md`, sección 1b.
 6. **Datos del piloto anterior.**
-   - Resolver los pases sin acuse desde agosto y septiembre (eran 8; el panel mostraba 7 el 04/11/2026, sin que se haya explicado la diferencia). Aparecen en Administración → Pases trabados.
+   - Resolver los pases sin acuse desde agosto y septiembre (8 en la base). Administración → Pases trabados mostraba 7 el 04/11/2026, porque no incluye los de expedientes finalizados; falta confirmar que esa es la diferencia.
    - Revisar los expedientes que muestre `db/herramientas/revisar_pendientes_salida.sql`.
    - Decidir si esos expedientes de prueba (CUTI `TIC-2026-…`) se cierran o se mantienen.
    - Confirmar que el acuse final repuesto de `TIC-2026-000003` es el escaneo real. `revisar_pdf.sh` ya no informa faltantes y "Verificar" dice "Íntegro" (`docs/pase-produccion.md`, 04/11/2026, 13:07).

@@ -242,7 +242,10 @@ Después, arrancar la versión anterior de la aplicación.
   - `juan.admin`: 0 originales en dependencias sin personal, y 7 pases trabados o fuera de plazo, ninguno con el botón "Retirar".
   - `juan.acosta` y `zlobo`: ven su bandeja y ya no tienen Administración.
   - Acuse de `TIC-2026-000003`: "Verificar" dice "Íntegro" en la versión vigente y "Falta el archivo" en la reemplazada, como se esperaba.
-- **Sin explicar:** el 03/11/2026 el panel mostraba 8 pases y ahora muestra 7. Falta identificar cuál salió y por qué.
+- **De 8 a 7 pases en el panel:** ninguno se confirmó ni se anuló: los 8 siguen sin acuse en la base. El panel, desde el PR #34, no muestra los pases de un expediente finalizado, y eso explicaría la diferencia si uno de los 8 está en ese caso. Falta confirmarlo con el estado de esos expedientes.
+- **Separación de cuentas, 12:57 a 13:04, según la auditoría:**
+  - Se usaron "de prueba" y "prueba" como acto administrativo de los dos `ADMIN_SISTEMA` y como motivo de las bajas. La auditoría no se puede modificar: si hay un acto real, se deja constancia aparte.
+  - `juan.acosta` restableció la contraseña de `zlobo` y generó las temporales de `juan.admin` y `zlobo.admin`. Falta confirmar que Zaimy Lobo hizo personalmente las acciones de `zlobo` y `zlobo.admin`, y que solo ella conoce esas contraseñas.
 - **Sin comprobar todavía:**
   - qué archivo se subió como acuse de `TIC-2026-000003`: si es el escaneo real;
   - que `juan.admin` no vea expedientes (lo cubren las pruebas automáticas);
