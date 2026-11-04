@@ -82,6 +82,17 @@ class DobleControlAsignacionesTest {
     }
 
     @Test
+    void enUnaMesaDeEntradaTodoRolDeTramiteEsSensible() {
+        Dependencia mesa = Dependencia.builder().id(11).nombre("Unidad de Secretaría Administrativa").ruta("/1/10/11/")
+                .nivelJerarquicoId(7).activo(true).esMesaEntrada(true).build();
+        when(dependencias.findById(11)).thenReturn(Optional.of(mesa));
+        assertTrue(pedir(RolAsignacion.MESA_ENTRADA, mesa, ana, adminA).isPendiente(), "aunque sea de nivel unidad");
+        assertTrue(servicio.requiereDobleControl(RolAsignacion.RESPONSABLE, mesa));
+        assertTrue(servicio.requiereDobleControl(RolAsignacion.OPERADOR, mesa));
+        assertFalse(servicio.requiereDobleControl(RolAsignacion.CONSULTA, mesa), "solo lee");
+    }
+
+    @Test
     void lasComunesRigenEnElActo() {
         Asignacion operador = pedir(RolAsignacion.OPERADOR, dtic, ana, adminA);
         assertFalse(operador.isPendiente());

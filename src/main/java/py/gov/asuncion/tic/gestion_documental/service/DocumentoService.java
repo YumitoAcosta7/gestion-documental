@@ -189,7 +189,8 @@ public class DocumentoService {
         if (documentoRepository.existeEnAmbito(usuario.getId(), documentoId)) {
             return true;
         }
-        if (usuario.getDependencia() == null) {
+        // En una mesa de entrada, pertenecer no da acceso: hace falta una asignación aprobada (auditoría A5)
+        if (usuario.getDependencia() == null || Boolean.TRUE.equals(usuario.getDependencia().getEsMesaEntrada())) {
             return false;
         }
 
@@ -515,6 +516,9 @@ public class DocumentoService {
 
         // Emite la dependencia por la que actúa el usuario: su mesa si es mesa de entrada, si no la propia
         Dependencia emisora = canalService.dependenciaDeRegistro(usuarioSesion);
+        if (!canalService.puedeActuarPor(usuarioSesion, emisora)) {
+            throw new AccessDeniedException("Para trabajar en " + emisora.getNombreVisible() + " hace falta una asignación aprobada: consulte a un administrador.");
+        }
         Organigrama.Destino superior = null;
         if (enviarAlSuperior) {
             superior = canalService.organigrama().destinos(emisora.getId()).stream()

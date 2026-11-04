@@ -219,7 +219,8 @@ Bloque 1, en el PR de esta fecha. Cómo se resolvió lo que el informe dejaba ab
 Bloque 2, en PR separados:
 
 - **M1 y D2, devolución con acuse:** es un pase de trámite de vuelta (`es_devolucion`, migración V24). El original sigue a cargo de quien devuelve hasta el acuse, se registra `CAMBIO_CUSTODIA` al confirmar, y se puede retirar o rechazar. Una devolución no cuenta como entrega: no se devuelve de vuelta. Las devoluciones anteriores quedan como están.
-- **Pendientes:** A5, A6, M6 y M7.
+- **A5, casos 1 y 2, doble control de las mesas:** todo rol de trámite con ámbito en una mesa de entrada requiere la aprobación de otro administrador. Pertenecer a una mesa, sin asignación vigente, ya no permite actuar, ver sus expedientes ni iniciar documentos. Antes de instalarlo se corre `db/herramientas/revisar_cuentas_mesa.sql`. Las asignaciones ya vigentes no se tocan: esa consulta las lista para revisarlas.
+- **Pendientes:** A5 caso 3 (restablecer la contraseña de una cuenta sensible), A6, M6 y M7.
 
 ## Plan propuesto
 
