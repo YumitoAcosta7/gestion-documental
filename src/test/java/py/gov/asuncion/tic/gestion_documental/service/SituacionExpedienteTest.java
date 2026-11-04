@@ -172,6 +172,15 @@ class SituacionExpedienteTest {
     }
 
     @Test
+    void sinPermisoDeSalidaSeInformaQueFaltaElAcuse() {
+        Documento d = doc(EstadoDocumento.PENDIENTE_SALIDA);
+        d.setFechaHoraSalida(LocalDateTime.now());
+        SituacionExpediente s = de(d, nosotros, operador);
+        assertEquals(Tipo.OTRA, s.tipo());
+        assertEquals("Salida registrada: falta el acuse", s.detalle());
+    }
+
+    @Test
     void sinElOriginalNoSeOfreceDevolver() {
         SituacionExpediente s = de(doc(EstadoDocumento.EN_ESPERA_INFORME), otra, mesa, pase(3, otra, nosotros, TipoPase.INFORME, true, 5));
         assertEquals(Tipo.RESPONDER, s.tipo());

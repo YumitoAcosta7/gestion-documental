@@ -588,6 +588,17 @@
                 });
             }
 
+            const modalReapertura = document.getElementById('modalSolicitarReapertura');
+            if (modalReapertura) {
+                modalReapertura.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (!button) return;
+                    modalReapertura.querySelector('#reaperturaDocId').value = button.getAttribute('data-doc-id');
+                    modalReapertura.querySelector('#labelCutiReapertura').textContent = `(${button.getAttribute('data-doc-cuti')})`;
+                    modalReapertura.querySelector('#reaperturaMotivo').value = '';
+                });
+            }
+
             const modalCorregirIngreso = document.getElementById('modalCorregirIngreso');
             if (modalCorregirIngreso) {
                 modalCorregirIngreso.addEventListener('show.bs.modal', function (event) {

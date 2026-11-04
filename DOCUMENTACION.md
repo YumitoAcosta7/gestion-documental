@@ -348,6 +348,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
   - un pedido se cierra solo con la respuesta que el usuario elige en el formulario (`actuacion_padre_id`);
   - en una mesa de entrada hace falta una asignación aprobada por otro administrador: pertenecer a ella no alcanza. Antes de instalar, `db/herramientas/revisar_cuentas_mesa.sql` lista a quién afecta;
   - un ingreso mal cargado se corrige con motivo (`CORRECCION_INGRESO`), antes de la salida; un expediente sin movimientos se anula con motivo (`ANULADO`, V25), sin borrarse y sin reutilizar el CUTI;
+  - un finalizado se reabre con motivo y la aprobación de otra persona con `FORZAR_CIERRE` (`solicitudes_reapertura`, V26); vuelve a esperar el acuse;
   - el duplicado (origen y número) se controla por cabecera: otra dirección registra el mismo documento con su propio CUTI;
   - al finalizar, los pases sin recibir se anulan (`CIERRE_EXPEDIENTE`, V23).
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.

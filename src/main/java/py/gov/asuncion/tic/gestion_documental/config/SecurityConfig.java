@@ -99,7 +99,7 @@ public class SecurityConfig {
                 .requestMatchers("/documentos/salida", "/documentos/confirmar-acuse", "/documentos/reemplazar-acuse", "/documentos/corregir-salida")
                     .hasAuthority(Accion.REGISTRAR_SALIDA.autoridad())
                 .requestMatchers("/documentos/ubicacion", "/biblioratos/**").hasAuthority(Accion.GESTIONAR_ARCHIVO.autoridad())
-                .requestMatchers("/documentos/forzar-cierre").hasAuthority(Accion.FORZAR_CIERRE.autoridad())
+                .requestMatchers("/documentos/forzar-cierre", "/documentos/reapertura/**").hasAuthority(Accion.FORZAR_CIERRE.autoridad())
                 .requestMatchers("/api/documentos/*/auditoria").hasAuthority(Accion.VER_AUDITORIA.autoridad())
                 // Derivar: con DERIVAR a cualquier destino del canal; con solo REGISTRAR_ACTUACION, elevar al superior
                 // (el servicio limita ese caso a un pase de trámite hacia arriba)

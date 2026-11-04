@@ -83,6 +83,9 @@ public class DocumentoService {
     @Autowired
     private AuditoriaDocumentoRepository auditoriaDocumentoRepository;
 
+    @Autowired
+    private SolicitudReaperturaRepository solicitudReaperturaRepository;
+
     // Estados que ya no forman parte de las bandejas de trabajo
     private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO, EstadoDocumento.ANULADO);
 
@@ -679,6 +682,103 @@ public class DocumentoService {
                 "Expediente anulado (N° " + doc.getNumeroDocumentoOrigen() + ", asunto: " + doc.getAsunto()
                         + (ubicacion != null ? ", ubicación: " + ubicacion : "") + "). Motivo: " + motivo.trim(), usuario, null);
         return doc;
+    }
+
+    // 🔓 REAPERTURA DE UN FINALIZADO: la pide quien puede forzar cierres y la resuelve otra persona con ese permiso.
+    // El expediente vuelve a esperar el acuse; el acuse final anterior deja de estar vigente, sin borrarse.
+
+    // Para la pantalla. propia: la pidió el usuario, así que no la puede aprobar, solo cancelar
+    public record ReaperturaPendiente(Long id, String cuti, String asunto, String motivo, String solicitante,
+                                      LocalDateTime fecha, boolean propia) {}
+
+    @Transactional
+    public SolicitudReapertura solicitarReapertura(Long documentoId, String motivo, Usuario usuario) {
+        politicaAcceso.exigir(usuario, Accion.FORZAR_CIERRE, "No está habilitado para solicitar la reapertura de un expediente.");
+        validarMotivo(motivo, 20, "el motivo de la reapertura");
+        Documento doc = exigirCustodia(documentoId, usuario, "solicitar la reapertura de");
+        if (doc.getEstadoActual() != EstadoDocumento.FINALIZADO) {
+            throw new IllegalStateException("Solo se reabre un expediente finalizado.");
+        }
+        if (solicitudReaperturaRepository.existePendiente(documentoId)) {
+            throw new IllegalStateException("Ese expediente ya tiene una solicitud de reapertura pendiente.");
+        }
+        SolicitudReapertura solicitud = solicitudReaperturaRepository.save(SolicitudReapertura.builder()
+                .documento(doc).motivo(motivo.trim()).solicitadaPor(usuario).build());
+        auditoriaService.registrarEvento(doc, "SOLICITUD_REAPERTURA", doc.getEstadoActual(), doc.getEstadoActual(),
+                "Reapertura solicitada. Motivo: " + motivo.trim(), usuario, null);
+        return solicitud;
+    }
+
+    private SolicitudReapertura solicitudParaResolver(Long solicitudId, Usuario usuario) {
+        politicaAcceso.exigir(usuario, Accion.FORZAR_CIERRE, "No está habilitado para resolver la reapertura de un expediente.");
+        SolicitudReapertura solicitud = solicitudReaperturaRepository.findById(solicitudId)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitud no encontrada: " + solicitudId));
+        exigirCustodia(solicitud.getDocumento().getId(), usuario, "resolver la reapertura de");
+        if (!SolicitudReapertura.PENDIENTE.equals(solicitud.getEstado())) {
+            throw new IllegalStateException("La solicitud ya fue resuelta.");
+        }
+        return solicitud;
+    }
+
+    @Transactional
+    public Documento aprobarReapertura(Long solicitudId, Usuario usuario) {
+        SolicitudReapertura solicitud = solicitudParaResolver(solicitudId, usuario);
+        if (solicitud.getSolicitadaPor().getId().equals(usuario.getId())) {
+            throw new IllegalStateException("No puede aprobar una reapertura que pidió usted: debe hacerlo otra persona.");
+        }
+        Documento doc = solicitud.getDocumento();
+        if (doc.getEstadoActual() != EstadoDocumento.FINALIZADO) {
+            throw new IllegalStateException("El expediente ya no está finalizado.");
+        }
+        solicitud.setEstado(SolicitudReapertura.APROBADA);
+        solicitud.setResueltaPor(usuario);
+        solicitud.setFechaResolucion(LocalDateTime.now());
+        solicitudReaperturaRepository.save(solicitud);
+
+        doc.setEstadoActual(EstadoDocumento.PENDIENTE_SALIDA);
+        documentoRepository.save(doc);
+        String motivoAcuse = "Reapertura del expediente: " + solicitud.getMotivo();
+        adjuntoDocumentoRepository.findByDocumentoIdAndActuacionIsNullOrderByFechaHoraSubidaAsc(doc.getId()).stream()
+                .filter(a -> Boolean.TRUE.equals(a.getVigente()) && "ACUSE_ENTREGA".equals(a.getTipoAdjunto()))
+                .forEach(a -> {
+                    a.setVigente(false);
+                    a.setMotivoReemplazo(motivoAcuse);
+                    adjuntoDocumentoRepository.save(a);
+                });
+        auditoriaService.registrarEvento(doc, "REAPERTURA_EXPEDIENTE", EstadoDocumento.FINALIZADO, EstadoDocumento.PENDIENTE_SALIDA,
+                "Reapertura aprobada; la pidió " + solicitud.getSolicitadaPor().getUsername() + ". Motivo: " + solicitud.getMotivo(), usuario, null);
+        return doc;
+    }
+
+    // También sirve para cancelar la propia solicitud
+    @Transactional
+    public void rechazarReapertura(Long solicitudId, String motivo, Usuario usuario) {
+        validarMotivo(motivo, 10, "el motivo del rechazo");
+        SolicitudReapertura solicitud = solicitudParaResolver(solicitudId, usuario);
+        solicitud.setEstado(SolicitudReapertura.RECHAZADA);
+        solicitud.setResueltaPor(usuario);
+        solicitud.setFechaResolucion(LocalDateTime.now());
+        solicitud.setMotivoRechazo(motivo.trim());
+        solicitudReaperturaRepository.save(solicitud);
+        Documento doc = solicitud.getDocumento();
+        auditoriaService.registrarEvento(doc, "REAPERTURA_RECHAZADA", doc.getEstadoActual(), doc.getEstadoActual(),
+                "Reapertura no realizada. Motivo: " + motivo.trim(), usuario, null);
+    }
+
+    // Las solicitudes pendientes de los expedientes que el usuario tiene a su cargo
+    public List<ReaperturaPendiente> reaperturasPendientes(Usuario usuario) {
+        if (usuario == null || !politicaAcceso.puede(usuario, Accion.FORZAR_CIERRE)) {
+            return List.of();
+        }
+        List<SolicitudReapertura> pendientes = solicitudReaperturaRepository.findPendientes();
+        if (pendientes.isEmpty()) {
+            return List.of();
+        }
+        java.util.function.Predicate<Dependencia> actuaPor = canalService.alcance(usuario);
+        return pendientes.stream().filter(s -> actuaPor.test(custodiaDe(s.getDocumento())))
+                .map(s -> new ReaperturaPendiente(s.getId(), s.getDocumento().getCodigoCuti(), s.getDocumento().getAsunto(), s.getMotivo(),
+                        s.getSolicitadaPor().getNombreCompleto(), s.getFechaSolicitud(), s.getSolicitadaPor().getId().equals(usuario.getId())))
+                .toList();
     }
 
     // Sin dependencia de registro no hay cómo distinguirlas: se trata como la misma, para no duplicar
