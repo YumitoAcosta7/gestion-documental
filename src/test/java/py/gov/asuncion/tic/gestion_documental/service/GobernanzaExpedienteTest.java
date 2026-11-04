@@ -109,6 +109,24 @@ class GobernanzaExpedienteTest {
     }
 
     @Test
+    void perteneceAUnaMesaSinAsignacionNoDaAccesoNiDejaIniciarDocumentos() {
+        Dependencia mesa = Dependencia.builder().id(11).nombre("Secretaría").ruta("/1/10/11/").esMesaEntrada(true).activo(true).build();
+        usuario.setDependencia(mesa);
+        expediente.setDependenciaOrigen(mesa);
+        when(documentoRepository.existeEnAmbito(anyInt(), eq(500L))).thenReturn(false);
+        when(actuacionRepository.existeParticipacionDependencia(500L, 11)).thenReturn(true);
+        assertFalse(servicio.puedeAccederDocumento(usuario, 500L));
+
+        TipoDocumento tipo = new TipoDocumento();
+        tipo.setActivo(true);
+        when(tipoDocumentoRepository.findById(1)).thenReturn(Optional.of(tipo));
+        when(canalService.dependenciaDeRegistro(usuario)).thenReturn(mesa);
+        when(canalService.puedeActuarPor(usuario, mesa)).thenReturn(false);
+        assertThrows(AccessDeniedException.class, () -> servicio.iniciarDocumentoPropio(1, "S/N", "Asunto", null, null, false, null, usuario));
+        verify(documentoRepository, never()).save(any());
+    }
+
+    @Test
     void unMemoSinElegirPedidoNoCierraNinguno() {
         ActuacionDocumento pedido = pedidoInforme(1L, dtic, hacienda, 5);
         when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true); // tiene el original
@@ -428,6 +446,7 @@ class GobernanzaExpedienteTest {
         tipo.setActivo(true);
         when(tipoDocumentoRepository.findById(1)).thenReturn(Optional.of(tipo));
         when(canalService.dependenciaDeRegistro(usuario)).thenReturn(hacienda);
+        when(canalService.puedeActuarPor(usuario, hacienda)).thenReturn(true);
         when(canalService.organigrama()).thenReturn(new Organigrama(List.of(
                 new Organigrama.Nodo(1, "Intendencia", "INT", null, 1, true, false),
                 new Organigrama.Nodo(20, "Dirección de Hacienda", "DHAC", 1, 4, true, false)), Map.of()));

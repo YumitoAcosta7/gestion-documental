@@ -296,9 +296,13 @@ public class AdministracionService {
     }
 
     // ADMIN_SISTEMA siempre; MESA_ENTRADA y RESPONSABLE cuando el ámbito es una Dirección o superior,
-    // porque dan acceso a todo lo que pasa por esa cabecera
+    // porque dan acceso a todo lo que pasa por esa cabecera. Cualquier rol de trámite en una mesa de entrada
+    // también, aunque sea una unidad: por ella pasa el original de toda su dirección (auditoría A5)
     boolean requiereDobleControl(RolAsignacion rol, Dependencia ambito) {
         if (rol == RolAsignacion.ADMIN_SISTEMA) {
+            return true;
+        }
+        if (Boolean.TRUE.equals(ambito.getEsMesaEntrada()) && rol != RolAsignacion.CONSULTA) {
             return true;
         }
         if (rol != RolAsignacion.MESA_ENTRADA && rol != RolAsignacion.RESPONSABLE) {
