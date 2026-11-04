@@ -61,7 +61,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
    - Resolver los 8 pases sin acuse desde agosto y septiembre. Aparecen en Administración → Pases trabados.
    - Revisar los expedientes que muestre `db/herramientas/revisar_pendientes_salida.sql`.
    - Decidir si esos expedientes de prueba (CUTI `TIC-2026-…`) se cierran o se mantienen.
-   - Reponer el acuse final de `TIC-2026-000003`, que falta en el disco (`docs/pase-produccion.md`, 03/11/2026, 23:56), hasta que `revisar_pdf.sh` no informe faltantes.
+   - Comprobar que `revisar_pdf.sh` no informe faltantes, tras reponer el acuse final de `TIC-2026-000003` (`docs/pase-produccion.md`, 03/11/2026, 23:56).
 
 ## Antes del "Go", sin ser bloqueantes
 

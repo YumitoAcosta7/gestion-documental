@@ -13,6 +13,7 @@
 #
 # Informa:
 #   FALTA     la base pide el archivo y no está en disco
+#   ANTERIOR  falta el archivo de una versión ya reemplazada (solo aviso: el vigente es otro)
 #   ALTERADO  el archivo no coincide con la huella SHA-256 guardada al subirlo
 #   sobrantes archivos que la base no menciona (solo aviso, nunca se borran)
 #
@@ -52,6 +53,7 @@ fi
 declare -A PEDIDOS=()
 REFERENCIAS=0
 FALTAN=0
+ANTERIORES=0
 ALTERADOS=0
 
 while IFS=$'\t' read -r CUTI ORIGEN RUTA HUELLA; do
@@ -62,8 +64,17 @@ while IFS=$'\t' read -r CUTI ORIGEN RUTA HUELLA; do
     PEDIDOS["$NOMBRE"]=1
     ARCHIVO="$CARPETA_PDF/$NOMBRE"
     if [ ! -f "$ARCHIVO" ]; then
-        echo "FALTA     $CUTI  $ORIGEN  $NOMBRE"
-        FALTAN=$((FALTAN + 1))
+        case "$ORIGEN" in
+            # Ya no es el documento vigente: se informa, pero no deja el control en error para siempre
+            *"(versión anterior)"*)
+                echo "ANTERIOR  $CUTI  $ORIGEN  $NOMBRE"
+                ANTERIORES=$((ANTERIORES + 1))
+                ;;
+            *)
+                echo "FALTA     $CUTI  $ORIGEN  $NOMBRE"
+                FALTAN=$((FALTAN + 1))
+                ;;
+        esac
     elif [ "$HUELLA" != "-" ]; then
         # Por la entrada estándar: con un nombre que tenga "\", sha256sum antepone "\" a la huella
         ACTUAL=$(sha256sum < "$ARCHIVO" | cut -d' ' -f1)
@@ -86,6 +97,6 @@ for ARCHIVO in "$CARPETA_PDF"/*; do
     fi
 done
 
-echo "Control de PDF: $REFERENCIAS referencias en la base, $EN_DISCO archivos en disco; faltan $FALTAN, alterados $ALTERADOS, sobrantes $SOBRANTES."
+echo "Control de PDF: $REFERENCIAS referencias en la base, $EN_DISCO archivos en disco; faltan $FALTAN, versiones anteriores sin archivo $ANTERIORES, alterados $ALTERADOS, sobrantes $SOBRANTES."
 
 [ "$FALTAN" -eq 0 ] && [ "$ALTERADOS" -eq 0 ]
