@@ -69,6 +69,7 @@ class MatrizAutorizacionTest {
             new Puerta(HttpMethod.POST, "/documentos/guardar", EnumSet.of(Accion.REGISTRAR_INGRESO)),
             new Puerta(HttpMethod.POST, "/documentos/salida", EnumSet.of(Accion.REGISTRAR_SALIDA)),
             new Puerta(HttpMethod.POST, "/documentos/confirmar-acuse", EnumSet.of(Accion.REGISTRAR_SALIDA)),
+            new Puerta(HttpMethod.POST, "/documentos/corregir-salida", EnumSet.of(Accion.REGISTRAR_SALIDA)),
             new Puerta(HttpMethod.POST, "/documentos/reemplazar-acuse", EnumSet.of(Accion.REGISTRAR_SALIDA)),
             new Puerta(HttpMethod.POST, "/documentos/ubicacion", EnumSet.of(Accion.GESTIONAR_ARCHIVO)),
             new Puerta(HttpMethod.POST, "/biblioratos/guardar", EnumSet.of(Accion.GESTIONAR_ARCHIVO)),

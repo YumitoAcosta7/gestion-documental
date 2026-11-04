@@ -72,6 +72,7 @@ class HallazgosMediosTest {
     void m2NoSeDerivaAUnaDependenciaSinNadieQueReciba() {
         ReflectionTestUtils.setField(servicio, "exigirReceptor", true);
         expediente.setEstadoActual(EstadoDocumento.INGRESADO);
+        expediente.setFechaHoraSalida(null);
         // DTIC (10) con su mesa (11) y un departamento (40) que todavía no tiene usuarios
         Organigrama org = new Organigrama(List.of(
                 new Organigrama.Nodo(1, "Intendencia", "INT", null, 1, true, false),
