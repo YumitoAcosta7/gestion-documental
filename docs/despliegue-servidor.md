@@ -30,7 +30,7 @@ sudo -u postgres psql -tA -c "SHOW hba_file"
 
 Hace falta:
 - **Java 25 o superior.** Si falta, instalarlo antes de seguir.
-- **nginx.** Si falta, instalarlo con `dnf install nginx`.
+- **nginx, tar y rsync.** Si faltan, instalarlos con `dnf install -y nginx tar rsync`. El respaldo usa `tar` y una instalación mínima de Rocky no lo trae.
 - **Puertos 80, 443 y 8080 libres.** Si otro sistema los usa, resolverlo antes de seguir.
 - **Espacio** para la aplicación, los PDF y 30 días de respaldos.
 
