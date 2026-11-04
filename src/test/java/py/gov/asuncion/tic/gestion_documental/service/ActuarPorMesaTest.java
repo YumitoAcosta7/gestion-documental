@@ -63,6 +63,15 @@ class ActuarPorMesaTest {
     }
 
     @Test
+    void unaCuentaDeAdministracionNoActuaAunqueTengaOtrasAsignaciones() {
+        when(asignaciones.findVigentes(eq(5), any(LocalDate.class))).thenReturn(List.of(
+                Asignacion.builder().rol(RolAsignacion.ADMIN_SISTEMA).dependenciaAmbito(dtic).incluyeSubordinadas(true).build(),
+                Asignacion.builder().rol(RolAsignacion.MESA_ENTRADA).dependenciaAmbito(dtic).incluyeSubordinadas(true).build()));
+        assertFalse(canal.puedeActuarPor(en(redes), mesa));
+        assertFalse(canal.puedeActuarPor(en(redes), redes));
+    }
+
+    @Test
     void elAlcanceSigueLaMismaRegla() {
         assertFalse(canal.alcance(en(mesa)).test(mesa));
         assertTrue(canal.alcance(en(redes)).test(redes));

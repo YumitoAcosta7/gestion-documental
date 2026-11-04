@@ -53,14 +53,16 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     // 🧭 ÁMBITO DEL USUARIO (docs/diseno-fase2-multiarea.md §3.2)
     // Dependencias abarcadas por sus asignaciones vigentes hoy, por la ruta del organigrama.
     // Sin asignaciones vigentes, el ámbito es solo su propia dependencia, salvo que sea una mesa de entrada:
-    // ahí hace falta una asignación aprobada (auditoría A5). Quien solo administra el sistema no ve expedientes:
-    // ni por esa asignación ni por su dependencia (auditoría M6).
+    // ahí hace falta una asignación aprobada (auditoría A5). Una cuenta de administración no ve expedientes:
+    // ni por sus asignaciones ni por su dependencia (auditoría M6).
     String CTE_AMBITO = """
         WITH amb AS (
             SELECT dep.ruta, a.incluye_subordinadas
               FROM asignaciones a JOIN dependencias dep ON dep.id = a.dependencia_ambito_id
              WHERE a.usuario_id = :usuarioId AND a.activa AND a.rol <> 'ADMIN_SISTEMA'
                AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)
+               AND NOT EXISTS (SELECT 1 FROM asignaciones adm WHERE adm.usuario_id = :usuarioId AND adm.activa AND adm.rol = 'ADMIN_SISTEMA'
+                                 AND adm.vigente_desde <= CURRENT_DATE AND (adm.vigente_hasta IS NULL OR adm.vigente_hasta >= CURRENT_DATE))
             UNION ALL
             SELECT dep.ruta, FALSE
               FROM usuarios u JOIN dependencias dep ON dep.id = u.dependencia_id
@@ -72,10 +74,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
         ), propia AS (
             SELECT u.dependencia_id AS id FROM usuarios u JOIN dependencias dp ON dp.id = u.dependencia_id
              WHERE u.id = :usuarioId AND NOT dp.es_mesa_entrada
-               AND (NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa
-                                  AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE))
-                    OR EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa AND a.rol <> 'ADMIN_SISTEMA'
-                                  AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)))
+               AND NOT EXISTS (SELECT 1 FROM asignaciones adm WHERE adm.usuario_id = :usuarioId AND adm.activa AND adm.rol = 'ADMIN_SISTEMA'
+                                 AND adm.vigente_desde <= CURRENT_DATE AND (adm.vigente_hasta IS NULL OR adm.vigente_hasta >= CURRENT_DATE))
         )
         """;
 

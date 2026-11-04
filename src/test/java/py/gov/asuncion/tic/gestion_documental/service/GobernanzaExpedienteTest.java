@@ -349,7 +349,7 @@ class GobernanzaExpedienteTest {
         expediente.setDependenciaOrigen(hacienda);
         when(documentoRepository.existeEnAmbito(anyInt(), eq(500L))).thenReturn(false);
         assertTrue(servicio.puedeAccederDocumento(usuario, 500L), "sin ese rol, por su dependencia");
-        when(politicaAcceso.esSoloAdministrador(usuario)).thenReturn(true);
+        when(politicaAcceso.administraElSistema(usuario)).thenReturn(true);
         assertFalse(servicio.puedeAccederDocumento(usuario, 500L));
     }
 
