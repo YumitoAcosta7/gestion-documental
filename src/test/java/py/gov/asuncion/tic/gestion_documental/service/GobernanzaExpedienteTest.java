@@ -3,6 +3,9 @@ package py.gov.asuncion.tic.gestion_documental.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -15,6 +18,7 @@ import py.gov.asuncion.tic.gestion_documental.repository.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -34,6 +38,8 @@ class GobernanzaExpedienteTest {
     @Mock AuditoriaService auditoriaService;
     @Mock PoliticaAcceso politicaAcceso;
     @Mock LegajoSalidaRepository legajoSalidaRepository;
+    @Mock UsuarioRepository usuarioRepository;
+    @Mock TipoDocumentoRepository tipoDocumentoRepository;
     @Mock AuditoriaDocumentoRepository auditoriaDocumentoRepository;
     @Mock AdjuntoDocumentoRepository adjuntoRepository;
     @InjectMocks DocumentoService servicio;
@@ -145,6 +151,85 @@ class GobernanzaExpedienteTest {
         nuevo.setNumeroDocumentoOrigen(" 45/2026 ");
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> servicio.guardarNuevoDocumento(nuevo, usuario));
         assertTrue(e.getMessage().contains("DTIC-2026-000003"));
+        verify(documentoRepository, never()).save(any());
+    }
+
+    // Hacienda ya tiene un documento registrado con ese número
+    private void yaRegistrado(String numero) {
+        Documento existente = new Documento();
+        existente.setCodigoCuti("DHAC-2026-000003");
+        existente.setNumeroDocumentoOrigen(numero);
+        when(documentoRepository.findFirstByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, numero))
+                .thenReturn(Optional.of(existente));
+    }
+
+    private Documento registrarDeHacienda(String numero, String cuti) {
+        Documento nuevo = new Documento();
+        nuevo.setDependenciaOrigen(hacienda);
+        nuevo.setDependenciaRegistro(hacienda);
+        nuevo.setCodigoCuti(cuti);
+        nuevo.setNumeroDocumentoOrigen(numero);
+        return servicio.guardarNuevoDocumento(nuevo, usuario);
+    }
+
+    private Documento iniciarPropioDeHacienda(String numero) {
+        TipoDocumento tipo = new TipoDocumento();
+        tipo.setActivo(true);
+        when(tipoDocumentoRepository.findById(1)).thenReturn(Optional.of(tipo));
+        when(canalService.dependenciaDeRegistro(usuario)).thenReturn(hacienda);
+        when(canalService.organigrama()).thenReturn(new Organigrama(List.of(
+                new Organigrama.Nodo(1, "Intendencia", "INT", null, 1, true, false),
+                new Organigrama.Nodo(20, "Dirección de Hacienda", "DHAC", 1, 4, true, false)), Map.of()));
+        usuario.setDependencia(hacienda);
+        return servicio.iniciarDocumentoPropio(1, numero, "Asunto", null, null, false, null, usuario);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"S/N", "s/n", " S/N ", "s / n", "   "})
+    void dosDocumentosSinNumeroDeLaMismaDependenciaNoSonElMismoDocumento(String numero) {
+        yaRegistrado("S/N");
+        Documento primero = registrarDeHacienda(numero, "DHAC-2026-000004");
+        Documento segundo = registrarDeHacienda(numero, "DHAC-2026-000005");
+        assertEquals("S/N", primero.getNumeroDocumentoOrigen());
+        assertEquals("S/N", segundo.getNumeroDocumentoOrigen());
+        verify(documentoRepository, times(2)).save(any());
+        verify(documentoRepository, never()).findFirstByDependenciaOrigenIdAndNumeroDocumentoOrigen(any(), any());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"S/N", "s/n", " s / n "})
+    void unDocumentoPropioSinNumeroNoChocaConOtroSinNumero(String numero) {
+        yaRegistrado("S/N");
+        Documento propio = iniciarPropioDeHacienda(numero);
+        assertEquals("S/N", propio.getNumeroDocumentoOrigen());
+        verify(documentoRepository).save(any());
+    }
+
+    @Test
+    void unDocumentoPropioConNumeroRepetidoSeSigueRechazando() {
+        yaRegistrado("45/2026");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> iniciarPropioDeHacienda("45/2026"));
+        assertTrue(e.getMessage().contains("DHAC-2026-000003"));
+        verify(documentoRepository, never()).save(any());
+    }
+
+    @Test
+    void elMismoNumeroEnOtraDependenciaNoEsElMismoDocumento() {
+        yaRegistrado("45/2026");
+        Documento nuevo = new Documento();
+        nuevo.setDependenciaOrigen(dtic);
+        nuevo.setDependenciaRegistro(dtic);
+        nuevo.setCodigoCuti("DTIC-2026-000009");
+        nuevo.setNumeroDocumentoOrigen("45/2026");
+        assertEquals("45/2026", servicio.guardarNuevoDocumento(nuevo, usuario).getNumeroDocumentoOrigen());
+    }
+
+    @Test
+    void unNumeroMalEscritoNoPasaPorSinNumero() {
+        assertThrows(IllegalArgumentException.class, () -> registrarDeHacienda("SN", "DHAC-2026-000004"));
+        assertThrows(IllegalArgumentException.class, () -> registrarDeHacienda("S/N/2026", "DHAC-2026-000004"));
         verify(documentoRepository, never()).save(any());
     }
 
