@@ -665,54 +665,52 @@ public class DocumentoService {
         Dependencia depActual = custodia;
         // Devolver el original mientras hay un trámite en curso dejaría dos entregas del original cruzadas
         exigirSinTramitePendiente(documento, "devolver");
-        ActuacionDocumento ultimoPase = actuacionDocumentoRepository
-                .findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(documentoId, depActual.getId());
-
-        if (ultimoPase == null || ultimoPase.getDependenciaEmisora() == null) {
-            throw new IllegalStateException("Su dependencia no recibió ningún pase de este expediente, no hay a quién devolverlo.");
-        }
-        if ("PASE_INTERNO".equals(ultimoPase.getTipoActuacion())) {
-            throw new IllegalStateException("El último pase todavía no se recibió: confírmelo o rechácelo antes de devolver.");
+        List<ActuacionDocumento> actuaciones = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId);
+        if (actuaciones.stream().anyMatch(a -> esPasePendiente(a) && a.getDependenciaReceptoraPase() != null
+                && depActual.getId().equals(a.getDependenciaReceptoraPase().getId()))) {
+            throw new IllegalStateException("Tiene un pase todavía sin recibir: confírmelo o rechácelo antes de devolver.");
         }
 
+        // 4. Se devuelve a quien le entregó el original. Una devolución no cuenta como entrega: no se devuelve de vuelta
+        ActuacionDocumento ultimoPase = ultimoTramiteRecibido(actuaciones, depActual);
+        if (ultimoPase == null) {
+            throw new IllegalStateException("Su dependencia no recibió el original de otra dependencia: no hay a quién devolverlo.");
+        }
         Dependencia depDestino = ultimoPase.getDependenciaEmisora();
-        if (depDestino.getId().equals(depActual.getId())) {
-            throw new IllegalStateException("El último pase recibido fue emitido por su propia dependencia, no se puede devolver.");
-        }
-
-        // Evita devolver dos veces el mismo pase
-        ActuacionDocumento ultimaDevolucion = actuacionDocumentoRepository
-                .findTopByDocumentoIdAndDependenciaEmisoraIdAndTipoActuacionOrderByFechaHoraActuacionDesc(
-                        documentoId, depActual.getId(), "DEVOLUCION");
-        if (ultimaDevolucion != null && ultimaDevolucion.getFechaHoraActuacion() != null
-                && ultimoPase.getFechaHoraActuacion() != null
-                && !ultimaDevolucion.getFechaHoraActuacion().isBefore(ultimoPase.getFechaHoraActuacion())) {
+        if (yaDevuelto(actuaciones, depActual, ultimoPase)) {
             throw new IllegalStateException("Su dependencia ya devolvió este expediente a " + depDestino.getNombreVisible() + ".");
+        }
+        if (actuacionDocumentoRepository.existePasePendiente(documentoId, depDestino.getId())) {
+            throw new IllegalStateException(depDestino.getNombreVisible() + " ya tiene un pase de este expediente esperando acuse: "
+                    + "retírelo o espere la confirmación antes de devolver.");
+        }
+        if (exigirReceptor && (Boolean.FALSE.equals(depDestino.getActivo())
+                || dependenciaRepository.findConReceptor(List.of(depDestino.getId())).isEmpty())) {
+            throw new IllegalStateException("Nadie puede recibir la devolución en " + depDestino.getNombreVisible()
+                    + ". Consulte a un administrador antes de mover el original.");
         }
 
         EstadoDocumento estadoAnterior = documento.getEstadoActual();
 
-        // 4. El original vuelve a quien lo envió. Si quedan informes por responder, el expediente los sigue esperando
-        boolean quedanPedidos = !pedidosAbiertos(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)).isEmpty();
-        documento.setEstadoActual(quedanPedidos ? EstadoDocumento.EN_ESPERA_INFORME : EstadoDocumento.EN_REVISION);
-        documento.setDependenciaCustodia(depDestino);
+        // 5. El original queda "en camino": cambia de manos recién cuando la otra dependencia confirme con el acuse.
+        // Si quedan informes por responder, el expediente los sigue esperando
+        documento.setEstadoActual(pedidosAbiertos(actuaciones).isEmpty() ? EstadoDocumento.EN_REVISION : EstadoDocumento.EN_ESPERA_INFORME);
         documentoRepository.save(documento);
 
-        // 5. Registrar la nueva actuación de devolución (retorna a quien nos envió)
-        ActuacionDocumento devolucion = ActuacionDocumento.builder()
+        actuacionDocumentoRepository.save(ActuacionDocumento.builder()
                 .documento(documento)
                 .dependenciaEmisora(depActual)
                 .dependenciaReceptoraPase(depDestino)
-                .tipoActuacion("DEVOLUCION")
+                .tipoActuacion("PASE_INTERNO")
+                .tipoPase(TipoPase.TRAMITE)
+                .esDevolucion(true)
                 .numeroActuacion("S/N")
                 .descripcionResumen("DEVOLUCIÓN ➔ " + depDestino.getNombreVisible() + ": " + observacion.trim())
                 .ubicacionBibliorato(documento.getUbicacionBibliorato())
                 .fechaHoraActuacion(LocalDateTime.now())
-                .paseConfirmado(true) // Se asume confirmada al ser una devolución inmediata
+                .paseConfirmado(false)
                 .usuario(usuarioActual)
-                .build();
-
-        actuacionDocumentoRepository.save(devolucion);
+                .build());
 
         // 6. Auditoría inmutable automática usando registrarEvento(...)
         auditoriaService.registrarEvento(
@@ -720,12 +718,31 @@ public class DocumentoService {
             "DEVOLUCION",
             estadoAnterior,
             documento.getEstadoActual(),
-            "Expediente devuelto por " + depActual.getNombreVisible() + " a " + depDestino.getNombreVisible() + ": " + observacion.trim(),
+            "Devolución de " + depActual.getNombreVisible() + " a " + depDestino.getNombreVisible() + ", en camino hasta su acuse: " + observacion.trim(),
             usuarioActual,
             null
         );
     }
-    
+
+    // La última entrega del original a la dependencia, de otra dependencia y ya confirmada. Las devoluciones no cuentan
+    static ActuacionDocumento ultimoTramiteRecibido(List<ActuacionDocumento> actuaciones, Dependencia dependencia) {
+        return actuaciones.stream()
+                .filter(a -> "PASE_CONFIRMADO".equals(a.getTipoActuacion()) && !Boolean.TRUE.equals(a.getAnulada())
+                        && !Boolean.TRUE.equals(a.getEsDevolucion()) && a.getFechaHoraActuacion() != null
+                        && (a.getTipoPase() == TipoPase.TRAMITE || a.getTipoPase() == null)
+                        && a.getDependenciaReceptoraPase() != null && dependencia.getId().equals(a.getDependenciaReceptoraPase().getId())
+                        && a.getDependenciaEmisora() != null && !dependencia.getId().equals(a.getDependenciaEmisora().getId()))
+                .max(java.util.Comparator.comparing(ActuacionDocumento::getFechaHoraActuacion))
+                .orElse(null);
+    }
+
+    // ¿La dependencia ya devolvió esa entrega? Una devolución retirada o rechazada no cuenta: se puede volver a intentar
+    static boolean yaDevuelto(List<ActuacionDocumento> actuaciones, Dependencia dependencia, ActuacionDocumento entrega) {
+        return actuaciones.stream().anyMatch(a -> ("DEVOLUCION".equals(a.getTipoActuacion()) || Boolean.TRUE.equals(a.getEsDevolucion()))
+                && !Boolean.TRUE.equals(a.getAnulada()) && a.getFechaHoraActuacion() != null
+                && a.getDependenciaEmisora() != null && dependencia.getId().equals(a.getDependenciaEmisora().getId())
+                && !a.getFechaHoraActuacion().isBefore(entrega.getFechaHoraActuacion()));
+    }
 
     @Transactional
     public Documento derivarDocumento(Long documentoId,

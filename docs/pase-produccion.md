@@ -224,6 +224,7 @@ Después, arrancar la versión anterior de la aplicación.
 - **Corrección sobre "Verificar":** lo anotado a las 22:00 ("Un PDF antiguo se abre y Verificar dice Íntegro") no puede haber sido en producción. El único PDF con huella era ese acuse perdido, y "Verificar" lo informa como "Falta el archivo". Lo más probable es que esa prueba se hiciera en la base de pruebas. En producción sí se comprobó que los PDF se abren (`TIC-2026-000001`) y que "Verificar" detecta el faltante (`TIC-2026-000003`).
 - **PDF sin huella:** el acuse del pase de `TIC-2026-000001` es anterior al registro de huellas y no tiene "Verificar". Los PDF nuevos sí lo tienen.
 - **Archivos sobrantes:** de los 26, solo 2 son los que pide la base. Los otros 24 no figuran en ella. Sus fechas sugieren una carga anterior con otra numeración, sin que esté confirmado. No se borraron.
+- **Actualización del 04/11/2026, 08:27:** PR #34 (Bloque 1 de `docs/auditoria-logica-negocio.md`). Respaldo previo `base_20261104_0826.dump`. Migración a V23 aplicada y confirmada en `flyway_schema_history`. Desde esta versión, un expediente con informes sin responder no puede registrar salida.
 - **Sin comprobar todavía:**
   - "Verificar" dando "Íntegro" en producción, con el acuse repuesto;
   - la IP real del usuario en la auditoría, hasta el primer movimiento;

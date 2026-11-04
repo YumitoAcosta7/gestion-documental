@@ -216,7 +216,10 @@
                     : nodo.tipoAnulacion === 'RETIRADO' ? '✖ PASE RETIRADO' : '✖ PASE ANULADO';
             } else if (esPendiente) {
                 badgeColor = 'bg-warning text-dark';
-                estadoTexto = '🟡 PASE EN TRÁNSITO (PENDIENTE DE ACUSE)';
+                estadoTexto = nodo.esDevolucion ? '↩️ DEVOLUCIÓN EN TRÁNSITO (PENDIENTE DE ACUSE)' : '🟡 PASE EN TRÁNSITO (PENDIENTE DE ACUSE)';
+            } else if (nodo.esDevolucion) {
+                badgeColor = 'bg-warning text-dark';
+                estadoTexto = '↩️ DEVOLUCIÓN RECIBIDA';
             } else if (esPaseInterno) {
                 badgeColor = 'bg-primary';
                 estadoTexto = '🟢 PASE ENTREGADO';

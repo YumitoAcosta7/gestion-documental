@@ -344,6 +344,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - **Reglas del expediente** (`docs/auditoria-logica-negocio.md`):
   - con informes sin responder no hay salida: se esperan o se usa el cierre excepcional, que queda justificado;
   - devuelve solo quien tiene el original y ya lo recibió; un pedido o una copia se rechazan o se responden;
+  - la devolución es un pase de vuelta con acuse (`es_devolucion`, V24): el original cambia de manos al confirmarse, y una devolución no se devuelve de vuelta;
   - un pedido se cierra solo con la respuesta que el usuario elige en el formulario (`actuacion_padre_id`);
   - el duplicado (origen y número) se controla por cabecera: otra dirección registra el mismo documento con su propio CUTI;
   - al finalizar, los pases sin recibir se anulan (`CIERRE_EXPEDIENTE`, V23).

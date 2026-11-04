@@ -136,6 +136,23 @@ class SituacionExpedienteTest {
     }
 
     @Test
+    void laDevolucionSeVeComoTalYNoSePuedeDevolverDeVuelta() {
+        ActuacionDocumento enCamino = pase(9, nosotros, otra, TipoPase.TRAMITE, false, 1);
+        enCamino.setEsDevolucion(true);
+        SituacionExpediente quienDevuelve = de(doc(EstadoDocumento.EN_REVISION), nosotros, mesa, enCamino);
+        assertEquals(Tipo.EN_CAMINO, quienDevuelve.tipo());
+        assertTrue(quienDevuelve.detalle().startsWith("Devuelto a"));
+
+        ActuacionDocumento llega = pase(9, otra, nosotros, TipoPase.TRAMITE, false, 1);
+        llega.setEsDevolucion(true);
+        assertTrue(de(doc(EstadoDocumento.EN_REVISION), otra, mesa, llega).detalle().startsWith("Se lo devolvió"));
+
+        ActuacionDocumento recibida = pase(9, otra, nosotros, TipoPase.TRAMITE, true, 1);
+        recibida.setEsDevolucion(true);
+        assertFalse(de(doc(EstadoDocumento.EN_REVISION), nosotros, mesa, recibida).puedeDevolver());
+    }
+
+    @Test
     void sinElOriginalNoSeOfreceDevolver() {
         SituacionExpediente s = de(doc(EstadoDocumento.EN_ESPERA_INFORME), otra, mesa, pase(3, otra, nosotros, TipoPase.INFORME, true, 5));
         assertEquals(Tipo.RESPONDER, s.tipo());

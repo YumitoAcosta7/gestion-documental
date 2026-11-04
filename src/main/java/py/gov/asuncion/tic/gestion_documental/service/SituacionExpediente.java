@@ -86,10 +86,10 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
         String detalle;
         if (recibir != null && abierto) {
             tipo = Tipo.RECIBIR;
-            detalle = "Se lo envió " + nombre(recibir.getDependenciaEmisora());
+            detalle = (Boolean.TRUE.equals(recibir.getEsDevolucion()) ? "Se lo devolvió " : "Se lo envió ") + nombre(recibir.getDependenciaEmisora());
         } else if (tieneOriginal && enCamino) {
             tipo = Tipo.EN_CAMINO;
-            detalle = "En camino a " + nombre(tramiteEnCamino.getDependenciaReceptoraPase()) + ": falta el acuse";
+            detalle = (Boolean.TRUE.equals(tramiteEnCamino.getEsDevolucion()) ? "Devuelto a " : "En camino a ") + nombre(tramiteEnCamino.getDependenciaReceptoraPase()) + ": falta el acuse";
         } else if (pedido != null && !tieneOriginal && abierto) {
             tipo = Tipo.RESPONDER;
             detalle = "Le pidieron un informe: " + nombre(pedido.getDependenciaEmisora());
@@ -122,24 +122,13 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
                 && !Boolean.TRUE.equals(a.getAnulada());
     }
 
-    // Las condiciones de DocumentoService para devolver: un último pase recibido, de otra dependencia, y no devuelto
+    // Las condiciones de DocumentoService para devolver: una entrega recibida de otra dependencia y sin devolver
     private static boolean hayAQuienDevolver(List<ActuacionDocumento> actuaciones, Dependencia dependencia) {
         if (dependencia == null) {
             return false;
         }
-        ActuacionDocumento ultimoPase = actuaciones.stream()
-                .filter(a -> !Boolean.TRUE.equals(a.getAnulada()) && a.getDependenciaReceptoraPase() != null
-                        && dependencia.getId().equals(a.getDependenciaReceptoraPase().getId()))
-                .max(Comparator.comparing(ActuacionDocumento::getFechaHoraActuacion))
-                .orElse(null);
-        if (ultimoPase == null || ultimoPase.getDependenciaEmisora() == null
-                || dependencia.getId().equals(ultimoPase.getDependenciaEmisora().getId())) {
-            return false;
-        }
-        LocalDateTime recibido = ultimoPase.getFechaHoraActuacion();
-        return actuaciones.stream().noneMatch(a -> "DEVOLUCION".equals(a.getTipoActuacion())
-                && a.getDependenciaEmisora() != null && dependencia.getId().equals(a.getDependenciaEmisora().getId())
-                && !a.getFechaHoraActuacion().isBefore(recibido));
+        ActuacionDocumento entrega = DocumentoService.ultimoTramiteRecibido(actuaciones, dependencia);
+        return entrega != null && !DocumentoService.yaDevuelto(actuaciones, dependencia, entrega);
     }
 
     private static String nombre(Dependencia d) {

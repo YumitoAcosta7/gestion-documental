@@ -39,10 +39,7 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
     boolean existeParticipacionDependencia(@Param("documentoId") Long documentoId,
                                            @Param("dependenciaId") Integer dependenciaId);
 
-    ActuacionDocumento findTopByDocumentoIdAndDependenciaEmisoraIdAndTipoActuacionOrderByFechaHoraActuacionDesc(
-            Long documentoId, Integer dependenciaEmisoraId, String tipoActuacion);
-
-    // 🔒 Lee la actuación bloqueando su fila (SELECT ... FOR UPDATE): su estado no cambia hasta el commit
+// 🔒 Lee la actuación bloqueando su fila (SELECT ... FOR UPDATE): su estado no cambia hasta el commit
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT a FROM ActuacionDocumento a WHERE a.id = :id")
     Optional<ActuacionDocumento> findByIdParaActualizar(@Param("id") Long id);
@@ -105,11 +102,7 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
                                             @Param("sinReceptor") java.util.Collection<Integer> sinReceptor,
                                             @Param("maximo") int maximo);
 
-    // Último pase vigente (no anulado) recibido por la dependencia: base de la devolución
-    ActuacionDocumento findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(
-            Long documentoId, Integer dependenciaReceptoraId);
-
-    // ⏱️ SLA: fecha del último movimiento vigente de cada documento (una sola consulta para toda la bandeja)
+// ⏱️ SLA: fecha del último movimiento vigente de cada documento (una sola consulta para toda la bandeja)
     @Query("""
         SELECT a.documento.id, MAX(a.fechaHoraActuacion) FROM ActuacionDocumento a
         WHERE a.documento.id IN :documentoIds AND a.anulada = false

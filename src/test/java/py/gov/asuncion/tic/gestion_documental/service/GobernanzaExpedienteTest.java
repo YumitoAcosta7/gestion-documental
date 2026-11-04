@@ -206,23 +206,98 @@ class GobernanzaExpedienteTest {
         usuario.setDependencia(hacienda);
         ActuacionDocumento pendiente = ActuacionDocumento.builder().id(3L).tipoActuacion("PASE_INTERNO").anulada(false).paseConfirmado(false)
                 .dependenciaEmisora(dtic).dependenciaReceptoraPase(hacienda).fechaHoraActuacion(LocalDateTime.now().minusHours(1)).build();
+        actuaciones.add(pendiente);
         when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
-        when(actuacionRepository.findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(500L, 20)).thenReturn(pendiente);
         IllegalStateException e = assertThrows(IllegalStateException.class, () -> servicio.devolverDocumento(500L, "No corresponde", usuario));
-        assertTrue(e.getMessage().contains("todavía no se recibió"));
+        assertTrue(e.getMessage().contains("sin recibir"));
+    }
+
+    private ActuacionDocumento tramiteRecibido(Dependencia de, Dependencia a, int horasAtras) {
+        ActuacionDocumento p = ActuacionDocumento.builder().id(30L + actuaciones.size()).documento(expediente).tipoActuacion("PASE_CONFIRMADO")
+                .tipoPase(TipoPase.TRAMITE).anulada(false).paseConfirmado(true).dependenciaEmisora(de).dependenciaReceptoraPase(a)
+                .fechaHoraActuacion(LocalDateTime.now().minusHours(horasAtras)).build();
+        actuaciones.add(p);
+        return p;
+    }
+
+    private void conElOriginalEnHacienda() {
+        expediente.setEstadoActual(EstadoDocumento.EN_REVISION);
+        usuario.setDependencia(hacienda);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
     }
 
     @Test
-    void alDevolverElOriginalSiguenEsperandoLosInformesAbiertos() {
-        usuario.setDependencia(hacienda);
-        pedidoInforme(1L, hacienda, conocimiento, 9);
-        ActuacionDocumento recibido = ActuacionDocumento.builder().id(3L).tipoActuacion("PASE_CONFIRMADO").tipoPase(TipoPase.TRAMITE).anulada(false).paseConfirmado(true)
-                .dependenciaEmisora(dtic).dependenciaReceptoraPase(hacienda).fechaHoraActuacion(LocalDateTime.now().minusHours(1)).build();
-        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
-        when(actuacionRepository.findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(500L, 20)).thenReturn(recibido);
+    void laDevolucionDejaElOriginalEnCaminoHastaSuAcuse() {
+        conElOriginalEnHacienda();
+        tramiteRecibido(dtic, hacienda, 1);
         servicio.devolverDocumento(500L, "Corresponde a otra área", usuario);
-        assertEquals(dtic, expediente.getDependenciaCustodia());
+
+        assertEquals(hacienda, expediente.getDependenciaCustodia(), "sigue a cargo de quien devuelve hasta el acuse");
+        ActuacionDocumento pase = actuaciones.get(actuaciones.size() - 1);
+        assertEquals("PASE_INTERNO", pase.getTipoActuacion());
+        assertEquals(TipoPase.TRAMITE, pase.getTipoPase());
+        assertTrue(pase.getEsDevolucion());
+        assertFalse(pase.getPaseConfirmado());
+        assertEquals(dtic, pase.getDependenciaReceptoraPase());
+    }
+
+    @Test
+    void alDevolverSiguenEsperandoLosInformesAbiertos() {
+        conElOriginalEnHacienda();
+        pedidoInforme(1L, hacienda, conocimiento, 9);
+        tramiteRecibido(dtic, hacienda, 1);
+        servicio.devolverDocumento(500L, "Corresponde a otra área", usuario);
         assertEquals(EstadoDocumento.EN_ESPERA_INFORME, expediente.getEstadoActual());
+    }
+
+    @Test
+    void unaDevolucionNoSeDevuelveDeVuelta() {
+        conElOriginalEnHacienda();
+        ActuacionDocumento devuelta = tramiteRecibido(dtic, hacienda, 1);
+        devuelta.setEsDevolucion(true);
+        assertThrows(IllegalStateException.class, () -> servicio.devolverDocumento(500L, "Se la devuelvo otra vez", usuario));
+
+        // Con una entrega anterior, se devuelve a quien se la entregó, no a quien la devolvió
+        tramiteRecibido(conocimiento, hacienda, 9);
+        servicio.devolverDocumento(500L, "Corresponde a quien lo entregó", usuario);
+        assertEquals(conocimiento, actuaciones.get(actuaciones.size() - 1).getDependenciaReceptoraPase());
+    }
+
+    @Test
+    void noSeDevuelveDosVecesLaMismaEntrega() {
+        conElOriginalEnHacienda();
+        tramiteRecibido(dtic, hacienda, 2);
+        servicio.devolverDocumento(500L, "Corresponde a otra área", usuario);
+        ActuacionDocumento devolucion = actuaciones.get(actuaciones.size() - 1);
+        devolucion.setTipoActuacion("PASE_CONFIRMADO");
+        devolucion.setPaseConfirmado(true);
+        assertTrue(assertThrows(IllegalStateException.class, () -> servicio.devolverDocumento(500L, "Otra vez", usuario))
+                .getMessage().contains("ya devolvió"));
+
+        // Si se la rechazaron, se puede volver a intentar
+        devolucion.setAnulada(true);
+        servicio.devolverDocumento(500L, "Segundo intento", usuario);
+        assertEquals(dtic, actuaciones.get(actuaciones.size() - 1).getDependenciaReceptoraPase());
+    }
+
+    @Test
+    void sinNadieQueReciba_noSeDevuelve() {
+        conElOriginalEnHacienda();
+        org.springframework.test.util.ReflectionTestUtils.setField(servicio, "exigirReceptor", true);
+        tramiteRecibido(dtic, hacienda, 1);
+        when(dependenciaRepository.findConReceptor(any())).thenReturn(List.of());
+        assertTrue(assertThrows(IllegalStateException.class, () -> servicio.devolverDocumento(500L, "Corresponde a otra área", usuario))
+                .getMessage().contains("Nadie puede recibir"));
+        assertEquals(hacienda, expediente.getDependenciaCustodia());
+    }
+
+    @Test
+    void conUnPaseYaPendienteHaciaEseDestinoNoSeDevuelve() {
+        conElOriginalEnHacienda();
+        tramiteRecibido(dtic, hacienda, 1);
+        when(actuacionRepository.existePasePendiente(500L, 10)).thenReturn(true);
+        assertTrue(assertThrows(IllegalStateException.class, () -> servicio.devolverDocumento(500L, "Corresponde a otra área", usuario))
+                .getMessage().contains("esperando acuse"));
     }
 
     @Test
