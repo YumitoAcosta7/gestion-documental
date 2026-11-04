@@ -344,6 +344,16 @@ class GobernanzaExpedienteTest {
     }
 
     @Test
+    void quienSoloAdministraNoAccedePorSuDependencia() {
+        usuario.setDependencia(hacienda);
+        expediente.setDependenciaOrigen(hacienda);
+        when(documentoRepository.existeEnAmbito(anyInt(), eq(500L))).thenReturn(false);
+        assertTrue(servicio.puedeAccederDocumento(usuario, 500L), "sin ese rol, por su dependencia");
+        when(politicaAcceso.esSoloAdministrador(usuario)).thenReturn(true);
+        assertFalse(servicio.puedeAccederDocumento(usuario, 500L));
+    }
+
+    @Test
     void unMemoSinElegirPedidoNoCierraNinguno() {
         ActuacionDocumento pedido = pedidoInforme(1L, dtic, hacienda, 5);
         when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true); // tiene el original

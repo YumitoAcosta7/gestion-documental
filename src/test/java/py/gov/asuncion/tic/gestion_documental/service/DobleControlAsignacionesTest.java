@@ -83,6 +83,24 @@ class DobleControlAsignacionesTest {
     }
 
     @Test
+    void administrarYTramitarNoVanEnLaMismaCuenta() {
+        when(asignaciones.findHistorial(3)).thenReturn(List.of(Asignacion.builder().rol(RolAsignacion.OPERADOR).usuario(ana)
+                .dependenciaAmbito(redes).activa(true).vigenteDesde(LocalDate.now()).build()));
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> pedir(RolAsignacion.ADMIN_SISTEMA, dtic, ana, adminA));
+        assertTrue(e.getMessage().contains("misma cuenta"));
+
+        when(asignaciones.findHistorial(3)).thenReturn(List.of(Asignacion.builder().rol(RolAsignacion.ADMIN_SISTEMA).usuario(ana)
+                .dependenciaAmbito(dtic).activa(false).estadoAprobacion(Asignacion.PENDIENTE).vigenteDesde(LocalDate.now()).build()));
+        assertThrows(IllegalStateException.class, () -> pedir(RolAsignacion.OPERADOR, redes, ana, adminA), "también con una pendiente");
+        assertThrows(IllegalStateException.class, () -> pedir(RolAsignacion.CONSULTA, redes, ana, adminA), "consultar también es ver expedientes");
+
+        // Una asignación que ya terminó o se dio de baja no impide
+        when(asignaciones.findHistorial(3)).thenReturn(List.of(Asignacion.builder().rol(RolAsignacion.ADMIN_SISTEMA).usuario(ana)
+                .dependenciaAmbito(dtic).activa(false).estadoAprobacion(Asignacion.APROBADA).vigenteDesde(LocalDate.now().minusDays(5)).build()));
+        assertFalse(pedir(RolAsignacion.OPERADOR, redes, ana, adminA).isPendiente());
+    }
+
+    @Test
     void enUnaMesaDeEntradaTodoRolDeTramiteEsSensible() {
         Dependencia mesa = Dependencia.builder().id(11).nombre("Unidad de Secretaría Administrativa").ruta("/1/10/11/")
                 .nivelJerarquicoId(7).activo(true).esMesaEntrada(true).build();

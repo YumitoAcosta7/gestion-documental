@@ -56,6 +56,13 @@ class ActuarPorMesaTest {
     }
 
     @Test
+    void quienSoloAdministraNoActuaPorSuDependencia() {
+        conAsignacion(RolAsignacion.ADMIN_SISTEMA, dtic);
+        assertFalse(canal.puedeActuarPor(en(redes), redes));
+        assertFalse(canal.alcance(en(redes)).test(redes));
+    }
+
+    @Test
     void elAlcanceSigueLaMismaRegla() {
         assertFalse(canal.alcance(en(mesa)).test(mesa));
         assertTrue(canal.alcance(en(redes)).test(redes));

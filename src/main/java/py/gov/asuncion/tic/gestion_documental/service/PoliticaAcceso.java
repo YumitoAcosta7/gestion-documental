@@ -49,12 +49,21 @@ public class PoliticaAcceso {
         List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
         Set<Accion> acciones = EnumSet.noneOf(Accion.class);
         vigentes.forEach(a -> acciones.addAll(ACCIONES_POR_ROL.get(a.getRol())));
-        // Sin asignaciones de trámite (ninguna, o solo ADMIN_SISTEMA), trabaja como operador de su
-        // dependencia: lo mismo que considera el ámbito de visibilidad (DocumentoRepository.CTE_AMBITO)
-        if (vigentes.stream().allMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA)) {
+        // Sin ninguna asignación, trabaja como operador de su dependencia: lo mismo que considera el ámbito de
+        // visibilidad (DocumentoRepository.CTE_AMBITO). Quien solo administra no tramita (auditoría M6)
+        if (vigentes.isEmpty()) {
             acciones.addAll(SIN_ASIGNACIONES);
         }
         return acciones;
+    }
+
+    // Administra el sistema y no tiene ninguna asignación de trámite: no ve expedientes ni actúa por ninguna dependencia
+    public boolean esSoloAdministrador(Usuario usuario) {
+        if (usuario == null || usuario.getId() == null) {
+            return false;
+        }
+        List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
+        return !vigentes.isEmpty() && vigentes.stream().allMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA);
     }
 
     public boolean puede(Usuario usuario, Accion accion) {

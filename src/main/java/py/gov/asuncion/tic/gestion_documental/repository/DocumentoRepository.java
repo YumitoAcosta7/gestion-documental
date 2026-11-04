@@ -53,7 +53,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     // 🧭 ÁMBITO DEL USUARIO (docs/diseno-fase2-multiarea.md §3.2)
     // Dependencias abarcadas por sus asignaciones vigentes hoy, por la ruta del organigrama.
     // Sin asignaciones vigentes, el ámbito es solo su propia dependencia, salvo que sea una mesa de entrada:
-    // ahí hace falta una asignación aprobada (auditoría A5).
+    // ahí hace falta una asignación aprobada (auditoría A5). Quien solo administra el sistema no ve expedientes:
+    // ni por esa asignación ni por su dependencia (auditoría M6).
     String CTE_AMBITO = """
         WITH amb AS (
             SELECT dep.ruta, a.incluye_subordinadas
@@ -64,13 +65,17 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
             SELECT dep.ruta, FALSE
               FROM usuarios u JOIN dependencias dep ON dep.id = u.dependencia_id
              WHERE u.id = :usuarioId AND NOT dep.es_mesa_entrada
-               AND NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa AND a.rol <> 'ADMIN_SISTEMA'
+               AND NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa
                                  AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE))
         ), deps AS (
             SELECT x.id FROM dependencias x JOIN amb ON x.ruta = amb.ruta OR (amb.incluye_subordinadas AND x.ruta LIKE amb.ruta || '%')
         ), propia AS (
             SELECT u.dependencia_id AS id FROM usuarios u JOIN dependencias dp ON dp.id = u.dependencia_id
              WHERE u.id = :usuarioId AND NOT dp.es_mesa_entrada
+               AND (NOT EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa
+                                  AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE))
+                    OR EXISTS (SELECT 1 FROM asignaciones a WHERE a.usuario_id = :usuarioId AND a.activa AND a.rol <> 'ADMIN_SISTEMA'
+                                  AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)))
         )
         """;
 
