@@ -713,6 +713,7 @@ public class HomeController {
             // Solo indica si hay PDF: la ruta interna del servidor no se expone
             map.put("pdf", act.getRutaCopiaSelladaPdf() != null && !act.getRutaCopiaSelladaPdf().isBlank());
             map.put("paseConfirmado", act.getPaseConfirmado() != null ? act.getPaseConfirmado() : true);
+            map.put("esDevolucion", Boolean.TRUE.equals(act.getEsDevolucion()));
             map.put("fecha", act.getFechaHoraActuacion() != null
                     ? act.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "-");
 

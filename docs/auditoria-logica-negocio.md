@@ -216,6 +216,11 @@ Bloque 1, en el PR de esta fecha. Cómo se resolvió lo que el informe dejaba ab
 - **Baja:** el cierre excepcional ya exige informes pendientes. Con esto también se resolvió ese hallazgo.
 - **Límite conocido de M9:** el orden de bloqueos se corrigió, pero no se probó con concurrencia real.
 
+Bloque 2, en PR separados:
+
+- **M1 y D2, devolución con acuse:** es un pase de trámite de vuelta (`es_devolucion`, migración V24). El original sigue a cargo de quien devuelve hasta el acuse, se registra `CAMBIO_CUSTODIA` al confirmar, y se puede retirar o rechazar. Una devolución no cuenta como entrega: no se devuelve de vuelta. Las devoluciones anteriores quedan como están.
+- **Pendientes:** A5, A6, M6 y M7.
+
 ## Plan propuesto
 
 **Bloque 1: antes del piloto, cambios chicos.**

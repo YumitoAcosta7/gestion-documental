@@ -67,6 +67,12 @@ public class ActuacionDocumento {
     @Column(name = "tipo_pase", length = 20)
     private TipoPase tipoPase;
 
+    // Pase de trámite que devuelve el original a quien lo entregó. Mueve el original con acuse, como cualquier
+    // trámite, pero no cuenta como una entrega que se pueda volver a devolver
+    @Column(name = "es_devolucion", nullable = false)
+    @Builder.Default
+    private Boolean esDevolucion = false;
+
     // Relación para la vista en árbol (Jerarquía de Actuaciones)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "actuacion_padre_id")
