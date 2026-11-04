@@ -350,7 +350,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - Feriados trasladables y asuetos de 2026, según el decreto.
 - Copia de los respaldos a otro equipo, cuentas nominales en lugar de las genéricas (ver `docs/viabilidad-piloto.md`).
 - 8 pases del piloto de la DTIC (agosto y septiembre de 2026) sin acuse: los resuelven las dependencias.
-- Reponer el acuse final de `TIC-2026-000003`, que falta en el disco (ver `docs/pase-produccion.md`).
+- Comprobar con `revisar_pdf.sh` que no queden PDF faltantes, tras reponer el acuse final de `TIC-2026-000003` (ver `docs/pase-produccion.md`).
 
 **Tareas periódicas:**
 - Cada semana: `sudo -u postgres bash reforzar_bitacoras.sh gestion_documental --verificar`, y guardar fuera del servidor la última huella que informa (anclaje externo de las bitácoras).
