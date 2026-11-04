@@ -205,7 +205,7 @@ Un usuario con varias asignaciones suma sus acciones. `usuarios.rol` ya no se us
 
 Reglas adicionales:
 - Solo se deriva a las dependencias que cuelgan directamente de los ámbitos de gestión del usuario (`MESA_ENTRADA` o `RESPONSABLE`); sin ellos, a las hijas de su propia dependencia. No hay IDs de dependencia escritos en el código.
-- Solo la dependencia receptora confirma un pase, salvo quien tenga `SUPERVISAR_PASES` (mesa de entrada).
+- Solo confirma un pase quien actúa por la dependencia receptora (ella misma o la mesa de su dirección). La mesa que lo envió no puede confirmarlo: si hubo un error, lo retira.
 - El ingreso usa `NuevoDocumentoDTO`: el navegador no puede fijar CUTI, estado ni usuarios.
 - Los botones de la interfaz se muestran según las acciones habilitadas.
 
@@ -279,7 +279,7 @@ Reglas adicionales:
 
 | `POST /documentos/actuaciones/anular-pase` | Retirar (emisor) o rechazar (receptor) un pase pendiente, con motivo | Dependencia emisora/receptora |
 | `POST /documentos/forzar-cierre` | Cierre excepcional de informes → `PENDIENTE_SALIDA`, con justificación | `FORZAR_CIERRE` |
-| `POST /documentos/actuaciones/reemplazar-pdf` | Nueva versión del PDF de una actuación | Dependencia que lo cargó o `SUPERVISAR_PASES` |
+| `POST /documentos/actuaciones/reemplazar-pdf` | Nueva versión del PDF de una actuación | Dependencia que lo cargó o `SUPERVISAR_PASES` en su ámbito. El acuse de un pase confirmado: solo la receptora o su mesa |
 | `POST /documentos/reemplazar-acuse` | Nueva versión del acuse del expediente | `REGISTRAR_SALIDA` |
 | `GET /documentos/adjuntos/{id}/pdf` | Descarga de una versión concreta (vigente o reemplazada) | Con acceso al expediente |
 | `GET /api/documentos/{id}/adjuntos` | JSON de versiones de los acuses del expediente | Con acceso al expediente |

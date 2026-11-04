@@ -1234,14 +1234,10 @@ public class DocumentoService {
             throw new IllegalStateException("La actuación no es un pase interno pendiente de confirmación.");
         }
 
-        // Solo confirma la dependencia receptora (o quien supervisa los pases del ámbito)
         Dependencia receptora = actuacion.getDependenciaReceptoraPase();
-        Dependencia depUsuario = usuarioSesion != null ? usuarioSesion.getDependencia() : null;
-        boolean esReceptora = depUsuario != null && receptora != null && receptora.getId().equals(depUsuario.getId());
-        // La mesa de una dirección recibe en su nombre: cuenta como receptora quien actúa por ella
-        esReceptora = esReceptora || (receptora != null && canalService.puedeActuarPor(usuarioSesion, receptora));
-        if (!esReceptora && !supervisaPase(usuarioSesion, actuacion)) {
-            throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción.");
+        if (!puedeConfirmarPase(actuacion, usuarioSesion)) {
+            throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción. "
+                    + "Si el pase se envió por error, quien lo emitió puede retirarlo.");
         }
 
         AdjuntoDocumento adjunto = registrarAdjunto(actuacion.getDocumento(), actuacion, archivoAcusePdf,
@@ -1419,7 +1415,13 @@ public class DocumentoService {
         if (act == null || usuario == null || act.getRutaCopiaSelladaPdf() == null || Boolean.TRUE.equals(act.getAnulada())) {
             return false;
         }
-        if (supervisaPase(usuario, act)) {
+        // 🛡️ El acuse de un pase confirmado es la prueba de la entrega: la mesa que envió el pase no lo reemplaza
+        boolean esAcuse = "PASE_CONFIRMADO".equals(act.getTipoActuacion()) && act.getDependenciaReceptoraPase() != null;
+        boolean supervisa = esAcuse
+                ? politicaAcceso.puede(usuario, Accion.SUPERVISAR_PASES)
+                        && canalService.puedeActuarPor(usuario, act.getDependenciaReceptoraPase())
+                : supervisaPase(usuario, act);
+        if (supervisa) {
             return true;
         }
         Integer responsable = dependenciaResponsablePdf(act);
@@ -1572,6 +1574,14 @@ public class DocumentoService {
     private boolean esPasePendiente(ActuacionDocumento act) {
         return act != null && "PASE_INTERNO".equals(act.getTipoActuacion())
                 && !Boolean.TRUE.equals(act.getPaseConfirmado()) && !Boolean.TRUE.equals(act.getAnulada());
+    }
+
+    // 🛡️ Separación de funciones: confirma solo quien actúa por la receptora (ella misma o la mesa de su dirección).
+    // El acuse prueba la entrega y mueve la custodia, así que quien envía no puede dar por recibido su propio pase;
+    // si el receptor no lo va a recibir, el emisor lo retira (y el administrador, si no queda nadie que lo reciba).
+    public boolean puedeConfirmarPase(ActuacionDocumento act, Usuario usuario) {
+        return esPasePendiente(act) && usuario != null && act.getDependenciaReceptoraPase() != null
+                && canalService.puedeActuarPor(usuario, act.getDependenciaReceptoraPase());
     }
 
     // Retira el pase la dependencia que lo emitió (o quien supervisa los pases del ámbito)

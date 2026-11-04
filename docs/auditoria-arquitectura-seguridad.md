@@ -354,6 +354,7 @@ Revisión de las directrices de unidad de expediente, custodia, trazabilidad y s
 | La justificación del cierre excepcional la veía cualquiera con acceso al expediente. | Solo la ven quienes tienen `FORZAR_CIERRE` o `VER_AUDITORIA`. El resto ve que hubo un cierre excepcional, cuándo y quién. |
 | La bitácora de administración no guardaba la IP. Ninguna bitácora probaba que un superusuario no la hubiera alterado. | `db/seguridad/reforzar_bitacoras.sh`, que ejecuta el DBA: huella SHA-256 encadenada en las dos bitácoras, IP en la de administración y verificación de la cadena (`--verificar`). |
 | El buscador leía todos los expedientes para buscar un texto. | V22 instala `pg_trgm`, si el rol puede, y crea índices de trigramas que usa el buscador. |
+| La mesa que enviaba un pase podía confirmar su propia recepción y mover la custodia, y reemplazar después el acuse. Se vio en pruebas: DTIC-2026-000003, la mesa de DTIC confirmó su pase a la DGAF. | Confirma solo quien actúa por la receptora, y el acuse de un pase confirmado lo reemplaza solo ella o su mesa. El emisor conserva el retiro (prueba: `SeparacionFuncionesPaseTest`). **Queda abierto:** una mesa con subordinadas actúa también por la receptora cuando envía a una dependencia de su propia dirección. |
 
 - Prueba: `GobernanzaExpedienteTest`.
 - **Pendiente:**

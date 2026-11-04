@@ -240,8 +240,10 @@
                 if (nodo.puedeReemplazarPdf) {
                     acciones += `<button type="button" class="btn btn-outline-secondary btn-sm py-0" data-accion="reemplazar-pdf" data-id="${nodo.id}" title="Subir una versión corregida"><i class="bi bi-arrow-repeat"></i></button>`;
                 }
-            } else if (esPendiente) {
+            } else if (nodo.puedeConfirmar) {
                 acciones += `<button type="button" class="btn btn-warning btn-sm py-0 fw-bold" data-accion="confirmar-pase" data-id="${nodo.id}"><i class="bi bi-upload me-1"></i>Subir Acuse</button>`;
+            } else if (esPendiente) {
+                acciones += '<span class="badge bg-light text-muted border">Esperando acuse</span>';
             } else {
                 acciones += '<span class="badge bg-light text-muted border">Sin PDF</span>';
             }
