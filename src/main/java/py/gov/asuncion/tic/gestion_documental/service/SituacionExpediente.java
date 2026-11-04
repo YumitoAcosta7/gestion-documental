@@ -17,7 +17,7 @@ import java.util.function.Predicate;
 public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, Long paseRetirar, boolean puedeRechazar,
                                   boolean puedeAgregar, boolean puedeDerivar, boolean puedeDevolver,
                                   boolean puedeSalida, boolean puedeAcuse, boolean puedeCierre,
-                                  boolean puedeCorregirSalida) {
+                                  boolean puedeCorregirSalida, boolean puedeCorregirIngreso, boolean puedeAnular) {
 
     public enum Tipo {
         RECIBIR,        // le enviaron un pase: confirmar la recepción
@@ -30,7 +30,7 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
     }
 
     // Permisos del usuario por acción (PoliticaAcceso), calculados una vez para toda la página
-    public record Permisos(boolean actuacion, boolean derivar, boolean salida, boolean cierre) {}
+    public record Permisos(boolean actuacion, boolean derivar, boolean salida, boolean cierre, boolean ingreso) {}
 
     // Usado por la plantilla: Thymeleaf compara mejor el nombre que el enum
     public String getTipoNombre() {
@@ -40,13 +40,13 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
     public boolean isConMenu() {
         return (puedeAgregar && tipo != Tipo.RESPONDER && tipo != Tipo.RECIBIR) || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
                 || (puedeSalida && tipo != Tipo.LISTO_SALIDA) || (puedeAcuse && tipo != Tipo.ESPERA_ACUSE)
-                || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre || puedeCorregirSalida;
+                || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre || puedeCorregirSalida || puedeCorregirIngreso || puedeAnular;
     }
 
     public static SituacionExpediente de(Documento doc, Dependencia custodia, List<ActuacionDocumento> actuaciones,
                                          Predicate<Dependencia> actuaPor, Dependencia propia, Permisos permisos) {
         EstadoDocumento estado = doc.getEstadoActual();
-        boolean abierto = estado != EstadoDocumento.FINALIZADO && estado != EstadoDocumento.ARCHIVADO;
+        boolean abierto = estado != EstadoDocumento.FINALIZADO && estado != EstadoDocumento.ARCHIVADO && estado != EstadoDocumento.ANULADO;
         boolean tieneOriginal = custodia != null && actuaPor.test(custodia);
 
         List<ActuacionDocumento> pendientes = actuaciones.stream().filter(SituacionExpediente::esPasePendiente).toList();
@@ -81,6 +81,9 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
         boolean puedeCierre = permisos.cierre() && originalDisponible && !salidaRegistrada
                 && (estado == EstadoDocumento.EN_ESPERA_INFORME || hayPedidosAbiertos);
         boolean puedeRechazar = recibir != null && propia != null;
+        // Corregir o anular un ingreso: antes de la salida. Anular, además, solo si todavía no tiene movimientos
+        boolean puedeCorregirIngreso = permisos.ingreso() && originalDisponible && !salidaRegistrada;
+        boolean puedeAnular = puedeCorregirIngreso && actuaciones.stream().allMatch(a -> Boolean.TRUE.equals(a.getAnulada()));
 
         Tipo tipo;
         String detalle;
@@ -114,7 +117,7 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
         }
         return new SituacionExpediente(tipo, detalle, recibir != null ? recibir.getId() : null,
                 retirar != null ? retirar.getId() : null, puedeRechazar, puedeAgregar, puedeDerivar, puedeDevolver,
-                puedeSalida, puedeAcuse, puedeCierre, puedeCorregirSalida);
+                puedeSalida, puedeAcuse, puedeCierre, puedeCorregirSalida, puedeCorregirIngreso, puedeAnular);
     }
 
     private static boolean esPasePendiente(ActuacionDocumento a) {

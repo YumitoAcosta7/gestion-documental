@@ -28,10 +28,10 @@ public class BandejaService {
         // Todo lo activo que el usuario puede ver (paginado como el resto: auditoría B2). Para listar se comprueba
         // expediente por expediente, en orden de fecha, hasta juntar la página; el total sale del resumen, que lo
         // cuenta con el conjunto acc (la misma regla, ver sobreCruces).
-        TODOS("Todos", "d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO') AND " + DocumentoRepository.DOCUMENTO_ACCESIBLE),
-        POR_RECIBIR("Por recibir", "d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO') AND d.id IN (SELECT id FROM recibir)"),
+        TODOS("Todos", "d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO', 'ANULADO') AND " + DocumentoRepository.DOCUMENTO_ACCESIBLE),
+        POR_RECIBIR("Por recibir", "d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO', 'ANULADO') AND d.id IN (SELECT id FROM recibir)"),
         EN_MI_PODER("En mi poder", """
-            d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO')
+            d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO', 'ANULADO')
             AND d.dependencia_custodia_id IN (SELECT id FROM deps)
             """),
         INFORMES_PENDIENTES("Informes pendientes", """
@@ -51,7 +51,7 @@ public class BandejaService {
                                                        AND r.dependencia_emisora_id = a.dependencia_receptora_pase_id))))
             """),
         EN_SEGUIMIENTO("En seguimiento", """
-            d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO')
+            d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO', 'ANULADO')
             AND (d.dependencia_custodia_id IS NULL OR d.dependencia_custodia_id NOT IN (SELECT id FROM deps))
             AND (d.dependencia_registro_id IN (SELECT id FROM deps) OR d.id IN (SELECT id FROM emitio))
             """);
@@ -134,7 +134,7 @@ public class BandejaService {
                   LEFT JOIN acc ON acc.id = d.id
                   LEFT JOIN recibir ON recibir.id = d.id
                   LEFT JOIN emitio ON emitio.id = d.id
-                 WHERE d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO')
+                 WHERE d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO', 'ANULADO')
                 """);
         Object[] fila = (Object[]) entityManager.createNativeQuery(sql.toString())
                 .setParameter("usuarioId", usuario.getId())

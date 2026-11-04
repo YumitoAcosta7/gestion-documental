@@ -84,7 +84,7 @@ public class DocumentoService {
     private AuditoriaDocumentoRepository auditoriaDocumentoRepository;
 
     // Estados que ya no forman parte de las bandejas de trabajo
-    private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO);
+    private static final List<EstadoDocumento> ESTADOS_CERRADOS = List.of(EstadoDocumento.FINALIZADO, EstadoDocumento.ARCHIVADO, EstadoDocumento.ANULADO);
 
     // ⏱️ Umbrales de demora (días hábiles sin movimiento), configurables en application.properties
     @Value("${app.sla.dias-advertencia:5}")
@@ -215,13 +215,16 @@ public class DocumentoService {
             porDocumento.computeIfAbsent(a.getDocumento().getId(), k -> new ArrayList<>()).add(a);
         }
         java.util.function.Predicate<Dependencia> actuaPor = canalService.alcance(usuario);
-        SituacionExpediente.Permisos permisos = new SituacionExpediente.Permisos(
-                politicaAcceso.puede(usuario, Accion.REGISTRAR_ACTUACION), politicaAcceso.puede(usuario, Accion.DERIVAR),
-                politicaAcceso.puede(usuario, Accion.REGISTRAR_SALIDA), politicaAcceso.puede(usuario, Accion.FORZAR_CIERRE));
+        boolean actuacion = politicaAcceso.puede(usuario, Accion.REGISTRAR_ACTUACION);
+        boolean derivar = politicaAcceso.puede(usuario, Accion.DERIVAR);
+        boolean salida = politicaAcceso.puede(usuario, Accion.REGISTRAR_SALIDA);
+        boolean cierre = politicaAcceso.puede(usuario, Accion.FORZAR_CIERRE);
+        boolean ingreso = politicaAcceso.puede(usuario, Accion.REGISTRAR_INGRESO);
         Map<Long, SituacionExpediente> resultado = new HashMap<>();
         for (Documento d : documentos) {
+            boolean loCargo = d.getUsuarioCargaIngreso() != null && usuario.getId().equals(d.getUsuarioCargaIngreso().getId());
             resultado.put(d.getId(), SituacionExpediente.de(d, custodiaDe(d), porDocumento.getOrDefault(d.getId(), List.of()),
-                    actuaPor, usuario.getDependencia(), permisos));
+                    actuaPor, usuario.getDependencia(), new SituacionExpediente.Permisos(actuacion, derivar, salida, cierre, ingreso || loCargo)));
         }
         return resultado;
     }
@@ -269,6 +272,9 @@ public class DocumentoService {
         Dependencia custodia = custodiaDe(doc);
         if (!canalService.puedeActuarPor(usuario, custodia)) {
             throw new AccessDeniedException("Solo " + custodia.getNombreVisible() + ", que tiene el original, puede " + accion + " este expediente.");
+        }
+        if (doc.getEstadoActual() == EstadoDocumento.ANULADO) {
+            throw new IllegalStateException("El expediente " + doc.getCodigoCuti() + " está anulado.");
         }
         return doc;
     }
@@ -351,8 +357,8 @@ public class DocumentoService {
     }
 
     private void validarNoFinalizado(Documento doc, String accion) {
-        if (doc.getEstadoActual() == EstadoDocumento.FINALIZADO) {
-            throw new IllegalStateException("No se puede " + accion + " un expediente FINALIZADO.");
+        if (doc.getEstadoActual() == EstadoDocumento.FINALIZADO || doc.getEstadoActual() == EstadoDocumento.ANULADO) {
+            throw new IllegalStateException("No se puede " + accion + " un expediente " + doc.getEstadoActual() + ".");
         }
     }
 
@@ -549,6 +555,132 @@ public class DocumentoService {
         return guardado;
     }
 
+    // Un expediente anulado no cuenta: se registró por error y su número queda libre
+    private void exigirNoDuplicado(Dependencia origen, String numero, Dependencia registro, Long excluirId) {
+        documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(origen.getId(), numero).stream()
+                .filter(existente -> existente.getEstadoActual() != EstadoDocumento.ANULADO)
+                .filter(existente -> excluirId == null || !excluirId.equals(existente.getId()))
+                .filter(existente -> mismaCabecera(existente.getDependenciaRegistro(), registro))
+                .findFirst().ifPresent(existente -> {
+            String siguePaso = existente.getEstadoActual() == EstadoDocumento.FINALIZADO
+                    ? "Ese expediente está finalizado y no admite actuaciones: consulte a un responsable antes de continuar."
+                    : "No se crea otro expediente: lo que llegue sobre ese asunto se registra como actuación en " + existente.getCodigoCuti() + ".";
+            throw new IllegalArgumentException("El documento N° " + existente.getNumeroDocumentoOrigen() + " de "
+                    + origen.getNombreVisible() + " ya está registrado como " + existente.getCodigoCuti() + ". " + siguePaso);
+        });
+    }
+
+    // Corrige o anula quien tiene el permiso de ingresar expedientes, o quien cargó este expediente,
+    // siempre que actúe por quien tiene el original
+    private void exigirPermisoSobreIngreso(Documento doc, Usuario usuario, String accion) {
+        boolean loCargo = doc.getUsuarioCargaIngreso() != null && usuario.getId().equals(doc.getUsuarioCargaIngreso().getId());
+        if (!loCargo && !politicaAcceso.puede(usuario, Accion.REGISTRAR_INGRESO)) {
+            throw new AccessDeniedException("Solo la mesa de entrada o quien cargó el expediente puede " + accion + ".");
+        }
+    }
+
+    // ✏️ Corrige lo que se cargó mal al ingresar. Los valores anteriores y el motivo quedan en la bitácora; el CUTI no cambia.
+    @Transactional
+    public Documento corregirIngreso(Long documentoId, Integer tipoDocumentoId, String numeroDocumento, Integer dependenciaOrigenId,
+                                     String asunto, Prioridad prioridad, String motivo, Usuario usuario) {
+        validarMotivo(motivo, 10, "el motivo de la corrección");
+        if (asunto == null || asunto.isBlank()) {
+            throw new IllegalArgumentException("Debe ingresar el asunto del documento.");
+        }
+        Documento doc = exigirCustodia(documentoId, usuario, "corregir los datos de");
+        exigirPermisoSobreIngreso(doc, usuario, "corregir los datos del ingreso");
+        validarNoFinalizado(doc, "corregir los datos de");
+        exigirSinTramitePendiente(doc, "corregir los datos");
+        exigirSalidaNoRegistrada(doc, "corregir los datos del ingreso");
+
+        TipoDocumento tipo = tipoDocumentoRepository.findById(tipoDocumentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Tipo de documento no encontrado: " + tipoDocumentoId));
+        if (!Boolean.TRUE.equals(tipo.getActivo())) {
+            throw new IllegalArgumentException("El tipo de documento '" + tipo.getNombre() + "' está dado de baja.");
+        }
+        // Un informativo se archiva al ingresar y uno de trámite no: cambiar de uno a otro cambiaría todo su recorrido
+        if (doc.getTipoDocumento() != null && tipo.isInformativo() != doc.getTipoDocumento().isInformativo()) {
+            throw new IllegalArgumentException("No se puede cambiar entre un documento informativo y uno de trámite: anule el expediente y regístrelo de nuevo.");
+        }
+        if (Boolean.TRUE.equals(tipo.getRequiereBibliorato()) && doc.getBibliorato() == null) {
+            throw new IllegalArgumentException("'" + tipo.getNombre() + "' requiere un bibliorato: regístrelo primero.");
+        }
+        Dependencia origen = dependenciaRepository.findById(dependenciaOrigenId)
+                .orElseThrow(() -> new IllegalArgumentException("Dependencia no encontrada: " + dependenciaOrigenId));
+        if (Boolean.FALSE.equals(origen.getActivo())) {
+            throw new IllegalArgumentException("La dependencia '" + origen.getNombre() + "' está inactiva.");
+        }
+        String numero = SIN_NUMERO;
+        if (!esSinNumero(numeroDocumento)) {
+            numero = numeroDocumento.trim().toUpperCase();
+            validarFormatoNumeroDocumento(numero);
+            exigirNoDuplicado(origen, numero, doc.getDependenciaRegistro(), doc.getId());
+        }
+
+        Prioridad prioridadNueva = prioridad != null ? prioridad : doc.getPrioridad();
+        String asuntoNuevo = asunto.trim();
+        List<String> cambios = new ArrayList<>();
+        if (doc.getTipoDocumento() == null || !tipo.getId().equals(doc.getTipoDocumento().getId())) {
+            cambios.add("tipo: " + (doc.getTipoDocumento() != null ? doc.getTipoDocumento().getNombre() : "sin tipo") + " → " + tipo.getNombre());
+        }
+        if (!numero.equals(doc.getNumeroDocumentoOrigen())) {
+            cambios.add("número: " + doc.getNumeroDocumentoOrigen() + " → " + numero);
+        }
+        if (doc.getDependenciaOrigen() == null || !origen.getId().equals(doc.getDependenciaOrigen().getId())) {
+            cambios.add("origen: " + (doc.getDependenciaOrigen() != null ? doc.getDependenciaOrigen().getNombreVisible() : "sin origen") + " → " + origen.getNombreVisible());
+        }
+        if (!asuntoNuevo.equals(doc.getAsunto())) {
+            cambios.add("asunto: " + doc.getAsunto() + " → " + asuntoNuevo);
+        }
+        if (prioridadNueva != doc.getPrioridad()) {
+            cambios.add("prioridad: " + doc.getPrioridad() + " → " + prioridadNueva);
+        }
+        if (cambios.isEmpty()) {
+            throw new IllegalArgumentException("No cambió ningún dato.");
+        }
+
+        doc.setTipoDocumento(tipo);
+        doc.setNumeroDocumentoOrigen(numero);
+        doc.setDependenciaOrigen(origen);
+        doc.setAsunto(asuntoNuevo);
+        doc.setPrioridad(prioridadNueva);
+        documentoRepository.save(doc);
+
+        auditoriaService.registrarEvento(doc, "CORRECCION_INGRESO", doc.getEstadoActual(), doc.getEstadoActual(),
+                "Datos del ingreso corregidos (" + String.join("; ", cambios) + "). Motivo: " + motivo.trim(), usuario, null);
+        return doc;
+    }
+
+    // ❌ Anula un expediente registrado por error, antes de que tenga movimientos. No se borra, su CUTI no se
+    // reutiliza y su número queda libre para registrar el documento correcto.
+    @Transactional
+    public Documento anularExpediente(Long documentoId, String motivo, Usuario usuario) {
+        validarMotivo(motivo, 10, "el motivo de la anulación");
+        Documento doc = exigirCustodia(documentoId, usuario, "anular");
+        exigirPermisoSobreIngreso(doc, usuario, "anular el expediente");
+        validarNoFinalizado(doc, "anular");
+        exigirSalidaNoRegistrada(doc, "anular el expediente");
+        boolean tieneMovimientos = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
+                .anyMatch(a -> !Boolean.TRUE.equals(a.getAnulada()));
+        if (tieneMovimientos) {
+            throw new IllegalStateException("El expediente ya tiene movimientos: no se puede anular. Corrija sus datos o continúe el trámite.");
+        }
+
+        EstadoDocumento estadoAnterior = doc.getEstadoActual();
+        String ubicacion = doc.getUbicacionTexto();
+        doc.setEstadoActual(EstadoDocumento.ANULADO);
+        // Libera las fojas: el bibliorato no sigue reservando lugar para un registro por error
+        doc.setBibliorato(null);
+        doc.setFojaDesde(null);
+        doc.setFojaHasta(null);
+        documentoRepository.save(doc);
+
+        auditoriaService.registrarEvento(doc, "EXPEDIENTE_ANULADO", estadoAnterior, EstadoDocumento.ANULADO,
+                "Expediente anulado (N° " + doc.getNumeroDocumentoOrigen() + ", asunto: " + doc.getAsunto()
+                        + (ubicacion != null ? ", ubicación: " + ubicacion : "") + "). Motivo: " + motivo.trim(), usuario, null);
+        return doc;
+    }
+
     // Sin dependencia de registro no hay cómo distinguirlas: se trata como la misma, para no duplicar
     private boolean mismaCabecera(Dependencia una, Dependencia otra) {
         if (una == null || otra == null) {
@@ -575,17 +707,7 @@ public class DocumentoService {
             if (documento.getDependenciaOrigen() != null) {
                 Dependencia registro = documento.getDependenciaRegistro() != null ? documento.getDependenciaRegistro()
                         : canalService.dependenciaDeRegistro(usuarioSesion);
-                documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(
-                        documento.getDependenciaOrigen().getId(), documento.getNumeroDocumentoOrigen()).stream()
-                        .filter(existente -> mismaCabecera(existente.getDependenciaRegistro(), registro))
-                        .findFirst().ifPresent(existente -> {
-                    String siguePaso = existente.getEstadoActual() == EstadoDocumento.FINALIZADO
-                            ? "Ese expediente está finalizado y no admite actuaciones: consulte a un responsable antes de continuar."
-                            : "No se crea otro expediente: lo que llegue sobre ese asunto se registra como actuación en " + existente.getCodigoCuti() + ".";
-                    throw new IllegalArgumentException("El documento N° " + existente.getNumeroDocumentoOrigen() + " de "
-                            + documento.getDependenciaOrigen().getNombreVisible() + " ya está registrado como "
-                            + existente.getCodigoCuti() + ". " + siguePaso);
-                });
+                exigirNoDuplicado(documento.getDependenciaOrigen(), documento.getNumeroDocumentoOrigen(), registro, null);
             }
         }
 
@@ -644,7 +766,7 @@ public class DocumentoService {
                 .orElseThrow(() -> new EntityNotFoundException("Documento no encontrado"));
 
         // 2. Validar estado operativo con getEstadoActual()
-        if (documento.getEstadoActual() == EstadoDocumento.FINALIZADO ||
+        if (documento.getEstadoActual() == EstadoDocumento.FINALIZADO || documento.getEstadoActual() == EstadoDocumento.ANULADO ||
             documento.getEstadoActual() == EstadoDocumento.PENDIENTE_SALIDA ||
             documento.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("No se puede devolver un documento finalizado, pendiente de salida o archivado.");
@@ -1909,7 +2031,7 @@ public class DocumentoService {
         Documento doc = exigirCustodia(documentoId, usuario, "forzar el cierre de informes de");
         exigirSinTramitePendiente(doc, "forzar el cierre de informes");
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
-        if (estadoAnterior == EstadoDocumento.FINALIZADO || estadoAnterior == EstadoDocumento.ARCHIVADO) {
+        if (estadoAnterior == EstadoDocumento.FINALIZADO || estadoAnterior == EstadoDocumento.ARCHIVADO || estadoAnterior == EstadoDocumento.ANULADO) {
             throw new IllegalStateException("El expediente ya está en " + estadoAnterior + ": no corresponde forzar el cierre.");
         }
         exigirSalidaNoRegistrada(doc, "forzar el cierre de informes");

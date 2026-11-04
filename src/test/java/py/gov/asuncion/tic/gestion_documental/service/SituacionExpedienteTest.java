@@ -17,8 +17,8 @@ class SituacionExpedienteTest {
     private final Dependencia nosotros = dep(10, "Dirección de TIC", "/1/10/");
     private final Dependencia otra = dep(20, "Dirección de Hacienda", "/1/20/");
     private final Predicate<Dependencia> actuaPor = d -> d != null && d.getId().equals(10);
-    private final Permisos mesa = new Permisos(true, true, true, true);
-    private final Permisos operador = new Permisos(true, false, false, false);
+    private final Permisos mesa = new Permisos(true, true, true, true, true);
+    private final Permisos operador = new Permisos(true, false, false, false, false);
 
     private static Dependencia dep(int id, String nombre, String ruta) {
         return Dependencia.builder().id(id).nombre(nombre).ruta(ruta).activo(true).build();
@@ -150,6 +150,25 @@ class SituacionExpedienteTest {
         ActuacionDocumento recibida = pase(9, otra, nosotros, TipoPase.TRAMITE, true, 1);
         recibida.setEsDevolucion(true);
         assertFalse(de(doc(EstadoDocumento.EN_REVISION), nosotros, mesa, recibida).puedeDevolver());
+    }
+
+    @Test
+    void corregirYAnularSeOfrecenSoloCuandoCorresponde() {
+        SituacionExpediente nuevo = de(doc(EstadoDocumento.INGRESADO), nosotros, mesa);
+        assertTrue(nuevo.puedeCorregirIngreso() && nuevo.puedeAnular());
+        assertFalse(de(doc(EstadoDocumento.INGRESADO), nosotros, operador).puedeCorregirIngreso(), "sin permiso ni haberlo cargado");
+        assertFalse(de(doc(EstadoDocumento.INGRESADO), otra, mesa).puedeCorregirIngreso(), "sin el original");
+
+        SituacionExpediente conMovimientos = de(doc(EstadoDocumento.EN_REVISION), nosotros, mesa, pase(4, otra, nosotros, TipoPase.TRAMITE, true, 5));
+        assertTrue(conMovimientos.puedeCorregirIngreso());
+        assertFalse(conMovimientos.puedeAnular());
+
+        Documento conSalida = doc(EstadoDocumento.PENDIENTE_SALIDA);
+        conSalida.setFechaHoraSalida(LocalDateTime.now());
+        assertFalse(de(conSalida, nosotros, mesa).puedeCorregirIngreso());
+
+        SituacionExpediente anulado = de(doc(EstadoDocumento.ANULADO), nosotros, mesa);
+        assertFalse(anulado.puedeCorregirIngreso() || anulado.puedeDerivar() || anulado.puedeSalida());
     }
 
     @Test
