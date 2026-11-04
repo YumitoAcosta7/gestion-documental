@@ -257,3 +257,19 @@ Después, arrancar la versión anterior de la aplicación.
   - la IP real del usuario en la auditoría;
   - la restauración completa de los PDF.
 - **Sin instalar:** el PR #44 (entrada directa a Administración y auditoría con filtros). No tiene migraciones.
+
+**04/11/2026, 14:42.** Actualización con los PR #44 (la cuenta de administración entra a su pantalla, auditoría con filtros) y #46 (tema Petróleo, menú lateral). Sin migraciones: sigue en V28.
+- **Respaldo previo:** `base_20261104_1442.dump`, con sus PDF y huellas.
+- **Aplicación:** arrancó a las 14:42:39, sin errores en el log revisado. `/login` responde 200 y sirve `institucional.css`. El `502` que se vio al confirmar coincidió con el arranque, que tarda unos 25 segundos.
+- **En pantalla, según informó el usuario:** `juan.admin` entra a Administración y `juan.acosta` ve solo la bandeja.
+- **Escudo:** se ve el lugar reservado "Escudo oficial". Falta el archivo oficial.
+- **Respaldo automático, fallo encontrado:**
+  - La ejecución del 03/11/2026 a las 22:00 falló: `tar: command not found`. Dejó solo el `.dump`, sin PDF ni huellas, y el servicio quedó en error sin que nadie lo notara.
+  - `tar` figura entre lo instalado en la mudanza de esa misma noche. No hay registro de la hora exacta, así que lo más probable es que se haya instalado después de esa ejecución.
+  - El 04/11/2026 a las 15:07 se ejecutó el servicio a mano, por el mismo camino que el temporizador: terminó bien (`inactive`) y generó `pdf_20261104_1507.tar.gz`.
+  - **Falta confirmar:** la ejecución automática de las 22:00 del 04/11/2026.
+- **Sin comprobar todavía:**
+  - la búsqueda con filtros de la auditoría, en producción;
+  - las bitácoras con la verificación de huella;
+  - la IP real del usuario en la auditoría;
+  - la restauración completa de los PDF.

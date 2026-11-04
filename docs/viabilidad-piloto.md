@@ -21,7 +21,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 |---|---|---|
 | 1 | Servidor de aplicación | ✅ Servicio en 192.168.129.73 |
 | 2 | HTTPS | ✅ Con certificado interno. Falta que TIC lo instale en los equipos, o reemplazarlo por uno institucional |
-| 3 | Respaldos | 🟡 Diarios y con restauración de la base probada. **Falta la copia a otro equipo** (`RESPALDO_DESTINO`) |
+| 3 | Respaldos | 🟡 Restauración de la base probada. El automático del 03/11/2026 falló por falta de `tar`; el servicio funcionó a mano el 04/11/2026 y **falta confirmar la ejecución de las 22:00**. **Falta la copia a otro equipo** (`RESPALDO_DESTINO`) |
 | 4 | Cuentas nominales | 🟡 Administrar y tramitar ya están separados (`juan.admin` y `zlobo.admin`). **Faltan las cuentas por persona:** siguen las 6 genéricas |
 | 5 | Autenticación de la base | ✅ Contraseña cambiada, SCRAM y sin `trust` |
 | 6 | Datos del piloto anterior | 🟡 `revisar_pendientes_salida.sql` no encontró casos y `revisar_pdf.sh` no informa faltantes. Faltan los pases sin acuse: 8 en la base, 7 en el panel el 04/11/2026 |
