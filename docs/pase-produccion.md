@@ -229,3 +229,31 @@ Después, arrancar la versión anterior de la aplicación.
   - "Verificar" dando "Íntegro" en producción, con el acuse repuesto;
   - la IP real del usuario en la auditoría, hasta el primer movimiento;
   - la restauración completa de los PDF.
+
+**04/11/2026, 13:07.** Actualización hasta el PR #43 (Bloque 2 de `docs/auditoria-logica-negocio.md`), de V23 a V28.
+- **Antes de instalar, separación de cuentas:**
+  - Se crearon `juan.admin` y `zlobo.admin`, las únicas con `ADMIN_SISTEMA` vigente (desde el 04/11/2026). `juan.acosta` (`RESPONSABLE`) y `zlobo` (`MESA_ENTRADA`) quedaron solo con su rol de trámite.
+  - La consulta de "Cuentas" de `docs/auditoria-logica-negocio.md` salió vacía.
+  - `revisar_cuentas_mesa.sql` y `revisar_cuentas_sin_asignacion.sql` salieron vacías, antes de la separación.
+- **Respaldo previo:** `base_20261104_1306.dump`, con `pdf_20261104_1306.tar.gz` y `huellas_20261104_1306.txt`. Quedó solo en el servidor, porque `RESPALDO_DESTINO` no está definido.
+- **Control de PDF:** 4 referencias en la base y 27 archivos en disco. 0 faltantes, 0 alterados, 1 versión anterior sin archivo y 24 sobrantes, que no se borran.
+- **Migraciones:** V24 a V28 aplicadas a las 13:07:12–13, con `success = t` en `flyway_schema_history`. La aplicación arrancó a las 13:07:25 y `/login` responde 200.
+- **En pantalla, según informó el usuario:**
+  - `juan.admin`: 0 originales en dependencias sin personal, y 7 pases trabados o fuera de plazo, ninguno con el botón "Retirar".
+  - `juan.acosta` y `zlobo`: ven su bandeja y ya no tienen Administración.
+  - `juan.admin` ve la bandeja vacía, sin expedientes.
+  - Acuse de `TIC-2026-000003`: "Verificar" dice "Íntegro" en la versión vigente y "Falta el archivo" en la reemplazada, como se esperaba.
+- **El acuse vigente de `TIC-2026-000003` no es el documento real:** el usuario informó que subió un PDF cualquiera para reponerlo. "Íntegro" solo prueba que el archivo no cambió desde que se subió. El usuario informó que `TIC-2026-000003` es un expediente de prueba: es un dato de prueba, sin valor de constancia, y no hay papel que escanear.
+- **Todos los expedientes de producción son de prueba,** según informó el usuario: todavía no hay ninguno real. Incluye los 8 pases sin acuse.
+- **Dónde están los respaldos:** solo en el servidor, en `/var/backups/gestion_documental`. No hay copia en otro equipo.
+- **De 8 a 7 pases en el panel:** ninguno se confirmó ni se anuló: los 8 siguen sin acuse en la base. El panel, desde el PR #34, no muestra los pases de un expediente finalizado, y `TIC-2026-000003`, con un pase sin acuse, está `FINALIZADO`: esa es la diferencia.
+- **Separación de cuentas, 12:57 a 13:04, según la auditoría:**
+  - Se usaron "de prueba" y "prueba" como acto administrativo de los dos `ADMIN_SISTEMA` y como motivo de las bajas. La auditoría no se puede modificar: si hay un acto real, se deja constancia aparte.
+  - `juan.acosta` restableció la contraseña de `zlobo` y generó las temporales de `juan.admin` y `zlobo.admin`. 
+  - **Las acciones de `zlobo` y `zlobo.admin` no las hizo Zaimy Lobo:** el usuario Juan Carlos Acosta informó que las hizo personalmente, porque estaba probando sin nadie más. Eso incluye la aprobación de `juan.admin` (13:00) y la baja de `ADMIN_SISTEMA` de `juan.acosta` (13:04). La auditoría no se puede modificar y seguirá mostrando esas cuentas: esta nota es la aclaración.
+  - **Hasta que Zaimy Lobo cambie las contraseñas de `zlobo` y `zlobo.admin`,** una sola persona controla las dos cuentas de administración, y el doble control no es real.
+- **Sin comprobar todavía:**
+  - las bitácoras con la verificación de huella, después de esta actualización;
+  - la IP real del usuario en la auditoría;
+  - la restauración completa de los PDF.
+- **Sin instalar:** el PR #44 (entrada directa a Administración y auditoría con filtros). No tiene migraciones.
