@@ -107,8 +107,9 @@
 
 /* Acceso y cambio de contraseña */
 .acceso { background-color: var(--gd-fondo); border-top: 4px solid var(--gd-primario); }
-.acceso .escudo { width: 4rem; margin: 0 auto .75rem; }
-.acceso-pie { font-size: .75rem; color: var(--gd-texto-suave); text-align: center; margin: 1rem 0 0; }
+.acceso .escudo { width: 3rem; margin: 0 auto .75rem; }
+.acceso-pie { display: flex; align-items: center; justify-content: center; gap: .625rem; font-size: .75rem; line-height: 1.25; color: var(--gd-texto-suave); margin: 1rem 0 0; }
+.logo-dtic { display: block; flex: none; width: 3rem; height: auto; }
 
 @media (max-width: 991.98px) {
     .con-lateral { padding-left: 0; }
