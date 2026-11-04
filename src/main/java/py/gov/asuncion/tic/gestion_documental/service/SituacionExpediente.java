@@ -100,9 +100,11 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
             tipo = Tipo.ESPERA_ACUSE;
             detalle = "Salida registrada: falta el acuse";
         } else if (salidaRegistrada && originalDisponible) {
-            // Expedientes derivados después de la salida, antes de que eso se bloqueara
             tipo = Tipo.OTRA;
-            detalle = "Tiene una salida registrada: corríjala para continuar";
+            // Falta el acuse y este usuario no lo confirma; o se derivó después de la salida, antes de que eso se bloqueara
+            detalle = estado == EstadoDocumento.PENDIENTE_SALIDA
+                    ? "Salida registrada: falta el acuse"
+                    : "Tiene una salida registrada: corríjala para continuar";
         } else if (puedeSalida && estado == EstadoDocumento.PENDIENTE_SALIDA) {
             tipo = Tipo.LISTO_SALIDA;
             detalle = "Listo para registrar la salida";
