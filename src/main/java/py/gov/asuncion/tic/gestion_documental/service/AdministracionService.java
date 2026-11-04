@@ -10,11 +10,13 @@ import py.gov.asuncion.tic.gestion_documental.domain.*;
 import py.gov.asuncion.tic.gestion_documental.repository.AsignacionRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.AuditoriaSistemaRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.DependenciaRepository;
+import py.gov.asuncion.tic.gestion_documental.repository.SolicitudContrasenaRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 // 👥 Administración de usuarios y asignaciones (docs/diseno-fase2-multiarea.md §6.1). Todo exige
 // ADMINISTRAR_SISTEMA y queda en la auditoría del sistema. Las contraseñas temporales se muestran
@@ -36,10 +38,12 @@ public class AdministracionService {
     private final PoliticaAcceso politicaAcceso;
     private final PasswordEncoder passwordEncoder;
     private final SessionRegistry sessionRegistry;
+    private final SolicitudContrasenaRepository solicitudContrasenaRepository;
 
     public AdministracionService(UsuarioRepository usuarioRepository, AsignacionRepository asignacionRepository,
                                  DependenciaRepository dependenciaRepository, AuditoriaSistemaRepository auditoriaRepository,
-                                 PoliticaAcceso politicaAcceso, PasswordEncoder passwordEncoder, SessionRegistry sessionRegistry) {
+                                 PoliticaAcceso politicaAcceso, PasswordEncoder passwordEncoder, SessionRegistry sessionRegistry,
+                                 SolicitudContrasenaRepository solicitudContrasenaRepository) {
         this.usuarioRepository = usuarioRepository;
         this.asignacionRepository = asignacionRepository;
         this.dependenciaRepository = dependenciaRepository;
@@ -47,6 +51,7 @@ public class AdministracionService {
         this.politicaAcceso = politicaAcceso;
         this.passwordEncoder = passwordEncoder;
         this.sessionRegistry = sessionRegistry;
+        this.solicitudContrasenaRepository = solicitudContrasenaRepository;
     }
 
     // =====================================================================
@@ -163,24 +168,108 @@ public class AdministracionService {
         return guardado;
     }
 
+    // Quien recibe la contraseña temporal puede entrar en nombre de esa cuenta (auditoría A5). En una cuenta sensible,
+    // la pide un administrador y la aprueba otro: el resultado vacío significa que quedó pendiente. Con un solo
+    // administrador no hay quién apruebe: se hace igual, y queda dicho en la auditoría.
     @Transactional
-    public ContrasenaTemporal restablecerContrasena(Integer id, Usuario admin) {
+    public Optional<ContrasenaTemporal> restablecerContrasena(Integer id, String motivo, Usuario admin) {
         exigirAdministrador(admin);
         Usuario u = obtenerUsuario(id, admin);
         if (!Boolean.TRUE.equals(u.getActivo())) {
             throw new IllegalStateException("El usuario está dado de baja: reactívelo antes de restablecer su contraseña.");
         }
+        if (!esCuentaSensible(u)) {
+            return Optional.of(generarTemporal(u, admin, "Contraseña temporal generada para " + u.getUsername() + " (debe cambiarla al entrar)"));
+        }
+        if (motivo == null || motivo.trim().length() < 10) {
+            throw new IllegalArgumentException("Es una cuenta sensible: indique el motivo (mínimo 10 caracteres).");
+        }
+        if (asignacionRepository.contarAdministradoresVigentes(LocalDate.now()) <= 1) {
+            return Optional.of(generarTemporal(u, admin, "Contraseña temporal generada para " + u.getUsername()
+                    + ", cuenta sensible, sin segunda firma porque hay un solo administrador. Motivo: " + motivo.trim()));
+        }
+        if (solicitudContrasenaRepository.existePendiente(u.getId())) {
+            throw new IllegalStateException(u.getUsername() + " ya tiene una solicitud de restablecimiento pendiente.");
+        }
+        SolicitudContrasena solicitud = solicitudContrasenaRepository.save(SolicitudContrasena.builder()
+                .usuario(u).motivo(motivo.trim()).solicitadaPor(admin).build());
+        auditar(admin, "SOLICITUD_CONTRASENA", "USUARIO", id.longValue(), "Restablecimiento pedido para " + u.getUsername()
+                + " (solicitud " + solicitud.getId() + "). Motivo: " + motivo.trim());
+        return Optional.empty();
+    }
+
+    // Administrador, o mesa de entrada o responsable de una cabecera o de una mesa
+    public boolean esCuentaSensible(Usuario u) {
+        return asignacionRepository.findVigentes(u.getId(), LocalDate.now()).stream()
+                .anyMatch(a -> requiereDobleControl(a.getRol(), a.getDependenciaAmbito()));
+    }
+
+    private ContrasenaTemporal generarTemporal(Usuario u, Usuario admin, String detalle) {
         String temporal = generarContrasenaTemporal();
         u.setPasswordHash(passwordEncoder.encode(temporal));
         u.setDebeCambiarContrasena(true);
         usuarioRepository.save(u);
         expirarSesiones(u.getUsername()); // si alguien usaba la cuenta, queda afuera
-        auditar(admin, "RESETEO_CONTRASENA", "USUARIO", id.longValue(),
-                "Contraseña temporal generada para " + u.getUsername() + " (debe cambiarla al entrar)");
+        auditar(admin, "RESETEO_CONTRASENA", "USUARIO", u.getId().longValue(), detalle);
         return new ContrasenaTemporal(u, temporal);
     }
 
-    // Cualquier usuario cambia su propia contraseña (obligatorio tras un alta o un reseteo)
+    private SolicitudContrasena solicitudPendiente(Long solicitudId) {
+        SolicitudContrasena s = solicitudContrasenaRepository.findById(solicitudId)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitud no encontrada: " + solicitudId));
+        if (!SolicitudContrasena.PENDIENTE.equals(s.getEstado())) {
+            throw new IllegalStateException("La solicitud ya fue resuelta.");
+        }
+        return s;
+    }
+
+    // La temporal la recibe quien aprueba, se muestra una sola vez y no queda en ningún registro
+    @Transactional
+    public ContrasenaTemporal aprobarContrasena(Long solicitudId, Usuario admin) {
+        exigirAdministrador(admin);
+        SolicitudContrasena s = solicitudPendiente(solicitudId);
+        if (s.getUsuario().getId().equals(admin.getId())) {
+            throw new IllegalStateException("No puede aprobar el restablecimiento de su propia cuenta: debe hacerlo otro administrador.");
+        }
+        if (s.getSolicitadaPor().getId().equals(admin.getId())) {
+            throw new IllegalStateException("No puede aprobar un restablecimiento que pidió usted: debe hacerlo otro administrador.");
+        }
+        if (!Boolean.TRUE.equals(s.getUsuario().getActivo())) {
+            throw new IllegalStateException(s.getUsuario().getUsername() + " está dado de baja: rechace la solicitud.");
+        }
+        s.setEstado(SolicitudContrasena.APROBADA);
+        s.setResueltaPor(admin);
+        s.setFechaResolucion(java.time.LocalDateTime.now());
+        solicitudContrasenaRepository.save(s);
+        return generarTemporal(s.getUsuario(), admin, "Contraseña temporal generada para " + s.getUsuario().getUsername()
+                + "; la pidió " + s.getSolicitadaPor().getUsername() + ". Motivo: " + s.getMotivo());
+    }
+
+    // Quien la pidió también puede retirarla; el dueño de la cuenta no la resuelve
+    @Transactional
+    public void rechazarContrasena(Long solicitudId, String motivo, Usuario admin) {
+        exigirAdministrador(admin);
+        SolicitudContrasena s = solicitudPendiente(solicitudId);
+        if (s.getUsuario().getId().equals(admin.getId())) {
+            throw new IllegalStateException("No puede resolver el restablecimiento de su propia cuenta.");
+        }
+        if (motivo == null || motivo.trim().length() < 5) {
+            throw new IllegalArgumentException("Indique el motivo (mínimo 5 caracteres).");
+        }
+        s.setEstado(SolicitudContrasena.RECHAZADA);
+        s.setResueltaPor(admin);
+        s.setFechaResolucion(java.time.LocalDateTime.now());
+        s.setMotivoRechazo(motivo.trim());
+        solicitudContrasenaRepository.save(s);
+        auditar(admin, "RECHAZO_CONTRASENA", "USUARIO", s.getUsuario().getId().longValue(),
+                "Restablecimiento rechazado para " + s.getUsuario().getUsername() + ". Motivo: " + motivo.trim());
+    }
+
+    public List<SolicitudContrasena> contrasenasPendientes(Usuario admin) {
+        exigirAdministrador(admin);
+        return solicitudContrasenaRepository.findPendientes();
+    }
+
     @Transactional
     public void cambiarContrasenaPropia(Usuario usuario, String actual, String nueva, String repetida) {
         cambiarContrasenaPropia(usuario, actual, nueva, repetida, null);
