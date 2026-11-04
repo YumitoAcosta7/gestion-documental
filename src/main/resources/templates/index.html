@@ -132,6 +132,7 @@
                                 <option value="EN_ESPERA_INFORME" th:selected="${paramEstado == 'EN_ESPERA_INFORME'}">EN_ESPERA_INFORME</option>
                                 <option value="PENDIENTE_SALIDA" th:selected="${paramEstado == 'PENDIENTE_SALIDA'}">PENDIENTE_SALIDA</option>
                                 <option value="FINALIZADO" th:selected="${paramEstado == 'FINALIZADO'}">FINALIZADO</option>
+                                <option value="ANULADO" th:selected="${paramEstado == 'ANULADO'}">ANULADO</option>
                             </select>
                         </div>
                         <div class="col-md-1">
@@ -418,6 +419,8 @@
                                                         <li th:if="${s.puedeAcuse() and s.tipoNombre != 'ESPERA_ACUSE'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalConfirmarAcuse" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-file-earmark-check me-2"></i>Confirmar acuse</button></li>
                                                         <li th:if="${s.paseRetirar() != null and s.tipoNombre != 'EN_CAMINO'}"><button type="button" class="dropdown-item" data-accion="anular-pase" data-tipo="RETIRAR" th:data-id="${s.paseRetirar()}"><i class="bi bi-x-circle me-2"></i>Retirar pase enviado</button></li>
                                                         <li th:if="${s.puedeCorregirSalida()}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalCorregirSalida" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-pencil-square me-2"></i>Corregir salida</button></li>
+                                                        <li th:if="${s.puedeCorregirIngreso()}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalCorregirIngreso" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" th:data-tipo-id="${doc.tipoDocumento?.id}" th:data-numero="${doc.numeroDocumentoOrigen}" th:data-origen-id="${doc.dependenciaOrigen?.id}" th:data-asunto="${doc.asunto}" th:data-prioridad="${doc.prioridad}"><i class="bi bi-pencil me-2"></i>Corregir datos del ingreso</button></li>
+                                                        <li th:if="${s.puedeAnular()}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalAnularExpediente" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-x-octagon me-2"></i>Anular expediente</button></li>
                                                         <!-- Medida excepcional: al final y separada -->
                                                         <li th:if="${s.puedeCierre()}"><hr class="dropdown-divider"></li>
                                                         <li th:if="${s.puedeCierre()}"><button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#modalForzarCierre" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Cerrar informes y pasar a salida sin esperar todas las respuestas"><i class="bi bi-exclamation-octagon me-2"></i>Cierre excepcional</button></li>
@@ -1250,6 +1253,86 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-danger btn-sm">Dejar sin efecto</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Corregir Datos del Ingreso -->
+    <div class="modal fade" id="modalCorregirIngreso" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Corregir datos del ingreso <span id="labelCutiCorregirIngreso" class="text-muted"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form th:action="@{/documentos/corregir-ingreso}" method="post">
+                    <div class="modal-body">
+                        <input type="hidden" id="corregirIngresoDocId" name="documentoId" />
+                        <p class="small text-muted">El CUTI no cambia. Los valores anteriores y el motivo quedan en la bitácora.</p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold" for="corregirIngresoTipo">Tipo de documento</label>
+                                <select class="form-select form-select-sm" id="corregirIngresoTipo" name="tipoDocumentoId" required>
+                                    <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}" th:text="${tipo.nombre}"></option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold" for="corregirIngresoNumero">N° de documento</label>
+                                <input type="text" class="form-control form-control-sm text-uppercase js-numero-documento" id="corregirIngresoNumero" name="numeroDocumento" pattern="^(S/N|\d+/\d{4})$" title="Formato válido: 100/2026 o S/N" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold" for="corregirIngresoOrigen">Dependencia de origen</label>
+                                <select class="form-select form-select-sm" id="corregirIngresoOrigen" name="dependenciaOrigenId" required>
+                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold" for="corregirIngresoPrioridad">Prioridad</label>
+                                <select class="form-select form-select-sm" id="corregirIngresoPrioridad" name="prioridad" required>
+                                    <option value="NORMAL">NORMAL</option>
+                                    <option value="IMPORTANTE">IMPORTANTE</option>
+                                    <option value="URGENTE">URGENTE</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold" for="corregirIngresoAsunto">Asunto</label>
+                                <textarea class="form-control form-control-sm" id="corregirIngresoAsunto" name="asunto" rows="3" required></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold" for="corregirIngresoMotivo">Motivo de la corrección *</label>
+                                <textarea class="form-control form-control-sm" id="corregirIngresoMotivo" name="motivo" rows="2" minlength="10" required placeholder="Ej: se cargó mal el número de la nota"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm">Guardar corrección</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Anular Expediente -->
+    <div class="modal fade" id="modalAnularExpediente" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Anular expediente <span id="labelCutiAnularExpediente" class="text-muted"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form th:action="@{/documentos/anular}" method="post">
+                    <div class="modal-body">
+                        <input type="hidden" id="anularExpedienteDocId" name="documentoId" />
+                        <p class="small text-muted">Para un expediente registrado por error. No se borra: queda como ANULADO y se encuentra con el buscador. Su CUTI no se reutiliza y su número queda libre.</p>
+                        <label class="form-label small fw-bold" for="anularExpedienteMotivo">Motivo *</label>
+                        <textarea class="form-control form-control-sm" id="anularExpedienteMotivo" name="motivo" rows="3" minlength="10" required placeholder="Ej: se registró dos veces el mismo documento"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger btn-sm">Anular expediente</button>
                     </div>
                 </form>
             </div>

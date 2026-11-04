@@ -105,7 +105,7 @@ public class SecurityConfig {
                 // (el servicio limita ese caso a un pase de trámite hacia arriba)
                 .requestMatchers("/documentos/derivar").hasAnyAuthority(Accion.DERIVAR.autoridad(), Accion.REGISTRAR_ACTUACION.autoridad())
                 // Ver los PDF de las actuaciones (GET) queda para todo usuario con acceso al expediente
-                .requestMatchers(HttpMethod.POST, "/documentos/actuaciones/**", "/documentos/devolver", "/documentos/propio")
+                .requestMatchers(HttpMethod.POST, "/documentos/actuaciones/**", "/documentos/devolver", "/documentos/propio", "/documentos/corregir-ingreso", "/documentos/anular")
                     .hasAuthority(Accion.REGISTRAR_ACTUACION.autoridad())
                 .anyRequest().authenticated()
             )

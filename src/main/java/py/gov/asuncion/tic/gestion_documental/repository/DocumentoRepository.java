@@ -27,7 +27,7 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     List<Documento> findByDependenciaOrigenIdAndNumeroDocumentoOrigen(Integer dependenciaOrigenId, String numeroDocumentoOrigen);
 
     // Los 50 más recientes (auditoría B2: las listas de la pantalla no crecen sin límite)
-    List<Documento> findTop50ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);
+    List<Documento> findTop50ByDependenciaOrigenIdAndEstadoActualNotOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId, EstadoDocumento estado);
 
     // 🔒 Bloquea la fila del expediente hasta el fin de la transacción (SELECT ... FOR UPDATE).
     // Serializa las operaciones simultáneas sobre un mismo expediente (derivar, anular, confirmar...).

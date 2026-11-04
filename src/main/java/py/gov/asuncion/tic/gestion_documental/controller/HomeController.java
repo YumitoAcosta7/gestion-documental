@@ -31,6 +31,7 @@ import py.gov.asuncion.tic.gestion_documental.domain.ActuacionDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AdjuntoDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.AuditoriaDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.Documento;
+import py.gov.asuncion.tic.gestion_documental.domain.EstadoDocumento;
 import py.gov.asuncion.tic.gestion_documental.domain.Prioridad;
 import py.gov.asuncion.tic.gestion_documental.domain.TipoPase;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
@@ -177,7 +178,9 @@ public class HomeController {
 
         boolean conDependencia = usuario != null && usuario.getDependencia() != null;
         model.addAttribute("documentosSalida", c.medir("salidas", () -> conDependencia
-                ? documentoRepository.findTop50ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId())
+                // Pasa por la misma regla de acceso que el resto: pertenecer a una mesa, sin asignación, no da acceso
+                ? documentoService.filtrarAccesibles(usuario, documentoRepository
+                        .findTop50ByDependenciaOrigenIdAndEstadoActualNotOrderByFechaHoraIngresoDesc(usuario.getDependencia().getId(), EstadoDocumento.ANULADO))
                 : List.<Documento>of()));
 
         model.addAttribute("dependenciasAgrupadas", c.medir("dependencias", () -> documentoService.obtenerDependenciasAgrupadas()));
@@ -293,6 +296,44 @@ public class HomeController {
             redirectAttributes.addFlashAttribute("mensajeExito", "Salida exterior registrada correctamente.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error al registrar la salida: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * ✏️ CORREGIR LOS DATOS DE UN INGRESO MAL CARGADO
+     */
+    @PostMapping("/documentos/corregir-ingreso")
+    public String corregirIngreso(@RequestParam("documentoId") Long documentoId,
+                                  @RequestParam("tipoDocumentoId") Integer tipoDocumentoId,
+                                  @RequestParam("numeroDocumento") String numeroDocumento,
+                                  @RequestParam("dependenciaOrigenId") Integer dependenciaOrigenId,
+                                  @RequestParam("asunto") String asunto,
+                                  @RequestParam(value = "prioridad", required = false) Prioridad prioridad,
+                                  @RequestParam("motivo") String motivo,
+                                  RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.corregirIngreso(documentoId, tipoDocumentoId, numeroDocumento, dependenciaOrigenId, asunto,
+                    prioridad, motivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Datos del ingreso corregidos.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al corregir los datos: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * ❌ ANULAR UN EXPEDIENTE REGISTRADO POR ERROR, SIN MOVIMIENTOS
+     */
+    @PostMapping("/documentos/anular")
+    public String anularExpediente(@RequestParam("documentoId") Long documentoId,
+                                   @RequestParam("motivo") String motivo,
+                                   RedirectAttributes redirectAttributes) {
+        try {
+            Documento doc = documentoService.anularExpediente(documentoId, motivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Expediente " + doc.getCodigoCuti() + " anulado.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al anular el expediente: " + mensajeError(e));
         }
         return "redirect:/";
     }

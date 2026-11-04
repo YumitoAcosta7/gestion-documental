@@ -126,6 +126,116 @@ class GobernanzaExpedienteTest {
         verify(documentoRepository, never()).save(any());
     }
 
+    private TipoDocumento tipo(int id, String nombre, boolean informativo) {
+        TipoDocumento t = new TipoDocumento();
+        t.setId(id);
+        t.setNombre(nombre);
+        t.setActivo(true);
+        t.setCategoria(informativo ? "INFORMATIVO" : "TRAMITE");
+        when(tipoDocumentoRepository.findById(id)).thenReturn(Optional.of(t));
+        return t;
+    }
+
+    private void conIngresoParaCorregir() {
+        expediente.setEstadoActual(EstadoDocumento.INGRESADO);
+        expediente.setTipoDocumento(tipo(1, "Nota", false));
+        expediente.setDependenciaOrigen(hacienda);
+        expediente.setDependenciaRegistro(hacienda);
+        expediente.setNumeroDocumentoOrigen("120/2026");
+        expediente.setAsunto("Asunto original");
+        expediente.setPrioridad(Prioridad.NORMAL);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        when(politicaAcceso.puede(usuario, Accion.REGISTRAR_INGRESO)).thenReturn(true);
+    }
+
+    @Test
+    void corregirElIngresoDejaLosValoresAnterioresEnLaBitacora() {
+        conIngresoParaCorregir();
+        servicio.corregirIngreso(500L, 1, "102/2026", 20, "Asunto original", Prioridad.NORMAL, "Se cargó mal el número", usuario);
+        assertEquals("102/2026", expediente.getNumeroDocumentoOrigen());
+        assertEquals("DHAC-2026-000010", expediente.getCodigoCuti(), "el CUTI no cambia");
+        verify(auditoriaService).registrarEvento(eq(expediente), eq("CORRECCION_INGRESO"), any(), any(),
+                argThat(d -> d.contains("120/2026 → 102/2026") && d.contains("Se cargó mal")), eq(usuario), isNull());
+    }
+
+    @Test
+    void corregirElIngresoTieneSusLimites() {
+        conIngresoParaCorregir();
+        assertThrows(IllegalArgumentException.class, () -> servicio.corregirIngreso(500L, 1, "102/2026", 20, "Asunto", Prioridad.NORMAL, "corto", usuario), "motivo");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> servicio.corregirIngreso(500L, 1, "120/2026", 20, "Asunto original", Prioridad.NORMAL, "Motivo suficiente", usuario))
+                .getMessage().contains("No cambió"));
+        assertThrows(IllegalArgumentException.class, () -> servicio.corregirIngreso(500L, 1, "abc", 20, "Asunto", Prioridad.NORMAL, "Motivo suficiente", usuario), "formato");
+        tipo(2, "Circular", true);
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> servicio.corregirIngreso(500L, 2, "120/2026", 20, "Asunto", Prioridad.NORMAL, "Motivo suficiente", usuario))
+                .getMessage().contains("informativo"));
+
+        Documento otro = new Documento();
+        otro.setId(501L);
+        otro.setCodigoCuti("DHAC-2026-000011");
+        otro.setNumeroDocumentoOrigen("102/2026");
+        when(documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, "102/2026")).thenReturn(List.of(otro));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> servicio.corregirIngreso(500L, 1, "102/2026", 20, "Asunto", Prioridad.NORMAL, "Motivo suficiente", usuario))
+                .getMessage().contains("DHAC-2026-000011"), "no se corrige hacia un duplicado");
+
+        when(actuacionRepository.existePaseTramitePendiente(500L)).thenReturn(true);
+        assertThrows(IllegalStateException.class, () -> servicio.corregirIngreso(500L, 1, "103/2026", 20, "Asunto", Prioridad.NORMAL, "Motivo suficiente", usuario), "en camino");
+        when(actuacionRepository.existePaseTramitePendiente(500L)).thenReturn(false);
+
+        when(politicaAcceso.puede(usuario, Accion.REGISTRAR_INGRESO)).thenReturn(false);
+        assertThrows(AccessDeniedException.class, () -> servicio.corregirIngreso(500L, 1, "103/2026", 20, "Asunto", Prioridad.NORMAL, "Motivo suficiente", usuario), "sin permiso");
+        expediente.setUsuarioCargaIngreso(usuario);
+        servicio.corregirIngreso(500L, 1, "103/2026", 20, "Asunto", Prioridad.NORMAL, "Motivo suficiente", usuario);
+        assertEquals("103/2026", expediente.getNumeroDocumentoOrigen(), "quien lo cargó lo puede corregir");
+    }
+
+    @Test
+    void sinMovimientosSeAnulaYSuNumeroQuedaLibre() {
+        conIngresoParaCorregir();
+        expediente.setFojaDesde(3);
+        expediente.setFojaHasta(4);
+        servicio.anularExpediente(500L, "Se registró dos veces", usuario);
+        assertEquals(EstadoDocumento.ANULADO, expediente.getEstadoActual());
+        assertNull(expediente.getFojaDesde(), "libera las fojas");
+        verify(auditoriaService).registrarEvento(eq(expediente), eq("EXPEDIENTE_ANULADO"), eq(EstadoDocumento.INGRESADO), eq(EstadoDocumento.ANULADO),
+                argThat(d -> d.contains("120/2026") && d.contains("dos veces")), eq(usuario), isNull());
+
+        when(documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, "120/2026")).thenReturn(List.of(expediente));
+        Documento correcto = new Documento();
+        correcto.setDependenciaOrigen(hacienda);
+        correcto.setDependenciaRegistro(hacienda);
+        correcto.setCodigoCuti("DHAC-2026-000012");
+        correcto.setNumeroDocumentoOrigen("120/2026");
+        assertEquals("DHAC-2026-000012", servicio.guardarNuevoDocumento(correcto, usuario).getCodigoCuti());
+    }
+
+    @Test
+    void conMovimientosNoSeAnula() {
+        conIngresoParaCorregir();
+        tramiteRecibido(dtic, hacienda, 1);
+        assertTrue(assertThrows(IllegalStateException.class, () -> servicio.anularExpediente(500L, "Motivo suficiente", usuario))
+                .getMessage().contains("movimientos"));
+        assertEquals(EstadoDocumento.INGRESADO, expediente.getEstadoActual());
+    }
+
+    @Test
+    void unPaseRetiradoNoImpideAnular() {
+        conIngresoParaCorregir();
+        tramiteRecibido(dtic, hacienda, 1).setAnulada(true);
+        servicio.anularExpediente(500L, "Motivo suficiente", usuario);
+        assertEquals(EstadoDocumento.ANULADO, expediente.getEstadoActual());
+    }
+
+    @Test
+    void unExpedienteAnuladoNoAdmiteNada() {
+        conIngresoParaCorregir();
+        expediente.setEstadoActual(EstadoDocumento.ANULADO);
+        assertThrows(IllegalStateException.class, () -> registrar(hacienda, "MEMO", "1/2026"));
+        assertThrows(IllegalStateException.class, () -> servicio.derivarDocumento(500L, List.of(10), "Motivo del pase", TipoPase.TRAMITE, usuario));
+        assertThrows(IllegalStateException.class, () -> servicio.registrarSalidaDocumento(500L, "5/2026", null, "x", "y", null, usuario));
+        assertThrows(IllegalStateException.class, () -> servicio.anularExpediente(500L, "Motivo suficiente", usuario));
+        assertThrows(IllegalStateException.class, () -> servicio.corregirIngreso(500L, 1, "9/2026", 20, "Asunto", Prioridad.NORMAL, "Motivo suficiente", usuario));
+    }
+
     @Test
     void unMemoSinElegirPedidoNoCierraNinguno() {
         ActuacionDocumento pedido = pedidoInforme(1L, dtic, hacienda, 5);

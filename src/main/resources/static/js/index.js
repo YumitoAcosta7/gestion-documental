@@ -588,6 +588,33 @@
                 });
             }
 
+            const modalCorregirIngreso = document.getElementById('modalCorregirIngreso');
+            if (modalCorregirIngreso) {
+                modalCorregirIngreso.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (!button) return;
+                    modalCorregirIngreso.querySelector('#corregirIngresoDocId').value = button.getAttribute('data-doc-id');
+                    modalCorregirIngreso.querySelector('#labelCutiCorregirIngreso').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+                    modalCorregirIngreso.querySelector('#corregirIngresoTipo').value = button.getAttribute('data-tipo-id');
+                    modalCorregirIngreso.querySelector('#corregirIngresoNumero').value = button.getAttribute('data-numero');
+                    modalCorregirIngreso.querySelector('#corregirIngresoOrigen').value = button.getAttribute('data-origen-id');
+                    modalCorregirIngreso.querySelector('#corregirIngresoPrioridad').value = button.getAttribute('data-prioridad');
+                    modalCorregirIngreso.querySelector('#corregirIngresoAsunto').value = button.getAttribute('data-asunto');
+                    modalCorregirIngreso.querySelector('#corregirIngresoMotivo').value = '';
+                });
+            }
+
+            const modalAnularExpediente = document.getElementById('modalAnularExpediente');
+            if (modalAnularExpediente) {
+                modalAnularExpediente.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (!button) return;
+                    modalAnularExpediente.querySelector('#anularExpedienteDocId').value = button.getAttribute('data-doc-id');
+                    modalAnularExpediente.querySelector('#labelCutiAnularExpediente').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+                    modalAnularExpediente.querySelector('#anularExpedienteMotivo').value = '';
+                });
+            }
+
             const modalCorregirSalida = document.getElementById('modalCorregirSalida');
             if (modalCorregirSalida) {
                 modalCorregirSalida.addEventListener('show.bs.modal', function (event) {
