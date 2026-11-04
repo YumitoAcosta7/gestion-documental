@@ -1,6 +1,6 @@
 # Viabilidad de la prueba de campo (piloto en producción)
 
-Revisión del 03/11/2026, con producción en V22.
+Revisión del 03/11/2026, con producción en V22. Estado actualizado el 04/11/2026, con producción en V28.
 
 ## Veredicto
 
@@ -15,16 +15,16 @@ Las reglas de negocio, la seguridad de la aplicación y la trazabilidad están e
 Un fallo de esa PC o una contraseña capturada en la red comprometerían expedientes reales.
 
 
-## Estado de los bloqueantes (03/11/2026)
+## Estado de los bloqueantes (04/11/2026)
 
 | # | Bloqueante | Estado |
 |---|---|---|
 | 1 | Servidor de aplicación | ✅ Servicio en 192.168.129.73 |
 | 2 | HTTPS | ✅ Con certificado interno. Falta que TIC lo instale en los equipos, o reemplazarlo por uno institucional |
 | 3 | Respaldos | 🟡 Diarios y con restauración de la base probada. **Falta la copia a otro equipo** (`RESPALDO_DESTINO`) |
-| 4 | Cuentas nominales | ❌ Pendiente: siguen las 6 genéricas |
+| 4 | Cuentas nominales | 🟡 Administrar y tramitar ya están separados (`juan.admin` y `zlobo.admin`). **Faltan las cuentas por persona:** siguen las 6 genéricas |
 | 5 | Autenticación de la base | ✅ Contraseña cambiada, SCRAM y sin `trust` |
-| 6 | Datos del piloto anterior | 🟡 `revisar_pendientes_salida.sql` no encontró casos. Faltan los 8 pases sin acuse |
+| 6 | Datos del piloto anterior | 🟡 `revisar_pendientes_salida.sql` no encontró casos y `revisar_pdf.sh` no informa faltantes. Faltan los pases sin acuse: 7 en el panel el 04/11/2026 (eran 8) |
 
 ## Lo que está listo
 
@@ -32,12 +32,12 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 |---|---|
 | Unidad de expediente | Un asunto, un CUTI, con serie por cabecera. Se elevan los documentos sin crear expedientes nuevos. Se rechazan los documentos repetidos. Las respuestas quedan cosidas a su pedido, y se registra el legajo de la salida. Se quitó la salida directa. |
 | Custodia | Solo quien tiene el original deriva, devuelve, da salida o agrega actuaciones. Con el original en camino, no se modifica nada. |
-| Acceso | Ámbito por asignación y vigencia, con control en el servidor de cada operación. Matriz de autorización automatizada. La administración está separada de los expedientes, con doble control (dos administradores: `juan.acosta` y `zlobo`). |
+| Acceso | Ámbito por asignación y vigencia, con control en el servidor de cada operación. Matriz de autorización automatizada. La administración está separada de los expedientes, con doble control (dos administradores: `juan.admin` y `zlobo.admin`, que no tramitan). |
 | Sesiones | Bloqueo por usuario y por IP. Las sesiones se cierran al dar de baja, restablecer o cambiar la contraseña. Vencen a los 30 minutos sin actividad. |
 | Contenido | CSP estricta sin scripts en línea, SRI y cookies `HttpOnly`/`SameSite`. Los PDF se analizan con PDFBox. |
 | Trazabilidad | Bitácoras inmutables, propiedad de otro rol, con huella SHA-256 encadenada e IP. Verificación disponible y ÍNTEGRA en las dos bases. |
 | Rendimiento | Medido con 200 000 expedientes: listas de 12 a 84 ms, página principal en 1,5 s. Buscador con trigramas. |
-| Pruebas | 106 automáticas: 105 pasan y 1 se saltea. Flujos probados en pantalla sobre la base de pruebas. |
+| Pruebas | 230 automáticas: 229 pasan y 1 se saltea. Flujos probados en pantalla sobre la base de pruebas. |
 
 ## Bloqueantes antes del "Go"
 
@@ -53,19 +53,16 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 4. **Cuentas nominales.**
    - **Hoy:** en producción hay cuentas genéricas: `director_tic`, `jefe_bd`, `jefe_operativo`, `jefe_soporte`, `encargado_soporte`, `secretaria_tic`. Una bitácora que registra "Jefe Dpto." no identifica a una persona y no sirve como prueba.
    - **Hace falta:** crear una cuenta por persona y dar de baja las genéricas. La baja conserva su historial.
-   - **Separar administrar de tramitar (decisión D3), ANTES de instalar la versión que aísla al administrador:** `juan.acosta` (`RESPONSABLE`) y `zlobo` (`MESA_ENTRADA`) hacen las dos cosas con la misma cuenta. Desde esa versión, una cuenta con `ADMIN_SISTEMA` solo administra: si no se separan antes, dejan de tramitar al instalarla.
-     1. Cada uno crea su cuenta de administración y pide para ella `ADMIN_SISTEMA`. La aprueba el otro.
-     2. Con las cuentas nuevas funcionando, se quita `ADMIN_SISTEMA` de `juan.acosta` y `zlobo`, que siguen tramitando.
-     3. Se comprueba con la consulta de la sección "Cuentas" de `docs/auditoria-logica-negocio.md` que ninguna cuenta tenga los dos roles.
+   - **Separar administrar de tramitar (decisión D3): hecho el 04/11/2026,** antes de instalar la V28. Administran `juan.admin` y `zlobo.admin`; `juan.acosta` (`RESPONSABLE`) y `zlobo` (`MESA_ENTRADA`) solo tramitan. La consulta de la sección "Cuentas" de `docs/auditoria-logica-negocio.md` debe seguir saliendo vacía.
 5. **Autenticación de la base de producción.**
    - Cambiar la contraseña con `\password gestion_documental` y guardarla en SCRAM.
    - Quitar la regla `trust` de `127.0.0.1`, encontrada el 03/11/2026: cualquier programa del servidor podía entrar como superusuario sin contraseña.
    - Los pasos están en `docs/despliegue-servidor.md`, sección 1b.
 6. **Datos del piloto anterior.**
-   - Resolver los 8 pases sin acuse desde agosto y septiembre. Aparecen en Administración → Pases trabados.
+   - Resolver los pases sin acuse desde agosto y septiembre (eran 8; el panel mostraba 7 el 04/11/2026, sin que se haya explicado la diferencia). Aparecen en Administración → Pases trabados.
    - Revisar los expedientes que muestre `db/herramientas/revisar_pendientes_salida.sql`.
    - Decidir si esos expedientes de prueba (CUTI `TIC-2026-…`) se cierran o se mantienen.
-   - Comprobar que `revisar_pdf.sh` no informe faltantes, tras reponer el acuse final de `TIC-2026-000003` (`docs/pase-produccion.md`, 03/11/2026, 23:56).
+   - Confirmar que el acuse final repuesto de `TIC-2026-000003` es el escaneo real. `revisar_pdf.sh` ya no informa faltantes y "Verificar" dice "Íntegro" (`docs/pase-produccion.md`, 04/11/2026, 13:07).
 
 ## Antes del "Go", sin ser bloqueantes
 

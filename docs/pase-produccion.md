@@ -229,3 +229,24 @@ Después, arrancar la versión anterior de la aplicación.
   - "Verificar" dando "Íntegro" en producción, con el acuse repuesto;
   - la IP real del usuario en la auditoría, hasta el primer movimiento;
   - la restauración completa de los PDF.
+
+**04/11/2026, 13:07.** Actualización hasta el PR #43 (Bloque 2 de `docs/auditoria-logica-negocio.md`), de V23 a V28.
+- **Antes de instalar, separación de cuentas:**
+  - Se crearon `juan.admin` y `zlobo.admin`, las únicas con `ADMIN_SISTEMA` vigente (desde el 04/11/2026). `juan.acosta` (`RESPONSABLE`) y `zlobo` (`MESA_ENTRADA`) quedaron solo con su rol de trámite.
+  - La consulta de "Cuentas" de `docs/auditoria-logica-negocio.md` salió vacía.
+  - `revisar_cuentas_mesa.sql` y `revisar_cuentas_sin_asignacion.sql` salieron vacías, antes de la separación.
+- **Respaldo previo:** `base_20261104_1306.dump`, con `pdf_20261104_1306.tar.gz` y `huellas_20261104_1306.txt`. Quedó solo en el servidor, porque `RESPALDO_DESTINO` no está definido.
+- **Control de PDF:** 4 referencias en la base y 27 archivos en disco. 0 faltantes, 0 alterados, 1 versión anterior sin archivo y 24 sobrantes, que no se borran.
+- **Migraciones:** V24 a V28 aplicadas a las 13:07:12–13, con `success = t` en `flyway_schema_history`. La aplicación arrancó a las 13:07:25 y `/login` responde 200.
+- **En pantalla, según informó el usuario:**
+  - `juan.admin`: 0 originales en dependencias sin personal, y 7 pases trabados o fuera de plazo, ninguno con el botón "Retirar".
+  - `juan.acosta` y `zlobo`: ven su bandeja y ya no tienen Administración.
+  - Acuse de `TIC-2026-000003`: "Verificar" dice "Íntegro" en la versión vigente y "Falta el archivo" en la reemplazada, como se esperaba.
+- **Sin explicar:** el 03/11/2026 el panel mostraba 8 pases y ahora muestra 7. Falta identificar cuál salió y por qué.
+- **Sin comprobar todavía:**
+  - qué archivo se subió como acuse de `TIC-2026-000003`: si es el escaneo real;
+  - que `juan.admin` no vea expedientes (lo cubren las pruebas automáticas);
+  - las bitácoras con la verificación de huella, después de esta actualización;
+  - la IP real del usuario en la auditoría;
+  - la restauración completa de los PDF.
+- **Sin instalar:** el PR #44 (entrada directa a Administración y auditoría con filtros). No tiene migraciones.
