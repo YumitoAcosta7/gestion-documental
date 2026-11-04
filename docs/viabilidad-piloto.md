@@ -74,6 +74,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 
 ## Propuesta de alcance del piloto
 
+- **Preparación:** plan de arranque con una base limpia en [plan-base-limpia.md](plan-base-limpia.md).
 - **Duración:** 4 semanas.
 - **Alcance:** la DTIC y una dirección que intercambie expedientes con ella, por ejemplo la DGAF.
 - **En paralelo:** se sigue llevando el libro de mesa de entrada en papel.
