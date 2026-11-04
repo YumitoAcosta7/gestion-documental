@@ -60,10 +60,10 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
    - Quitar la regla `trust` de `127.0.0.1`, encontrada el 03/11/2026: cualquier programa del servidor podía entrar como superusuario sin contraseña.
    - Los pasos están en `docs/despliegue-servidor.md`, sección 1b.
 6. **Datos del piloto anterior.**
-   - Resolver los pases sin acuse desde agosto y septiembre (8 en la base). Administración → Pases trabados mostraba 7 el 04/11/2026, porque no incluye los de expedientes finalizados; falta confirmar que esa es la diferencia.
+   - Resolver los pases sin acuse desde agosto y septiembre (8 en la base). Administración → Pases trabados muestra 7, porque no incluye el de `TIC-2026-000003`, que está finalizado.
    - Revisar los expedientes que muestre `db/herramientas/revisar_pendientes_salida.sql`.
    - Decidir si esos expedientes de prueba (CUTI `TIC-2026-…`) se cierran o se mantienen.
-   - Confirmar que el acuse final repuesto de `TIC-2026-000003` es el escaneo real. `revisar_pdf.sh` ya no informa faltantes y "Verificar" dice "Íntegro" (`docs/pase-produccion.md`, 04/11/2026, 13:07).
+   - Reemplazar el acuse final de `TIC-2026-000003` por el escaneo real, o dejar constancia si el papel no existe: el vigente es un PDF cualquiera, subido para reponer el faltante. `revisar_pdf.sh` no informa faltantes y "Verificar" dice "Íntegro", pero eso no prueba que sea el documento correcto (`docs/pase-produccion.md`, 04/11/2026, 13:07).
 
 ## Antes del "Go", sin ser bloqueantes
 
