@@ -21,19 +21,27 @@ public interface DependenciaRepository extends JpaRepository<Dependencia, Intege
     @Query("SELECT n FROM NivelJerarquico n")
     List<NivelJerarquico> findNiveles();
 
-    // De las dependencias indicadas, las que tienen quién reciba un pase: un usuario activo propio o una
-    // asignación de trámite vigente que las abarque (auditoría M2: sin receptor, el pase quedaría trabado)
+    // De las dependencias indicadas, las que tienen quién actúe por ellas (auditoría M2 y M7: sin nadie, un pase
+    // queda trabado y un original, inmóvil). Es la misma regla de CanalService.actuaPor: una cuenta activa, con
+    // asignación vigente y que no sea de administración; por su propia dependencia si no es una mesa, o por las
+    // que abarque una asignación de trámite
     @Query(value = """
         SELECT d.id FROM dependencias d
          WHERE d.id IN (:ids)
-           AND (EXISTS (SELECT 1 FROM usuarios u WHERE u.activo AND u.dependencia_id = d.id)
-                OR EXISTS (SELECT 1 FROM asignaciones a
-                             JOIN usuarios u ON u.id = a.usuario_id
-                             JOIN dependencias amb ON amb.id = a.dependencia_ambito_id
-                            WHERE u.activo AND a.activa AND a.rol IN ('MESA_ENTRADA', 'RESPONSABLE', 'OPERADOR')
-                              AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)
-                              AND (amb.id = d.id
-                                   OR (a.incluye_subordinadas AND a.rol <> 'OPERADOR' AND d.ruta LIKE amb.ruta || '%'))))
+           AND d.activo IS NOT FALSE
+           AND EXISTS (SELECT 1 FROM asignaciones a
+                         JOIN usuarios u ON u.id = a.usuario_id
+                         JOIN dependencias amb ON amb.id = a.dependencia_ambito_id
+                        WHERE u.activo AND a.activa
+                          AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)
+                          AND NOT EXISTS (SELECT 1 FROM asignaciones adm
+                                           WHERE adm.usuario_id = u.id AND adm.rol = 'ADMIN_SISTEMA' AND adm.activa
+                                             AND adm.vigente_desde <= CURRENT_DATE
+                                             AND (adm.vigente_hasta IS NULL OR adm.vigente_hasta >= CURRENT_DATE))
+                          AND ((u.dependencia_id = d.id AND d.es_mesa_entrada IS NOT TRUE)
+                               OR (a.rol IN ('MESA_ENTRADA', 'RESPONSABLE', 'OPERADOR')
+                                   AND (amb.id = d.id
+                                        OR (a.incluye_subordinadas AND a.rol <> 'OPERADOR' AND d.ruta LIKE amb.ruta || '%')))))
         """, nativeQuery = true)
     List<Integer> findConReceptor(@Param("ids") Collection<Integer> ids);
 

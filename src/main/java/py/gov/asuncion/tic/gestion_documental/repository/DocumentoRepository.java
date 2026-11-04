@@ -35,6 +35,30 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     @Query("SELECT d FROM Documento d WHERE d.id = :id")
     Optional<Documento> findByIdParaActualizar(@Param("id") Long id);
 
+    // Auditoría M7: las dependencias que tienen originales a su cargo. Los expedientes anulados no tienen original que mover
+    @Query(value = """
+        SELECT DISTINCT COALESCE(dependencia_custodia_id, dependencia_registro_id, dependencia_origen_id)
+          FROM documentos WHERE estado_actual <> 'ANULADO'
+        """, nativeQuery = true)
+    List<Integer> dependenciasConCustodia();
+
+    @Query(value = """
+        SELECT COUNT(*) FROM documentos
+         WHERE estado_actual <> 'ANULADO'
+           AND COALESCE(dependencia_custodia_id, dependencia_registro_id, dependencia_origen_id) IN (:dependencias)
+        """, nativeQuery = true)
+    long contarEnCustodiaDe(@Param("dependencias") java.util.Collection<Integer> dependencias);
+
+    @Query("""
+        SELECT d FROM Documento d
+          LEFT JOIN FETCH d.dependenciaCustodia LEFT JOIN FETCH d.dependenciaRegistro LEFT JOIN FETCH d.dependenciaOrigen
+         WHERE d.estadoActual <> py.gov.asuncion.tic.gestion_documental.domain.EstadoDocumento.ANULADO
+           AND COALESCE(d.dependenciaCustodia.id, d.dependenciaRegistro.id, d.dependenciaOrigen.id) IN :dependencias
+         ORDER BY d.fechaHoraIngreso, d.id
+        """)
+    List<Documento> enCustodiaDe(@Param("dependencias") java.util.Collection<Integer> dependencias,
+                                 org.springframework.data.domain.Pageable pagina);
+
     // 🔢 CORRELATIVO DEL CUTI DE UNA CABECERA
     // Incrementa la serie (cabecera, año) en una sola sentencia: la fila queda bloqueada hasta el commit,
     // así dos registros simultáneos no obtienen el mismo número. La primera vez arranca desde el mayor

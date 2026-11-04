@@ -12,6 +12,7 @@ import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 import py.gov.asuncion.tic.gestion_documental.service.AdministracionService;
 import py.gov.asuncion.tic.gestion_documental.service.DocumentoService;
 import py.gov.asuncion.tic.gestion_documental.service.FeriadoService;
+import py.gov.asuncion.tic.gestion_documental.service.TrasladoCustodiaService;
 
 import java.time.LocalDate;
 
@@ -25,13 +26,16 @@ public class AdministracionController {
     private final DocumentoService documentoService;
     private final FeriadoService feriadoService;
     private final UsuarioRepository usuarioRepository;
+    private final TrasladoCustodiaService trasladoCustodiaService;
 
     public AdministracionController(AdministracionService administracionService, DocumentoService documentoService,
-                                    FeriadoService feriadoService, UsuarioRepository usuarioRepository) {
+                                    FeriadoService feriadoService, UsuarioRepository usuarioRepository,
+                                    TrasladoCustodiaService trasladoCustodiaService) {
         this.administracionService = administracionService;
         this.documentoService = documentoService;
         this.feriadoService = feriadoService;
         this.usuarioRepository = usuarioRepository;
+        this.trasladoCustodiaService = trasladoCustodiaService;
     }
 
     @GetMapping("/usuarios")
@@ -53,6 +57,8 @@ public class AdministracionController {
         model.addAttribute("pendientes", administracionService.pendientesDeAprobacion(admin));
         model.addAttribute("contrasenasPendientes", administracionService.contrasenasPendientes(admin));
         model.addAttribute("pasesTrabados", documentoService.pasesTrabados(admin));
+        model.addAttribute("custodiasSinReceptor", trasladoCustodiaService.custodiasSinReceptor(admin));
+        model.addAttribute("trasladosPendientes", trasladoCustodiaService.pendientes(admin));
         model.addAttribute("feriados", feriadoService.calendario(admin));
         model.addAttribute("auditoria", administracionService.auditoriaReciente(admin));
         return "admin";
@@ -234,6 +240,44 @@ public class AdministracionController {
             ra.addFlashAttribute("error", e.getMessage());
         }
         return "redirect:/admin/usuarios";
+    }
+
+    // Auditoría M7: traslado del original de una dependencia sin nadie. Pide un administrador y aprueba otro
+    @PostMapping("/traslados")
+    public String pedirTraslado(@RequestParam("documentoId") Long documentoId, @RequestParam("destinoId") Integer destinoId,
+                                @RequestParam("motivo") String motivo, @RequestParam("actoAdministrativo") String actoAdministrativo,
+                                Authentication auth, RedirectAttributes ra) {
+        try {
+            var solicitud = trasladoCustodiaService.solicitar(documentoId, destinoId, motivo, actoAdministrativo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Traslado de " + solicitud.getDocumento().getCodigoCuti() + " pedido. Lo debe aprobar otro administrador.");
+        } catch (IllegalArgumentException | IllegalStateException | org.springframework.security.access.AccessDeniedException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios#custodias";
+    }
+
+    @PostMapping("/traslados/{id}/aprobar")
+    public String aprobarTraslado(@PathVariable("id") Long id, Authentication auth, RedirectAttributes ra) {
+        try {
+            var doc = trasladoCustodiaService.aprobar(id, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Traslado aprobado. El original de " + doc.getCodigoCuti() + " quedó a cargo de "
+                    + doc.getDependenciaCustodia().getNombreVisible() + ".");
+        } catch (IllegalArgumentException | IllegalStateException | org.springframework.security.access.AccessDeniedException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios#custodias";
+    }
+
+    @PostMapping("/traslados/{id}/rechazar")
+    public String rechazarTraslado(@PathVariable("id") Long id, @RequestParam("motivo") String motivo,
+                                   Authentication auth, RedirectAttributes ra) {
+        try {
+            trasladoCustodiaService.rechazar(id, motivo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Solicitud de traslado cerrada. El original sigue donde estaba.");
+        } catch (IllegalArgumentException | IllegalStateException | org.springframework.security.access.AccessDeniedException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios#custodias";
     }
 
     // La contraseña temporal se muestra una sola vez (flash): no queda en ningún registro

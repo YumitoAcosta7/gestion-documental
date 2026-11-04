@@ -67,6 +67,39 @@
         </div>
     </div>
 
+    <!-- ===================== Traslados de custodia pendientes (auditoría M7) ===================== -->
+    <div th:if="${!#lists.isEmpty(trasladosPendientes)}" class="card border-warning shadow-sm mb-3" id="panelTraslados">
+        <div class="card-header bg-warning-subtle fw-bold">
+            <i class="bi bi-box-arrow-right me-1"></i>Traslados de custodia esperando aprobación
+            <div class="small fw-normal text-muted">Al aprobarlo, el original queda a cargo de la dependencia de destino. No lo aprueba quien lo pidió.</div>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm align-middle mb-0 small">
+                <thead class="table-light"><tr><th>CUTI</th><th>De ➔ a</th><th>Acto y motivo</th><th>Pedido por</th><th></th></tr></thead>
+                <tbody>
+                <tr th:each="t : ${trasladosPendientes}">
+                    <td class="fw-semibold" th:text="${t.documento.codigoCuti}">CUTI</td>
+                    <td th:text="${t.dependenciaOrigen.nombreVisible + ' ➔ ' + t.dependenciaDestino.nombreVisible}">origen ➔ destino</td>
+                    <td><div class="fw-semibold" th:text="${t.actoAdministrativo}">acto</div><div th:text="${t.motivo}">motivo</div></td>
+                    <td><span th:text="${t.solicitadaPor.username}">admin</span><div class="text-muted" th:text="${#temporals.format(t.fechaSolicitud, 'dd/MM/yyyy HH:mm')}">fecha</div></td>
+                    <td>
+                        <div class="d-flex flex-column gap-1">
+                            <form th:if="${t.solicitadaPor.id != admin.id}" th:action="@{/admin/traslados/{id}/aprobar(id=${t.id})}" method="post" class="m-0">
+                                <button class="btn btn-success btn-sm w-100">Aprobar traslado</button>
+                            </form>
+                            <div th:if="${t.solicitadaPor.id == admin.id}" class="text-muted">Lo pidió usted: lo aprueba otro administrador.</div>
+                            <form th:action="@{/admin/traslados/{id}/rechazar(id=${t.id})}" method="post" class="d-flex gap-1 m-0">
+                                <input type="text" name="motivo" class="form-control form-control-sm" minlength="5" required placeholder="Motivo" aria-label="Motivo del rechazo">
+                                <button class="btn btn-outline-secondary btn-sm" th:text="${t.solicitadaPor.id == admin.id ? 'Retirar' : 'Rechazar'}">Rechazar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- ===================== Doble control (auditoría C2) ===================== -->
     <div th:if="${!#lists.isEmpty(pendientes)}" class="card border-warning shadow-sm mb-3">
         <div class="card-header bg-warning-subtle fw-bold">
@@ -367,6 +400,62 @@
                 </tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- ===================== Originales sin nadie a cargo (auditoría M7) ===================== -->
+    <div class="card border-0 shadow-sm mt-3" id="custodias">
+        <div class="card-header bg-white fw-bold">
+            <i class="bi bi-archive me-1"></i>Originales en dependencias sin personal
+            <span class="badge bg-secondary ms-1" th:text="${custodiasSinReceptor.total()}">0</span>
+            <div class="small fw-normal text-muted">Dependencias dadas de baja, o sin nadie con asignación vigente que actúe por ellas. Si la dependencia va a seguir funcionando, lo que corresponde es habilitar a su personal. Si no, se pide el traslado y lo aprueba otro administrador.</div>
+        </div>
+        <div class="card-body p-0">
+            <form th:if="${!#lists.isEmpty(custodiasSinReceptor.trasladables())}" th:action="@{/admin/traslados}" method="post" class="row g-2 p-2 m-0 border-bottom bg-light small">
+                <div class="col-md-3">
+                    <label class="form-label mb-0" for="trasladoDocumento">Expediente</label>
+                    <select id="trasladoDocumento" name="documentoId" class="form-select form-select-sm" required>
+                        <option value="" selected disabled>Seleccione…</option>
+                        <option th:each="c : ${custodiasSinReceptor.trasladables()}" th:value="${c.documentoId()}" th:text="${c.cuti()}">CUTI</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-0" for="trasladoDestino">Pasa a cargo de</label>
+                    <select id="trasladoDestino" name="destinoId" class="form-select form-select-sm" required>
+                        <option value="" selected disabled>Seleccione…</option>
+                        <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-0" for="trasladoActo">Acto administrativo</label>
+                    <input id="trasladoActo" name="actoAdministrativo" class="form-control form-control-sm" required minlength="3" maxlength="150" placeholder="Res. N° …">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-0" for="trasladoMotivo">Motivo</label>
+                    <input id="trasladoMotivo" name="motivo" class="form-control form-control-sm" required minlength="10" placeholder="Mínimo 10 caracteres">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button class="btn btn-primary btn-sm w-100">Pedir</button>
+                </div>
+            </form>
+            <div style="max-height: 40vh; overflow-y: auto;">
+                <table class="table table-sm align-middle mb-0 small">
+                    <thead class="table-light"><tr><th>CUTI</th><th>A cargo de</th><th>Estado</th><th>Ingreso</th><th>Situación</th></tr></thead>
+                    <tbody>
+                    <tr th:each="c : ${custodiasSinReceptor.expedientes()}">
+                        <td class="fw-semibold" th:text="${c.cuti()}">CUTI</td>
+                        <td><span th:text="${c.custodia()}">dependencia</span> <span th:if="${c.dependenciaInactiva()}" class="badge text-bg-secondary">De baja</span></td>
+                        <td th:text="${c.estado()}">estado</td>
+                        <td class="text-nowrap" th:text="${#temporals.format(c.ingreso(), 'dd/MM/yyyy')}">fecha</td>
+                        <td th:text="${c.trasladoPedido() ? 'Traslado esperando aprobación' : (c.originalEnCamino() ? 'Original en camino: primero debe recibirse o retirarse el pase' : 'Se puede pedir el traslado')}">situación</td>
+                    </tr>
+                    <tr th:if="${custodiasSinReceptor.total() == 0}"><td colspan="5" class="text-muted p-3">Todos los originales están a cargo de una dependencia con personal habilitado.</td></tr>
+                    <tr th:if="${custodiasSinReceptor.total() > #lists.size(custodiasSinReceptor.expedientes())}">
+                        <td colspan="5" class="text-muted p-2" th:text="${'Se muestran los ' + #lists.size(custodiasSinReceptor.expedientes()) + ' más antiguos de ' + custodiasSinReceptor.total() + '.'}">Se muestran los más antiguos.</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 

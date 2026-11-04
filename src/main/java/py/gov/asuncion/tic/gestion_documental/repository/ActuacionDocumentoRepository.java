@@ -48,6 +48,14 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
     @Query("SELECT a.documento.id FROM ActuacionDocumento a WHERE a.id = :id")
     Optional<Long> documentoIdDe(@Param("id") Long id);
 
+    // De los expedientes indicados, los que tienen el original en camino: un pase de trámite sin recibir (auditoría M7)
+    @Query(value = """
+        SELECT DISTINCT documento_id FROM actuaciones_documento
+         WHERE documento_id IN (:documentos) AND tipo_actuacion = 'PASE_INTERNO' AND tipo_pase = 'TRAMITE'
+           AND NOT pase_confirmado AND NOT anulada
+        """, nativeQuery = true)
+    List<Long> conOriginalEnCamino(@Param("documentos") java.util.Collection<Long> documentos);
+
     // ¿La dependencia ya tiene un pase pendiente (sin acuse, no anulado) de este documento?
     @Query("""
         SELECT COUNT(a) > 0 FROM ActuacionDocumento a
