@@ -200,3 +200,15 @@ Después, arrancar la versión anterior de la aplicación.
 - **Últimas huellas,** para el anclaje externo:
   - `auditorias_documento`: `83a594ade7b4934bc31086284740331bc67a0e788d4bd26901794d4c2694944d`
   - `auditoria_sistema`: `9d5eb223f71f83fcea35b8ad174bd4a5652c7cc78979c458ba882ce3777a3288`
+
+**03/11/2026, 22:00.** Mudanza de la aplicación al servidor (`docs/despliegue-servidor.md`).
+- **Autenticación de la base:** contraseña de producción cambiada y guardada en SCRAM. Se quitó la regla `trust` de `127.0.0.1` (copia en `pg_hba.conf.antes_scram`).
+- **Instalado:** Java 25 (Temurin), nginx, `rsync` y `tar`.
+- **Aplicación:** servicio `gestion-documental`, con entrada en `https://192.168.129.73` y certificado interno válido hasta noviembre de 2028. El puerto 80 redirige y el 8080 no se ve desde la red.
+- **PDF:** 26 en la PC y 26 en el servidor. Un PDF antiguo se abre y "Verificar" dice "Íntegro".
+- **Respaldo:** `respaldar.sh` genera la base, los PDF (26) y las huellas. El timer está programado para las 22:00. La base se restauró en una base temporal: 7 expedientes, 13 actuaciones y 25 filas de bitácora.
+- **Bitácoras:** ÍNTEGRAS.
+- **Sin comprobar todavía:**
+  - la IP real del usuario en la auditoría, hasta el primer movimiento;
+  - la restauración completa de los PDF.
+- **Desde esta fecha, producción es la del servidor:** no se arranca desde la PC sin el perfil de pruebas.
