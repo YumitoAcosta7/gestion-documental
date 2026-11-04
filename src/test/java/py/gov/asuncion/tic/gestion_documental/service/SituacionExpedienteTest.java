@@ -129,6 +129,13 @@ class SituacionExpedienteTest {
     }
 
     @Test
+    void loQueTodaviaNoSeRecibioNoOfreceAgregarActuacion() {
+        SituacionExpediente s = de(doc(EstadoDocumento.EN_ESPERA_INFORME), otra, mesa, pase(3, otra, nosotros, TipoPase.INFORME, false, 5));
+        assertEquals(Tipo.RECIBIR, s.tipo());
+        assertFalse(s.isConMenu(), "primero se confirma o se rechaza");
+    }
+
+    @Test
     void sinElOriginalNoSeOfreceDevolver() {
         SituacionExpediente s = de(doc(EstadoDocumento.EN_ESPERA_INFORME), otra, mesa, pase(3, otra, nosotros, TipoPase.INFORME, true, 5));
         assertEquals(Tipo.RESPONDER, s.tipo());

@@ -38,7 +38,7 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
     }
 
     public boolean isConMenu() {
-        return (puedeAgregar && tipo != Tipo.RESPONDER) || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
+        return (puedeAgregar && tipo != Tipo.RESPONDER && tipo != Tipo.RECIBIR) || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
                 || (puedeSalida && tipo != Tipo.LISTO_SALIDA) || (puedeAcuse && tipo != Tipo.ESPERA_ACUSE)
                 || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre || puedeCorregirSalida;
     }
