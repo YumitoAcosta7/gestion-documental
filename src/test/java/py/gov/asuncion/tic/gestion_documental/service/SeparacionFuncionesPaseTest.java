@@ -64,6 +64,7 @@ class SeparacionFuncionesPaseTest {
                 .dependenciaEmisora(dtic).dependenciaReceptoraPase(dgaf).build();
 
         when(actuacionRepository.findByIdParaActualizar(5L)).thenReturn(Optional.of(pase));
+        when(actuacionRepository.documentoIdDe(5L)).thenReturn(Optional.of(100L));
         when(actuacionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(actuacionRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(100L)).thenReturn(List.of(pase));
         when(documentoRepository.findById(100L)).thenReturn(Optional.of(expediente));

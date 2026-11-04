@@ -68,6 +68,7 @@ class PasesTrabadosTest {
         a.setPaseConfirmado(false);
         a.setAnulada(false);
         when(actuacionRepository.findByIdParaActualizar(id)).thenReturn(Optional.of(a));
+        when(actuacionRepository.documentoIdDe(id)).thenReturn(Optional.of(300L));
         return a;
     }
 

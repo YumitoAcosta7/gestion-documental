@@ -38,7 +38,7 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
     }
 
     public boolean isConMenu() {
-        return (puedeAgregar && tipo != Tipo.RESPONDER) || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
+        return (puedeAgregar && tipo != Tipo.RESPONDER && tipo != Tipo.RECIBIR) || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
                 || (puedeSalida && tipo != Tipo.LISTO_SALIDA) || (puedeAcuse && tipo != Tipo.ESPERA_ACUSE)
                 || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre || puedeCorregirSalida;
     }
@@ -62,7 +62,8 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
                 .filter(p -> p.getDependenciaEmisora() != null && actuaPor.test(p.getDependenciaEmisora()))
                 .min(Comparator.comparing((ActuacionDocumento p) -> p.getTipoPase() == TipoPase.TRAMITE ? 0 : 1))
                 .orElse(null);
-        ActuacionDocumento pedido = propia != null ? DocumentoService.pedidoQueResponde(actuaciones, propia) : null;
+        ActuacionDocumento pedido = DocumentoService.pedidosQuePuedeResponder(actuaciones, propia, actuaPor).stream().findFirst().orElse(null);
+        boolean hayPedidosAbiertos = !DocumentoService.pedidosAbiertos(actuaciones).isEmpty();
 
         boolean originalDisponible = abierto && tieneOriginal && !enCamino;
         boolean salidaRegistrada = doc.getFechaHoraSalida() != null;
@@ -71,12 +72,14 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
         boolean puedeAgregar = permisos.actuacion() && abierto && (pedido != null || (originalDisponible && !salidaRegistrada));
         boolean puedeDerivar = (permisos.derivar() || permisos.actuacion()) && originalDisponible && !salidaRegistrada;
         boolean puedeCorregirSalida = permisos.salida() && originalDisponible && salidaRegistrada;
-        // Lo que todavía no se recibió no se devuelve: se confirma o se rechaza
-        boolean puedeDevolver = permisos.actuacion() && abierto && estado != EstadoDocumento.PENDIENTE_SALIDA
-                && recibir == null && !salidaRegistrada && !(tieneOriginal && enCamino) && hayAQuienDevolver(actuaciones, tieneOriginal ? custodia : propia);
-        boolean puedeSalida = permisos.salida() && originalDisponible && !salidaRegistrada;
+        // Devuelve quien tiene el original. Lo que todavía no se recibió se confirma o se rechaza
+        boolean puedeDevolver = permisos.actuacion() && originalDisponible && estado != EstadoDocumento.PENDIENTE_SALIDA
+                && recibir == null && !salidaRegistrada && hayAQuienDevolver(actuaciones, custodia);
+        // Con informes sin responder, no hay salida: se esperan o se justifica con el cierre excepcional
+        boolean puedeSalida = permisos.salida() && originalDisponible && !salidaRegistrada && !hayPedidosAbiertos;
         boolean puedeAcuse = permisos.salida() && originalDisponible && estado == EstadoDocumento.PENDIENTE_SALIDA && salidaRegistrada;
-        boolean puedeCierre = permisos.cierre() && originalDisponible && estado == EstadoDocumento.EN_ESPERA_INFORME;
+        boolean puedeCierre = permisos.cierre() && originalDisponible && !salidaRegistrada
+                && (estado == EstadoDocumento.EN_ESPERA_INFORME || hayPedidosAbiertos);
         boolean puedeRechazar = recibir != null && propia != null;
 
         Tipo tipo;

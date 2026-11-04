@@ -341,8 +341,14 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 - **Corregir salida** (`/documentos/corregir-salida`, permiso `REGISTRAR_SALIDA`, solo antes del acuse y con el original):
   - deja la salida sin efecto, con motivo obligatorio, y el expediente vuelve al estado que tenía; se puede registrar de nuevo o seguir el trámite;
   - los datos anteriores y el motivo quedan en la bitácora (evento `CORRECCION_SALIDA`); el acuse de esa salida deja de estar vigente, sin borrarse, y se quita su legajo.
+- **Reglas del expediente** (`docs/auditoria-logica-negocio.md`):
+  - con informes sin responder no hay salida: se esperan o se usa el cierre excepcional, que queda justificado;
+  - devuelve solo quien tiene el original y ya lo recibió; un pedido o una copia se rechazan o se responden;
+  - un pedido se cierra solo con la respuesta que el usuario elige en el formulario (`actuacion_padre_id`);
+  - el duplicado (origen y número) se controla por cabecera: otra dirección registra el mismo documento con su propio CUTI;
+  - al finalizar, los pases sin recibir se anulan (`CIERRE_EXPEDIENTE`, V23).
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
-- **Pruebas automatizadas:** 105, incluidas la matriz de autorización (`MatrizAutorizacionTest`), la revisión de las consultas nativas (`ConsultasNativasTest`) y la gobernanza del expediente (`GobernanzaExpedienteTest`).
+- **Pruebas automatizadas:** 167, incluidas la matriz de autorización (`MatrizAutorizacionTest`), la revisión de las consultas nativas (`ConsultasNativasTest`) y la gobernanza del expediente (`GobernanzaExpedienteTest`).
 
 **Prueba de campo:** el veredicto y los bloqueantes están en [docs/viabilidad-piloto.md](docs/viabilidad-piloto.md). El despliegue en el servidor, con servicio, HTTPS y respaldos, está en [docs/despliegue-servidor.md](docs/despliegue-servidor.md).
 

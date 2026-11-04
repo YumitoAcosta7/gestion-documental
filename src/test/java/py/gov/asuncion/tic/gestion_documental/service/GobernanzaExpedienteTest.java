@@ -99,8 +99,184 @@ class GobernanzaExpedienteTest {
     }
 
     private ActuacionDocumento registrar(Dependencia emisora, String tipo, String numero) {
+        return servicio.registrarActuacion(500L, emisora.getId(), tipo, numero, "Actuación de " + emisora.getNombre(),
+                null, null, null, usuario);
+    }
+
+    private ActuacionDocumento responder(Dependencia emisora, String tipo, String numero, ActuacionDocumento pedido) {
         return servicio.registrarActuacion(500L, emisora.getId(), tipo, numero, "Respuesta de " + emisora.getNombre(),
-                null, null, usuario);
+                null, null, pedido.getId(), usuario);
+    }
+
+    @Test
+    void unMemoSinElegirPedidoNoCierraNinguno() {
+        ActuacionDocumento pedido = pedidoInforme(1L, dtic, hacienda, 5);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true); // tiene el original
+        ActuacionDocumento memo = registrar(hacienda, "MEMO", "1/2026");
+        assertNull(memo.getActuacionPadre());
+        assertFalse(DocumentoService.informeRespondido(pedido, respuestas()));
+        assertEquals(EstadoDocumento.EN_ESPERA_INFORME, expediente.getEstadoActual());
+    }
+
+    @Test
+    void unDepartamentoNoCierraElPedidoHechoASuDireccion() {
+        ActuacionDocumento pedido = pedidoInforme(1L, hacienda, dtic, 5);
+        when(canalService.puedeActuarPor(eq(usuario), any())).thenReturn(false);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> responder(operativo, "MEMO", "1/2026", pedido));
+        assertTrue(e.getMessage().contains("no le corresponde"));
+        verify(actuacionRepository, never()).save(any());
+    }
+
+    @Test
+    void unPedidoSoloSeRespondeConInformeOMemo() {
+        ActuacionDocumento pedido = pedidoInforme(1L, hacienda, dtic, 5);
+        assertThrows(IllegalArgumentException.class, () -> responder(dtic, "PROVIDENCIA", "1/2026", pedido));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"CIERRE_EXCEPCIONAL", "DEVOLUCION", "PASE_INTERNO", "PASE_CONFIRMADO", "CUALQUIERA"})
+    void losTiposReservadosNoSeCarganAMano(String tipo) {
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        assertThrows(IllegalArgumentException.class, () -> registrar(hacienda, tipo, "S/N"));
+        verify(actuacionRepository, never()).save(any());
+    }
+
+    @Test
+    void conInformesSinResponderNoHaySalida() {
+        pedidoInforme(1L, hacienda, conocimiento, 5);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> servicio.registrarSalidaDocumento(500L, "5/2026", null, "x", "y", null, usuario));
+        assertTrue(e.getMessage().contains("cierre excepcional"));
+        assertTrue(e.getMessage().contains("Dirección de Copia"));
+        assertNull(expediente.getFechaHoraSalida());
+    }
+
+    @Test
+    void trasElCierreExcepcionalLaSalidaSeAdmite() {
+        pedidoInforme(1L, hacienda, conocimiento, 5);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        servicio.forzarCierreInformes(500L, "Justificación suficientemente larga del cierre", usuario);
+        servicio.registrarSalidaDocumento(500L, "5/2026", null, "x", "y", null, usuario);
+        assertEquals(EstadoDocumento.PENDIENTE_SALIDA, expediente.getEstadoActual());
+        assertNotNull(expediente.getFechaHoraSalida());
+    }
+
+    @Test
+    void unPedidoAnteriorAlCierreNoTrabaElAvance() {
+        pedidoInforme(1L, hacienda, dtic, 50);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        servicio.forzarCierreInformes(500L, "Justificación suficientemente larga del cierre", usuario);
+        ActuacionDocumento nuevo = pedidoInforme(2L, hacienda, conocimiento, 0);
+        nuevo.setFechaHoraActuacion(LocalDateTime.now().plusSeconds(1)); // posterior al cierre
+        expediente.setEstadoActual(EstadoDocumento.EN_ESPERA_INFORME);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(false);
+        responder(conocimiento, "INFORME_TECNICO", "2/2026", nuevo);
+        assertEquals(EstadoDocumento.PENDIENTE_SALIDA, expediente.getEstadoActual());
+    }
+
+    @Test
+    void unPedidoCerradoNoSePuedeResponderDespues() {
+        ActuacionDocumento pedido = pedidoInforme(1L, hacienda, conocimiento, 5);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        servicio.forzarCierreInformes(500L, "Justificación suficientemente larga del cierre", usuario);
+        assertTrue(DocumentoService.pedidosAbiertos(actuaciones).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> responder(conocimiento, "MEMO", "3/2026", pedido));
+    }
+
+    @Test
+    void sinInformesPendientesNoHayCierreExcepcional() {
+        expediente.setEstadoActual(EstadoDocumento.EN_REVISION);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        assertThrows(IllegalStateException.class,
+                () -> servicio.forzarCierreInformes(500L, "Justificación suficientemente larga del cierre", usuario));
+    }
+
+    @Test
+    void sinElOriginalNoSeDevuelve() {
+        usuario.setDependencia(conocimiento);
+        pedidoInforme(1L, hacienda, conocimiento, 5);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(false);
+        assertThrows(AccessDeniedException.class, () -> servicio.devolverDocumento(500L, "No corresponde a esta dirección", usuario));
+        assertEquals(EstadoDocumento.EN_ESPERA_INFORME, expediente.getEstadoActual(), "el estado del expediente no cambia");
+    }
+
+    @Test
+    void loQueNoSeRecibioNoSeDevuelve() {
+        usuario.setDependencia(hacienda);
+        ActuacionDocumento pendiente = ActuacionDocumento.builder().id(3L).tipoActuacion("PASE_INTERNO").anulada(false).paseConfirmado(false)
+                .dependenciaEmisora(dtic).dependenciaReceptoraPase(hacienda).fechaHoraActuacion(LocalDateTime.now().minusHours(1)).build();
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        when(actuacionRepository.findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(500L, 20)).thenReturn(pendiente);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> servicio.devolverDocumento(500L, "No corresponde", usuario));
+        assertTrue(e.getMessage().contains("todavía no se recibió"));
+    }
+
+    @Test
+    void alDevolverElOriginalSiguenEsperandoLosInformesAbiertos() {
+        usuario.setDependencia(hacienda);
+        pedidoInforme(1L, hacienda, conocimiento, 9);
+        ActuacionDocumento recibido = ActuacionDocumento.builder().id(3L).tipoActuacion("PASE_CONFIRMADO").tipoPase(TipoPase.TRAMITE).anulada(false).paseConfirmado(true)
+                .dependenciaEmisora(dtic).dependenciaReceptoraPase(hacienda).fechaHoraActuacion(LocalDateTime.now().minusHours(1)).build();
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        when(actuacionRepository.findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(500L, 20)).thenReturn(recibido);
+        servicio.devolverDocumento(500L, "Corresponde a otra área", usuario);
+        assertEquals(dtic, expediente.getDependenciaCustodia());
+        assertEquals(EstadoDocumento.EN_ESPERA_INFORME, expediente.getEstadoActual());
+    }
+
+    @Test
+    void otraDireccionRegistraElMismoDocumentoConSuPropioCuti() {
+        Organigrama org = new Organigrama(List.of(
+                new Organigrama.Nodo(1, "Intendencia", "INT", null, 1, true, false),
+                new Organigrama.Nodo(10, "Dirección de TIC", "DTIC", 1, 4, true, false),
+                new Organigrama.Nodo(40, "Departamento Operativo", "DTIC-D03", 10, 6, true, false),
+                new Organigrama.Nodo(20, "Dirección de Hacienda", "DHAC", 1, 4, true, false)), Map.of());
+        when(canalService.organigrama()).thenReturn(org);
+        Documento deTic = new Documento();
+        deTic.setCodigoCuti("DTIC-2026-000003");
+        deTic.setNumeroDocumentoOrigen("45/2026");
+        deTic.setDependenciaRegistro(dtic);
+        when(documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(1, "45/2026")).thenReturn(List.of(deTic));
+        Dependencia intendencia = dep(1, "Intendencia", "/1/");
+
+        Documento enHacienda = new Documento();
+        enHacienda.setDependenciaOrigen(intendencia);
+        enHacienda.setNumeroDocumentoOrigen("45/2026");
+        enHacienda.setDependenciaRegistro(hacienda);
+        enHacienda.setCodigoCuti("DHAC-2026-000001");
+        assertEquals("DHAC-2026-000001", servicio.guardarNuevoDocumento(enHacienda, usuario).getCodigoCuti());
+
+        // Dentro de la misma dirección sigue siendo un duplicado, aunque lo cargue un departamento
+        Documento enOperativo = new Documento();
+        enOperativo.setDependenciaOrigen(intendencia);
+        enOperativo.setNumeroDocumentoOrigen("45/2026");
+        enOperativo.setDependenciaRegistro(operativo);
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> servicio.guardarNuevoDocumento(enOperativo, usuario))
+                .getMessage().contains("DTIC-2026-000003"));
+    }
+
+    @Test
+    void elMensajeDeDuplicadoNoMandaACargarEnUnExpedienteFinalizado() {
+        Documento finalizado = new Documento();
+        finalizado.setCodigoCuti("DHAC-2026-000002");
+        finalizado.setNumeroDocumentoOrigen("7/2026");
+        finalizado.setEstadoActual(EstadoDocumento.FINALIZADO);
+        when(documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, "7/2026")).thenReturn(List.of(finalizado));
+        Documento nuevo = new Documento();
+        nuevo.setDependenciaOrigen(hacienda);
+        nuevo.setNumeroDocumentoOrigen("7/2026");
+        String mensaje = assertThrows(IllegalArgumentException.class, () -> servicio.guardarNuevoDocumento(nuevo, usuario)).getMessage();
+        assertTrue(mensaje.contains("finalizado"));
+        assertFalse(mensaje.contains("registra como actuación"));
+    }
+
+    @Test
+    void lasRespuestasNuevasSinVinculoNoCuentanPorArea() {
+        ActuacionDocumento pedido = pedidoInforme(1L, hacienda, dtic, 5);
+        ActuacionDocumento sinVinculo = ActuacionDocumento.builder().id(8L).tipoActuacion("MEMO").anulada(false)
+                .dependenciaEmisora(dtic).fechaHoraActuacion(LocalDateTime.now()).build();
+        assertFalse(DocumentoService.informeRespondido(pedido, List.of(sinVinculo)));
     }
 
     @Test
@@ -124,14 +300,14 @@ class GobernanzaExpedienteTest {
         ActuacionDocumento pedidoTicAlDepartamento = pedidoInforme(2L, dtic, operativo, 3);
 
         // El departamento responde: queda cosido al pedido que le hizo la Dirección
-        ActuacionDocumento dictamen = registrar(operativo, "INFORME_TECNICO", "10/2026");
+        ActuacionDocumento dictamen = responder(operativo, "INFORME_TECNICO", "10/2026", pedidoTicAlDepartamento);
         assertSame(pedidoTicAlDepartamento, dictamen.getActuacionPadre());
         assertTrue(DocumentoService.informeRespondido(pedidoTicAlDepartamento, respuestas()));
         assertFalse(DocumentoService.informeRespondido(pedidoHaciendaATic, respuestas()),
                 "el pedido de Hacienda sigue abierto hasta el memo consolidado de la Dirección");
 
         // La Dirección consolida y responde a Hacienda
-        ActuacionDocumento memo = registrar(dtic, "MEMO", "11/2026");
+        ActuacionDocumento memo = responder(dtic, "MEMO", "11/2026", pedidoHaciendaATic);
         assertSame(pedidoHaciendaATic, memo.getActuacionPadre());
         assertTrue(DocumentoService.informeRespondido(pedidoHaciendaATic, respuestas()));
         assertEquals(EstadoDocumento.PENDIENTE_SALIDA, expediente.getEstadoActual(), "con todos los pedidos respondidos");
@@ -144,8 +320,8 @@ class GobernanzaExpedienteTest {
         Documento existente = new Documento();
         existente.setCodigoCuti("DTIC-2026-000003");
         existente.setNumeroDocumentoOrigen("45/2026");
-        when(documentoRepository.findFirstByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, "45/2026"))
-                .thenReturn(Optional.of(existente));
+        when(documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, "45/2026"))
+                .thenReturn(List.of(existente));
         Documento nuevo = new Documento();
         nuevo.setDependenciaOrigen(hacienda);
         nuevo.setNumeroDocumentoOrigen(" 45/2026 ");
@@ -159,8 +335,8 @@ class GobernanzaExpedienteTest {
         Documento existente = new Documento();
         existente.setCodigoCuti("DHAC-2026-000003");
         existente.setNumeroDocumentoOrigen(numero);
-        when(documentoRepository.findFirstByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, numero))
-                .thenReturn(Optional.of(existente));
+        when(documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, numero))
+                .thenReturn(List.of(existente));
     }
 
     private Documento registrarDeHacienda(String numero, String cuti) {
@@ -194,7 +370,7 @@ class GobernanzaExpedienteTest {
         assertEquals("S/N", primero.getNumeroDocumentoOrigen());
         assertEquals("S/N", segundo.getNumeroDocumentoOrigen());
         verify(documentoRepository, times(2)).save(any());
-        verify(documentoRepository, never()).findFirstByDependenciaOrigenIdAndNumeroDocumentoOrigen(any(), any());
+        verify(documentoRepository, never()).findByDependenciaOrigenIdAndNumeroDocumentoOrigen(any(), any());
     }
 
     @ParameterizedTest
@@ -282,10 +458,10 @@ class GobernanzaExpedienteTest {
 
     @Test
     void laRespuestaAUnPedidoSeAdmiteAunqueElOriginalHayaSalido() {
-        pedidoInforme(1L, hacienda, operativo, 5);
+        ActuacionDocumento pedido = pedidoInforme(1L, hacienda, operativo, 5);
         conSalidaRegistrada();
         when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(false);
-        ActuacionDocumento respuesta = registrar(operativo, "INFORME_TECNICO", "10/2026");
+        ActuacionDocumento respuesta = responder(operativo, "INFORME_TECNICO", "10/2026", pedido);
         assertNotNull(respuesta.getActuacionPadre());
     }
 

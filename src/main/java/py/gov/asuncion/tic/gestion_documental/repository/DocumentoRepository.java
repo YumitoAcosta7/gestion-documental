@@ -23,8 +23,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     long countByPrioridadAndEstadoActualNotIn(Prioridad prioridad, java.util.Collection<EstadoDocumento> estados);
 
     // Método para obtener los documentos emitidos/creados por tu propia dependencia
-    // Un asunto = un CUTI: el mismo documento (origen y número) ya registrado
-    Optional<Documento> findFirstByDependenciaOrigenIdAndNumeroDocumentoOrigen(Integer dependenciaOrigenId, String numeroDocumentoOrigen);
+    // Un asunto = un CUTI por cabecera: el mismo documento (origen y número) ya registrado, en cualquier dirección
+    List<Documento> findByDependenciaOrigenIdAndNumeroDocumentoOrigen(Integer dependenciaOrigenId, String numeroDocumentoOrigen);
 
     // Los 50 más recientes (auditoría B2: las listas de la pantalla no crecen sin límite)
     List<Documento> findTop50ByDependenciaOrigenIdOrderByFechaHoraIngresoDesc(Integer dependenciaOrigenId);

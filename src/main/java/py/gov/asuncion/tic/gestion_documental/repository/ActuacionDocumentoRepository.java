@@ -47,6 +47,10 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
     @Query("SELECT a FROM ActuacionDocumento a WHERE a.id = :id")
     Optional<ActuacionDocumento> findByIdParaActualizar(@Param("id") Long id);
 
+    // El expediente de una actuación, sin cargarla: se bloquea el expediente antes que la actuación
+    @Query("SELECT a.documento.id FROM ActuacionDocumento a WHERE a.id = :id")
+    Optional<Long> documentoIdDe(@Param("id") Long id);
+
     // ¿La dependencia ya tiene un pase pendiente (sin acuse, no anulado) de este documento?
     @Query("""
         SELECT COUNT(a) > 0 FROM ActuacionDocumento a
@@ -70,6 +74,7 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
     @Query(value = DocumentoRepository.CTE_AMBITO + """
         SELECT DISTINCT a.dependencia_receptora_pase_id FROM actuaciones_documento a
          WHERE a.tipo_actuacion = 'PASE_INTERNO' AND NOT a.anulada AND NOT a.pase_confirmado
+           AND a.documento_id NOT IN (SELECT dp.id FROM documentos dp WHERE dp.estado_actual = 'FINALIZADO')
            AND (:todos OR a.dependencia_emisora_id IN (SELECT id FROM deps) OR a.dependencia_emisora_id IN (SELECT id FROM propia))
         """, nativeQuery = true)
     List<Integer> receptorasDePasesPendientes(@Param("usuarioId") Integer usuarioId, @Param("todos") boolean todos);
@@ -77,6 +82,7 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
     @Query(value = DocumentoRepository.CTE_AMBITO + """
         SELECT COUNT(*) FROM actuaciones_documento a
          WHERE a.tipo_actuacion = 'PASE_INTERNO' AND NOT a.anulada AND NOT a.pase_confirmado
+           AND a.documento_id NOT IN (SELECT dp.id FROM documentos dp WHERE dp.estado_actual = 'FINALIZADO')
            AND (:todos OR a.dependencia_emisora_id IN (SELECT id FROM deps) OR a.dependencia_emisora_id IN (SELECT id FROM propia))
            AND (a.fecha_hora_actuacion < :limite OR a.dependencia_receptora_pase_id IN (:sinReceptor))
         """, nativeQuery = true)
@@ -88,6 +94,7 @@ public interface ActuacionDocumentoRepository extends JpaRepository<ActuacionDoc
     @Query(value = DocumentoRepository.CTE_AMBITO + """
         SELECT a.* FROM actuaciones_documento a
          WHERE a.tipo_actuacion = 'PASE_INTERNO' AND NOT a.anulada AND NOT a.pase_confirmado
+           AND a.documento_id NOT IN (SELECT dp.id FROM documentos dp WHERE dp.estado_actual = 'FINALIZADO')
            AND (:todos OR a.dependencia_emisora_id IN (SELECT id FROM deps) OR a.dependencia_emisora_id IN (SELECT id FROM propia))
            AND (a.fecha_hora_actuacion < :limite OR a.dependencia_receptora_pase_id IN (:sinReceptor))
          ORDER BY a.fecha_hora_actuacion, a.id
