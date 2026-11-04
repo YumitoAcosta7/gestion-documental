@@ -798,6 +798,12 @@
                                 </select>
                             </div>
 
+                            <div class="col-12 d-none" id="filaPedidoActuacion">
+                                <label class="form-label small fw-bold" for="selectPedidoActuacion">¿Responde a un pedido de informe?</label>
+                                <select class="form-select form-select-sm" name="pedidoId" id="selectPedidoActuacion"></select>
+                                <div class="form-text">Solo una respuesta elegida aquí cierra el pedido. Un pedido se responde con un informe técnico o un memo.</div>
+                            </div>
+
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">N° de Documento / Actuación Generado</label>
                                 <input type="text" class="form-control form-control-sm text-uppercase js-numero-documento" name="numeroActuacion" placeholder="Ej: 45/2026 o S/N" pattern="^(S/N|\d+/\d{4})$" title="Formato válido: 45/2026 o S/N" required>

@@ -626,6 +626,7 @@ public class HomeController {
                                    @RequestParam("descripcionResumen") String descripcionResumen,
                                    @RequestParam(value = "ubicacionBibliorato", required = false) String ubicacionBibliorato,
                                    @RequestParam(value = "archivoCopiaSellada", required = false) MultipartFile archivoCopiaSellada,
+                                   @RequestParam(value = "pedidoId", required = false) Long pedidoId,
                                    RedirectAttributes redirectAttributes) {
         try {
             Usuario usuarioCarga = getUsuarioAutenticadoObligatorio();
@@ -637,7 +638,7 @@ public class HomeController {
 
             documentoService.registrarActuacion(documentoId, dependenciaEmisoraId, tipoActuacion,
                        numeroActuacion, descripcionResumen, ubicacionBibliorato,
-                       archivoCopiaSellada, usuarioCarga);
+                       archivoCopiaSellada, pedidoId, usuarioCarga);
             redirectAttributes.addFlashAttribute("mensajeExito", "Actuación registrada correctamente.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error al registrar la actuación: " + mensajeError(e));
@@ -742,6 +743,28 @@ public class HomeController {
     public ResponseEntity<DocumentoService.OpcionesDerivacion> obtenerDestinosJson(@PathVariable("id") Long id) {
         try {
             return ResponseEntity.ok(documentoService.obtenerOpcionesDerivacion(id, getUsuarioAutenticadoObligatorio()));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+    }
+
+    /**
+     * 📝 API JSON: PEDIDOS DE INFORME QUE EL USUARIO PUEDE RESPONDER EN ESTE EXPEDIENTE
+     */
+    @GetMapping("/api/documentos/{id}/pedidos-abiertos")
+    @ResponseBody
+    public ResponseEntity<List<Map<String, Object>>> obtenerPedidosAbiertosJson(@PathVariable("id") Long id) {
+        try {
+            List<Map<String, Object>> listaJson = new ArrayList<>();
+            for (ActuacionDocumento pedido : documentoService.pedidosParaResponder(id, getUsuarioAutenticadoObligatorio())) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", pedido.getId());
+                map.put("de", pedido.getDependenciaEmisora().getNombreVisible());
+                map.put("para", pedido.getDependenciaReceptoraPase().getNombreVisible());
+                map.put("fecha", pedido.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+                listaJson.add(map);
+            }
+            return ResponseEntity.ok(listaJson);
         } catch (AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }

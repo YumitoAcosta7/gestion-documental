@@ -119,6 +119,23 @@ class SituacionExpedienteTest {
     }
 
     @Test
+    void conInformesSinResponderSeOfreceElCierreYNoLaSalida() {
+        SituacionExpediente s = de(doc(EstadoDocumento.EN_ESPERA_INFORME), nosotros, mesa, pase(3, nosotros, otra, TipoPase.INFORME, true, 5));
+        assertFalse(s.puedeSalida());
+        assertTrue(s.puedeCierre());
+
+        SituacionExpediente sinEstado = de(doc(EstadoDocumento.EN_REVISION), nosotros, mesa, pase(3, nosotros, otra, TipoPase.INFORME, true, 5));
+        assertTrue(sinEstado.puedeCierre(), "aunque el estado no lo diga, hay informes por responder");
+    }
+
+    @Test
+    void sinElOriginalNoSeOfreceDevolver() {
+        SituacionExpediente s = de(doc(EstadoDocumento.EN_ESPERA_INFORME), otra, mesa, pase(3, otra, nosotros, TipoPase.INFORME, true, 5));
+        assertEquals(Tipo.RESPONDER, s.tipo());
+        assertFalse(s.puedeDevolver());
+    }
+
+    @Test
     void conLaSalidaRegistradaSoloQuedaElAcuseOCorregirla() {
         Documento d = doc(EstadoDocumento.PENDIENTE_SALIDA);
         d.setFechaHoraSalida(LocalDateTime.now());

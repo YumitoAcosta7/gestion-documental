@@ -39,10 +39,16 @@ public class BandejaService {
             AND EXISTS (SELECT 1 FROM actuaciones_documento a
                          WHERE a.documento_id = d.id AND a.tipo_pase = 'INFORME' AND NOT a.anulada
                            AND a.dependencia_receptora_pase_id IN (SELECT id FROM deps)
+                           AND NOT EXISTS (SELECT 1 FROM actuaciones_documento c
+                                            WHERE c.documento_id = d.id AND c.tipo_actuacion = 'CIERRE_EXCEPCIONAL'
+                                              AND c.fecha_hora_actuacion >= a.fecha_hora_actuacion)
                            AND NOT EXISTS (SELECT 1 FROM actuaciones_documento r
                                             WHERE r.documento_id = d.id AND NOT r.anulada
                                               AND r.tipo_actuacion IN ('INFORME_TECNICO', 'MEMO')
-                                              AND r.dependencia_emisora_id = a.dependencia_receptora_pase_id))
+                                              AND (r.actuacion_padre_id = a.id
+                                                   OR (r.actuacion_padre_id IS NULL AND r.fecha_hora_actuacion < DATE '2026-11-04'
+                                                       AND r.fecha_hora_actuacion >= a.fecha_hora_actuacion
+                                                       AND r.dependencia_emisora_id = a.dependencia_receptora_pase_id))))
             """),
         EN_SEGUIMIENTO("En seguimiento", """
             d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO')

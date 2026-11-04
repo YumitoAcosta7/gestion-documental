@@ -545,6 +545,15 @@ public class DocumentoService {
         return guardado;
     }
 
+    // Sin dependencia de registro no hay cómo distinguirlas: se trata como la misma, para no duplicar
+    private boolean mismaCabecera(Dependencia una, Dependencia otra) {
+        if (una == null || otra == null) {
+            return true;
+        }
+        Organigrama organigrama = canalService.organigrama();
+        return organigrama.cabecera(organigrama.nodo(una.getId())).id().equals(organigrama.cabecera(organigrama.nodo(otra.getId())).id());
+    }
+
     @Transactional
     public Documento guardarNuevoDocumento(Documento documento, Usuario usuarioSesion) {
         LocalDateTime ahora = LocalDateTime.now();
@@ -556,15 +565,22 @@ public class DocumentoService {
         } else {
             documento.setNumeroDocumentoOrigen(documento.getNumeroDocumentoOrigen().trim().toUpperCase());
             validarFormatoNumeroDocumento(documento.getNumeroDocumentoOrigen());
-            // 🛡️ Un asunto = un CUTI: el mismo documento (misma dependencia de origen y mismo número) no se registra
-            // dos veces. Lo que llega después sobre ese asunto se agrega como actuación en el expediente existente.
+            // 🛡️ Un asunto = un CUTI por cabecera: el mismo documento (misma dependencia de origen y mismo número) no se
+            // registra dos veces en la misma dirección. Otra dirección que recibe el mismo documento lo registra con su
+            // propio CUTI, y no se le informa el de un expediente que no puede ver.
             if (documento.getDependenciaOrigen() != null) {
-                documentoRepository.findFirstByDependenciaOrigenIdAndNumeroDocumentoOrigen(
-                        documento.getDependenciaOrigen().getId(), documento.getNumeroDocumentoOrigen()).ifPresent(existente -> {
+                Dependencia registro = documento.getDependenciaRegistro() != null ? documento.getDependenciaRegistro()
+                        : canalService.dependenciaDeRegistro(usuarioSesion);
+                documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(
+                        documento.getDependenciaOrigen().getId(), documento.getNumeroDocumentoOrigen()).stream()
+                        .filter(existente -> mismaCabecera(existente.getDependenciaRegistro(), registro))
+                        .findFirst().ifPresent(existente -> {
+                    String siguePaso = existente.getEstadoActual() == EstadoDocumento.FINALIZADO
+                            ? "Ese expediente está finalizado y no admite actuaciones: consulte a un responsable antes de continuar."
+                            : "No se crea otro expediente: lo que llegue sobre ese asunto se registra como actuación en " + existente.getCodigoCuti() + ".";
                     throw new IllegalArgumentException("El documento N° " + existente.getNumeroDocumentoOrigen() + " de "
                             + documento.getDependenciaOrigen().getNombreVisible() + " ya está registrado como "
-                            + existente.getCodigoCuti() + ". No se crea otro expediente: lo que llegue sobre ese asunto se registra "
-                            + "como actuación en " + existente.getCodigoCuti() + ".");
+                            + existente.getCodigoCuti() + ". " + siguePaso);
                 });
             }
         }
@@ -639,19 +655,24 @@ public class DocumentoService {
             throw new IllegalArgumentException("Debe ingresar el motivo de la devolución (mínimo 5 caracteres).");
         }
 
-        // 3. Localizar el último pase recibido: por quien tiene el original si el usuario actúa por ella
-        //    (la mesa de su dirección, por ejemplo); si no, por la dependencia del usuario
+        // 3. Devuelve quien tiene el original (o actúa por ella). Un pedido o una copia no se devuelven:
+        //    se rechazan si todavía no se recibieron, o se responde el informe
         Dependencia custodia = custodiaDe(documento);
-        Dependencia depActual = canalService.puedeActuarPor(usuarioActual, custodia) ? custodia : usuarioActual.getDependencia();
-        // Devolver el original mientras hay un trámite en curso dejaría dos entregas del original cruzadas
-        if (depActual.getId().equals(custodia.getId())) {
-            exigirSinTramitePendiente(documento, "devolver");
+        if (!canalService.puedeActuarPor(usuarioActual, custodia)) {
+            throw new AccessDeniedException("El original está en " + custodia.getNombreVisible() + ": solo esa dependencia puede devolverlo. "
+                    + "Si le llegó un pedido o una copia que no le corresponde, rechácelo; si ya lo recibió, responda el informe.");
         }
+        Dependencia depActual = custodia;
+        // Devolver el original mientras hay un trámite en curso dejaría dos entregas del original cruzadas
+        exigirSinTramitePendiente(documento, "devolver");
         ActuacionDocumento ultimoPase = actuacionDocumentoRepository
                 .findTopByDocumentoIdAndDependenciaReceptoraPaseIdAndAnuladaFalseOrderByFechaHoraActuacionDesc(documentoId, depActual.getId());
 
         if (ultimoPase == null || ultimoPase.getDependenciaEmisora() == null) {
             throw new IllegalStateException("Su dependencia no recibió ningún pase de este expediente, no hay a quién devolverlo.");
+        }
+        if ("PASE_INTERNO".equals(ultimoPase.getTipoActuacion())) {
+            throw new IllegalStateException("El último pase todavía no se recibió: confírmelo o rechácelo antes de devolver.");
         }
 
         Dependencia depDestino = ultimoPase.getDependenciaEmisora();
@@ -671,12 +692,10 @@ public class DocumentoService {
 
         EstadoDocumento estadoAnterior = documento.getEstadoActual();
 
-        // 4. Actualizar estado del documento con setEstadoActual()
-        documento.setEstadoActual(EstadoDocumento.EN_REVISION);
-        // Si quien devuelve tenía el original, el original vuelve a quien lo envió
-        if (depActual.getId().equals(custodia.getId())) {
-            documento.setDependenciaCustodia(depDestino);
-        }
+        // 4. El original vuelve a quien lo envió. Si quedan informes por responder, el expediente los sigue esperando
+        boolean quedanPedidos = !pedidosAbiertos(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)).isEmpty();
+        documento.setEstadoActual(quedanPedidos ? EstadoDocumento.EN_ESPERA_INFORME : EstadoDocumento.EN_REVISION);
+        documento.setDependenciaCustodia(depDestino);
         documentoRepository.save(documento);
 
         // 5. Registrar la nueva actuación de devolución (retorna a quien nos envió)
@@ -886,6 +905,13 @@ public class DocumentoService {
         validarNoFinalizado(doc, "registrar la salida de");
         // Registrarla de nuevo pisaría los datos anteriores sin dejar motivo: para eso está corregirSalida
         exigirSalidaNoRegistrada(doc, "registrar otra salida");
+        // Salir sin los informes pedidos exige justificarlo con el cierre excepcional
+        List<String> sinResponder = pedidosAbiertos(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)).stream()
+                .map(p -> p.getDependenciaReceptoraPase().getNombreVisible()).distinct().toList();
+        if (!sinResponder.isEmpty()) {
+            throw new IllegalStateException("Hay informes sin responder de: " + String.join(", ", sinResponder)
+                    + ". Espere las respuestas o use el cierre excepcional, con su justificación.");
+        }
         if (doc.getEstadoActual() == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("Un documento informativo archivado no tiene salida exterior.");
         }
@@ -1065,13 +1091,30 @@ public class DocumentoService {
 
         Documento docFinalizado = documentoRepository.save(doc);
 
+        // Un expediente finalizado ya no admite cambios en sus pases: los que siguen sin recibir se anulan aquí.
+        // Si no, quedarían para siempre en los avisos, sin nadie que pueda resolverlos.
+        LocalDateTime ahora = LocalDateTime.now();
+        List<String> anulados = new ArrayList<>();
+        for (ActuacionDocumento pase : actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)) {
+            if (esPasePendiente(pase)) {
+                pase.setAnulada(true);
+                pase.setTipoAnulacion(ANULACION_CIERRE_EXPEDIENTE);
+                pase.setMotivoAnulacion("Expediente finalizado con el acuse exterior antes de recibir este pase.");
+                pase.setFechaHoraAnulacion(ahora);
+                pase.setUsuarioAnulacion(usuarioSesion);
+                actuacionDocumentoRepository.save(pase);
+                anulados.add(pase.getDependenciaReceptoraPase() != null ? pase.getDependenciaReceptoraPase().getNombreVisible() : "sin receptora");
+            }
+        }
+
         // 🛡️ REGISTRO DE AUDITORÍA
         auditoriaService.registrarEvento(
             docFinalizado, 
             "CONFIRMACION_ACUSE_FINAL", 
             estadoAnterior, 
             EstadoDocumento.FINALIZADO, 
-            "Acuse exterior firmado y adjunto. Expediente concluido.", 
+            "Acuse exterior firmado y adjunto. Expediente concluido."
+                    + (anulados.isEmpty() ? "" : " Pases sin recibir anulados: " + String.join(", ", anulados) + "."),
             usuarioSesion, 
             null
         );
@@ -1108,15 +1151,23 @@ public class DocumentoService {
                 estadoEnum != null ? estadoEnum.name() : null, biblioratoId, desde, hasta);
     }
 
+    // Lo que se carga a mano. Pases, devoluciones y cierres excepcionales solo los crea su operación, con su permiso
+    private static final Set<String> TIPOS_REGISTRABLES = Set.of("INFORME_TECNICO", "ACTA_ENTREGA", "MEMO", "PROVIDENCIA");
+
+    // pedidoId: el pedido de informe que responde, elegido por el usuario. Sin él es una actuación más del expediente
     @Transactional
-    public ActuacionDocumento registrarActuacion(Long documentoId, 
-                                                Integer dependenciaEmisoraId, 
-                                                String tipoActuacion, 
-                                                String numeroActuacion, 
-                                                String descripcionResumen, 
+    public ActuacionDocumento registrarActuacion(Long documentoId,
+                                                Integer dependenciaEmisoraId,
+                                                String tipoActuacion,
+                                                String numeroActuacion,
+                                                String descripcionResumen,
                                                 String ubicacionBibliorato,
                                                 MultipartFile archivoCopiaSellada,
+                                                Long pedidoId,
                                                 Usuario usuarioSesion) {
+        if (!TIPOS_REGISTRABLES.contains(tipoActuacion)) {
+            throw new IllegalArgumentException("Tipo de actuación no válido: " + tipoActuacion);
+        }
         verificarAccesoDocumento(usuarioSesion, documentoId);
 
         Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
@@ -1134,10 +1185,16 @@ public class DocumentoService {
         // 🛡️ Quién puede escribir en el expediente: la dependencia que tiene el original, o una dependencia a la que
         // se pidió informe, para responderlo (su respuesta queda cosida a ese pedido). Una copia "para conocimiento"
         // o haber intervenido antes no habilitan a agregar actuaciones.
-        boolean esRespuesta = "INFORME_TECNICO".equals(tipoActuacion) || "MEMO".equals(tipoActuacion);
-        ActuacionDocumento pedido = esRespuesta
-                ? pedidoQueResponde(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId), depEmisora)
-                : null;
+        ActuacionDocumento pedido = null;
+        if (pedidoId != null) {
+            if (!"INFORME_TECNICO".equals(tipoActuacion) && !"MEMO".equals(tipoActuacion)) {
+                throw new IllegalArgumentException("Un pedido de informe se responde con un informe técnico o un memo.");
+            }
+            pedido = pedidosQuePuedeResponder(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId),
+                    depEmisora, d -> canalService.puedeActuarPor(usuarioSesion, d)).stream()
+                    .filter(p -> pedidoId.equals(p.getId())).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Ese pedido de informe ya no está abierto o no le corresponde responderlo."));
+        }
         boolean tieneElOriginal = canalService.puedeActuarPor(usuarioSesion, custodiaDe(doc));
         if (pedido == null) {
             if (!tieneElOriginal) {
@@ -1216,6 +1273,16 @@ public class DocumentoService {
         return actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId);
     }
 
+    // Bloquea primero el expediente y después la actuación, siempre en ese orden: invertirlo en una sola operación
+    // alcanza para que dos transacciones simultáneas se traben entre sí (el cierre excepcional actualiza pases)
+    private ActuacionDocumento bloquearActuacion(Long actuacionId) {
+        Long documentoId = actuacionDocumentoRepository.documentoIdDe(actuacionId)
+                .orElseThrow(() -> new IllegalArgumentException("Actuación no encontrada: " + actuacionId));
+        documentoRepository.findByIdParaActualizar(documentoId).orElseThrow();
+        return actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
+                .orElseThrow(() -> new IllegalArgumentException("Actuación no encontrada: " + actuacionId));
+    }
+
     @Transactional
     public ActuacionDocumento confirmarRecepcionPaseInterno(Long actuacionId,
                                                             MultipartFile archivoAcusePdf,
@@ -1224,10 +1291,9 @@ public class DocumentoService {
             throw new IllegalArgumentException("Es OBLIGATORIO subir el PDF de la copia sellada y firmada para confirmar la recepción del pase.");
         }
 
-        ActuacionDocumento actuacion = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
-                .orElseThrow(() -> new RuntimeException("Actuación no encontrada: " + actuacionId));
+        ActuacionDocumento actuacion = bloquearActuacion(actuacionId);
         verificarAccesoDocumento(usuarioSesion, actuacion.getDocumento().getId());
-        documentoRepository.findByIdParaActualizar(actuacion.getDocumento().getId()); // serializa con derivar/anular
+        validarNoFinalizado(actuacion.getDocumento(), "confirmar pases de");
 
         if (!"PASE_INTERNO".equals(actuacion.getTipoActuacion()) || Boolean.TRUE.equals(actuacion.getPaseConfirmado())
                 || Boolean.TRUE.equals(actuacion.getAnulada())) {
@@ -1300,8 +1366,36 @@ public class DocumentoService {
             }
             return delArea(r.getDependenciaEmisora(), area)
                     && r.getFechaHoraActuacion() != null && pase.getFechaHoraActuacion() != null
+                    && r.getFechaHoraActuacion().isBefore(RESPUESTA_SE_ELIGE_DESDE)
                     && !r.getFechaHoraActuacion().isBefore(pase.getFechaHoraActuacion());
         });
+    }
+
+    // Desde esta fecha quien responde elige el pedido. Antes, todo informe o memo del área se cosía solo al pedido abierto,
+    // así que los anteriores sin vínculo siguen contando por área y fecha; los nuevos sin vínculo no responden nada.
+    static final LocalDateTime RESPUESTA_SE_ELIGE_DESDE = LocalDate.of(2026, 11, 4).atStartOfDay();
+
+    private static boolean esPedidoDeInforme(ActuacionDocumento a) {
+        return !Boolean.TRUE.equals(a.getAnulada()) && Boolean.TRUE.equals(a.getRequiereInforme()) && a.getDependenciaReceptoraPase() != null
+                && ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()));
+    }
+
+    // Un cierre excepcional da por terminados los pedidos anteriores a él: no siguen esperando respuesta
+    private static boolean cerradoPorCierre(ActuacionDocumento pedido, List<ActuacionDocumento> actuaciones) {
+        return actuaciones.stream().anyMatch(a -> "CIERRE_EXCEPCIONAL".equals(a.getTipoActuacion())
+                && a.getFechaHoraActuacion() != null && pedido.getFechaHoraActuacion() != null
+                && !a.getFechaHoraActuacion().isBefore(pedido.getFechaHoraActuacion()));
+    }
+
+    // Pedidos de informe vigentes que todavía esperan respuesta
+    static List<ActuacionDocumento> pedidosAbiertos(List<ActuacionDocumento> actuaciones) {
+        List<ActuacionDocumento> respuestas = actuaciones.stream()
+                .filter(a -> !Boolean.TRUE.equals(a.getAnulada()))
+                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion())).toList();
+        return actuaciones.stream().filter(DocumentoService::esPedidoDeInforme)
+                .filter(p -> !cerradoPorCierre(p, actuaciones))
+                .filter(p -> !informeRespondido(p, respuestas))
+                .toList();
     }
 
     private static boolean delArea(Dependencia emisora, Dependencia area) {
@@ -1309,23 +1403,24 @@ public class DocumentoService {
                 || (emisora.getRuta() != null && area.getRuta() != null && emisora.getRuta().startsWith(area.getRuta())));
     }
 
-    // El pedido de informe abierto que responde una actuación de la dependencia: el del área más específica que
-    // la contiene. Así el dictamen de un departamento responde el pedido que le hizo su Dirección, y el memo de
-    // la Dirección, el pedido que ella recibió.
-    static ActuacionDocumento pedidoQueResponde(List<ActuacionDocumento> actuaciones, Dependencia emisora) {
-        List<ActuacionDocumento> vigentes = actuaciones.stream().filter(a -> !Boolean.TRUE.equals(a.getAnulada())).toList();
-        List<ActuacionDocumento> respuestas = vigentes.stream()
-                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion())).toList();
-        return vigentes.stream()
-                .filter(p -> ("PASE_INTERNO".equals(p.getTipoActuacion()) || "PASE_CONFIRMADO".equals(p.getTipoActuacion()))
-                        && Boolean.TRUE.equals(p.getRequiereInforme()) && p.getDependenciaReceptoraPase() != null)
-                .filter(p -> delArea(emisora, areaReceptora(p.getDependenciaReceptoraPase())))
-                .filter(p -> !informeRespondido(p, respuestas))
-                .max(java.util.Comparator.comparingInt((ActuacionDocumento p) -> {
-                    String ruta = areaReceptora(p.getDependenciaReceptoraPase()).getRuta();
-                    return ruta == null ? 0 : ruta.length();
-                }).thenComparing(ActuacionDocumento::getFechaHoraActuacion))
-                .orElse(null);
+    // Los pedidos abiertos que puede responder la dependencia: los dirigidos a ella o a la dirección de la que es mesa,
+    // o a quien el usuario representa. El departamento responde lo que le pidió su Dirección; el pedido que recibió la
+    // Dirección lo cierra ella con su respuesta, aunque un departamento haya trabajado el tema.
+    static List<ActuacionDocumento> pedidosQuePuedeResponder(List<ActuacionDocumento> actuaciones, Dependencia emisora,
+                                                             java.util.function.Predicate<Dependencia> actuaPor) {
+        return pedidosAbiertos(actuaciones).stream().filter(p -> {
+            Dependencia receptora = p.getDependenciaReceptoraPase();
+            return (emisora != null && (emisora.getId().equals(receptora.getId())
+                        || emisora.getId().equals(areaReceptora(receptora).getId())))
+                    || actuaPor.test(receptora);
+        }).toList();
+    }
+
+    // Lo que muestra el formulario de actuación: los pedidos que el usuario puede responder en este expediente
+    public List<ActuacionDocumento> pedidosParaResponder(Long documentoId, Usuario usuario) {
+        verificarAccesoDocumento(usuario, documentoId);
+        return pedidosQuePuedeResponder(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId),
+                usuario.getDependencia(), canalService.alcance(usuario));
     }
 
     @Transactional
@@ -1337,10 +1432,12 @@ public class DocumentoService {
         List<ActuacionDocumento> actuaciones = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)
                 .stream().filter(a -> !Boolean.TRUE.equals(a.getAnulada())).toList();
 
-        // Al confirmar la recepción, un PASE_INTERNO pasa a PASE_CONFIRMADO: ambos cuentan como pase emitido
+        // Al confirmar la recepción, un PASE_INTERNO pasa a PASE_CONFIRMADO: ambos cuentan como pase emitido.
+        // Los que cerró un cierre excepcional ya no se esperan
         List<ActuacionDocumento> pasesInforme = actuaciones.stream()
                 .filter(a -> ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
                         && Boolean.TRUE.equals(a.getRequiereInforme()))
+                .filter(a -> !cerradoPorCierre(a, actuaciones))
                 .toList();
 
         List<ActuacionDocumento> respuestas = actuaciones.stream()
@@ -1431,9 +1528,8 @@ public class DocumentoService {
     // Reemplaza el PDF de una actuación: la versión anterior queda como "reemplazada" con su motivo
     @Transactional
     public AdjuntoDocumento reemplazarPdfActuacion(Long actuacionId, MultipartFile archivo, String motivo, Usuario usuario) {
-        ActuacionDocumento act = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
-                .orElseThrow(() -> new IllegalArgumentException("Actuación no encontrada: " + actuacionId));
-        Documento doc = documentoRepository.findByIdParaActualizar(act.getDocumento().getId()).orElseThrow();
+        ActuacionDocumento act = bloquearActuacion(actuacionId);
+        Documento doc = act.getDocumento();
         verificarAccesoDocumento(usuario, doc.getId());
         validarMotivo(motivo, 10, "el motivo del reemplazo");
 
@@ -1570,6 +1666,7 @@ public class DocumentoService {
     public static final String ANULACION_RETIRADO = "RETIRADO";
     public static final String ANULACION_RECHAZADO = "RECHAZADO";
     public static final String ANULACION_CIERRE_EXCEPCIONAL = "CIERRE_EXCEPCIONAL";
+    public static final String ANULACION_CIERRE_EXPEDIENTE = "CIERRE_EXPEDIENTE";
 
     private boolean esPasePendiente(ActuacionDocumento act) {
         return act != null && "PASE_INTERNO".equals(act.getTipoActuacion())
@@ -1604,10 +1701,9 @@ public class DocumentoService {
 
     @Transactional
     public ActuacionDocumento anularPase(Long actuacionId, String accion, String motivo, Usuario usuario) {
-        ActuacionDocumento pase = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
-                .orElseThrow(() -> new IllegalArgumentException("Pase no encontrado: " + actuacionId));
+        ActuacionDocumento pase = bloquearActuacion(actuacionId);
         verificarAccesoDocumento(usuario, pase.getDocumento().getId());
-        Documento doc = documentoRepository.findByIdParaActualizar(pase.getDocumento().getId()).orElseThrow();
+        Documento doc = pase.getDocumento();
         validarNoFinalizado(doc, "modificar pases de");
         validarMotivo(motivo, 10, "el motivo");
 
@@ -1717,8 +1813,7 @@ public class DocumentoService {
     public ActuacionDocumento retirarPaseTrabado(Long actuacionId, String motivo, Usuario admin) {
         politicaAcceso.exigir(admin, Accion.ADMINISTRAR_SISTEMA, "Solo un administrador del sistema puede retirar pases trabados.");
         validarMotivo(motivo, 10, "el motivo");
-        ActuacionDocumento pase = actuacionDocumentoRepository.findByIdParaActualizar(actuacionId)
-                .orElseThrow(() -> new IllegalArgumentException("Pase no encontrado: " + actuacionId));
+        ActuacionDocumento pase = bloquearActuacion(actuacionId);
         if (!esPasePendiente(pase)) {
             throw new IllegalStateException("El pase ya fue confirmado o anulado.");
         }
@@ -1728,7 +1823,7 @@ public class DocumentoService {
         if (!sinReceptor) {
             throw new IllegalStateException("La dependencia receptora tiene quién reciba el pase: lo confirma o rechaza ella, o lo retira la emisora.");
         }
-        Documento doc = documentoRepository.findByIdParaActualizar(pase.getDocumento().getId()).orElseThrow();
+        Documento doc = pase.getDocumento();
         validarNoFinalizado(doc, "modificar pases de");
         String motivoCompleto = "Retirado por el administrador del sistema (receptora sin usuarios): " + motivo.trim();
         aplicarAnulacion(pase, doc, ANULACION_RETIRADO, motivoCompleto, admin);
@@ -1774,10 +1869,11 @@ public class DocumentoService {
     }
 
     private boolean quedanPasesParaInformeVigentes(Long documentoId) {
-        return actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
-                .anyMatch(a -> !Boolean.TRUE.equals(a.getAnulada())
+        List<ActuacionDocumento> actuaciones = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId);
+        return actuaciones.stream().anyMatch(a -> !Boolean.TRUE.equals(a.getAnulada())
                         && ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
-                        && Boolean.TRUE.equals(a.getRequiereInforme()));
+                        && Boolean.TRUE.equals(a.getRequiereInforme())
+                        && !cerradoPorCierre(a, actuaciones));
     }
 
     // =====================================================================
@@ -1792,23 +1888,16 @@ public class DocumentoService {
         Documento doc = exigirCustodia(documentoId, usuario, "forzar el cierre de informes de");
         exigirSinTramitePendiente(doc, "forzar el cierre de informes");
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
-        if (estadoAnterior == EstadoDocumento.PENDIENTE_SALIDA || estadoAnterior == EstadoDocumento.FINALIZADO
-                || estadoAnterior == EstadoDocumento.ARCHIVADO) {
+        if (estadoAnterior == EstadoDocumento.FINALIZADO || estadoAnterior == EstadoDocumento.ARCHIVADO) {
             throw new IllegalStateException("El expediente ya está en " + estadoAnterior + ": no corresponde forzar el cierre.");
         }
+        exigirSalidaNoRegistrada(doc, "forzar el cierre de informes");
 
         // Dependencias a las que se pidió informe y todavía no respondieron (queda constancia)
-        List<ActuacionDocumento> vigentes = actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId)
-                .stream().filter(a -> !Boolean.TRUE.equals(a.getAnulada())).toList();
-        List<ActuacionDocumento> respuestas = vigentes.stream()
-                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
-                .toList();
-        List<ActuacionDocumento> pedidosSinRespuesta = vigentes.stream()
-                .filter(a -> ("PASE_INTERNO".equals(a.getTipoActuacion()) || "PASE_CONFIRMADO".equals(a.getTipoActuacion()))
-                        && Boolean.TRUE.equals(a.getRequiereInforme())
-                        && a.getDependenciaReceptoraPase() != null
-                        && !informeRespondido(a, respuestas))
-                .toList();
+        List<ActuacionDocumento> pedidosSinRespuesta = pedidosAbiertos(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId));
+        if (pedidosSinRespuesta.isEmpty() && estadoAnterior != EstadoDocumento.EN_ESPERA_INFORME) {
+            throw new IllegalStateException("El expediente no tiene informes pendientes: no corresponde forzar el cierre.");
+        }
         List<String> sinRespuesta = pedidosSinRespuesta.stream()
                 .map(a -> a.getDependenciaReceptoraPase().getNombreVisible())
                 .distinct().toList();

@@ -212,7 +212,8 @@
 
             if (nodo.anulada) {
                 badgeColor = 'bg-secondary text-decoration-line-through';
-                estadoTexto = nodo.tipoAnulacion === 'RECHAZADO' ? '✖ RECEPCIÓN RECHAZADA' : '✖ PASE RETIRADO';
+                estadoTexto = nodo.tipoAnulacion === 'RECHAZADO' ? '✖ RECEPCIÓN RECHAZADA'
+                    : nodo.tipoAnulacion === 'RETIRADO' ? '✖ PASE RETIRADO' : '✖ PASE ANULADO';
             } else if (esPendiente) {
                 badgeColor = 'bg-warning text-dark';
                 estadoTexto = '🟡 PASE EN TRÁNSITO (PENDIENTE DE ACUSE)';
@@ -254,7 +255,7 @@
                 acciones += `<button type="button" class="btn btn-outline-danger btn-sm py-0" data-accion="anular-pase" data-id="${nodo.id}" data-tipo="RECHAZAR" title="No corresponde a su dependencia"><i class="bi bi-hand-thumbs-down me-1"></i>Rechazar</button>`;
             }
 
-            const textoAnulacion = { RECHAZADO: 'Rechazado', RETIRADO: 'Retirado', CIERRE_EXCEPCIONAL: 'Anulado por cierre excepcional' };
+            const textoAnulacion = { RECHAZADO: 'Rechazado', RETIRADO: 'Retirado', CIERRE_EXCEPCIONAL: 'Anulado por cierre excepcional', CIERRE_EXPEDIENTE: 'Anulado al finalizar el expediente' };
             const detalleAnulacion = nodo.anulada
                 ? `<div class="small text-danger mb-2"><i class="bi bi-info-circle me-1"></i>${textoAnulacion[nodo.tipoAnulacion] || 'Anulado'} el ${esc(nodo.fechaAnulacion)}: ${esc(nodo.motivoAnulacion)}</div>`
                 : '';
@@ -371,11 +372,43 @@
                         modalActuacion.querySelector('#actuacionDocId').value = button.getAttribute('data-doc-id');
                         modalActuacion.querySelector('#labelCutiActuacion').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
                         // "Responder informe" ya propone el tipo que responde el pedido
-                        if (button.getAttribute('data-tipo-actuacion')) {
+                        const respondeInforme = !!button.getAttribute('data-tipo-actuacion');
+                        if (respondeInforme) {
                             modalActuacion.querySelector('[name=tipoActuacion]').value = button.getAttribute('data-tipo-actuacion');
                         }
+                        cargarPedidosDeActuacion(button.getAttribute('data-doc-id'), respondeInforme);
                     }
                 });
+            }
+
+            // Pedidos de informe que el usuario puede responder: solo la respuesta elegida cierra el pedido
+            function cargarPedidosDeActuacion(docId, respondeInforme) {
+                const fila = document.getElementById('filaPedidoActuacion');
+                const select = document.getElementById('selectPedidoActuacion');
+                fila.classList.add('d-none');
+                select.required = false;
+                select.innerHTML = '<option value="">No: es una actuación sin pedido</option>';
+                fetch(`/api/documentos/${docId}/pedidos-abiertos`)
+                    .then(res => { if (!res.ok) throw new Error('Error ' + res.status); return res.json(); })
+                    .then(pedidos => {
+                        if (!pedidos.length) return;
+                        pedidos.forEach(p => {
+                            const opcion = document.createElement('option');
+                            opcion.value = p.id;
+                            opcion.textContent = `Pedido de ${p.de} a ${p.para}, ${p.fecha}`;
+                            select.appendChild(opcion);
+                        });
+                        fila.classList.remove('d-none');
+                        // "Responder informe": quien no tiene el original solo puede cargar la respuesta
+                        if (respondeInforme) {
+                            select.remove(0);
+                            select.required = true;
+                        }
+                    })
+                    .catch(() => {
+                        fila.classList.remove('d-none');
+                        select.innerHTML = '<option value="">No se pudieron cargar los pedidos</option>';
+                    });
             }
 
             // Modal Derivación
