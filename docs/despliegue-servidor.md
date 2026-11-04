@@ -47,17 +47,17 @@ Desde `C:\Projects\gestion-documental`, en la rama `feature/devolver-y-salida` a
 .\mvnw.cmd clean package -DskipTests
 ```
 ```powershell
-scp target\gestion-documental-0.0.1-SNAPSHOT.jar root@192.168.129.73:/tmp/gestion-documental.jar
+scp -r despliegue root@192.168.129.73:/tmp/
 ```
 ```powershell
-scp despliegue\* root@192.168.129.73:/tmp/
+scp target\gestion-documental-0.0.1-SNAPSHOT.jar root@192.168.129.73:/tmp/despliegue/gestion-documental.jar
 ```
 
 ## 3. Instalar (servidor)
 
 Con el nombre o la IP con que van a entrar los usuarios:
 ```bash
-cd /tmp && sed -i 's/\r$//' instalar.sh respaldar.sh entorno.ejemplo *.service *.timer *.conf && bash instalar.sh 192.168.129.73
+cd /tmp/despliegue && sed -i 's/\r$//' instalar.sh respaldar.sh entorno.ejemplo *.service *.timer *.conf && bash instalar.sh 192.168.129.73
 ```
 
 Instala todo, sin arrancar la aplicación. Si no hay certificado, genera uno interno; el institucional se copia después en `/etc/gestion-documental/tls/` como `certificado.crt` y `certificado.key`, y se aplica con `systemctl reload nginx`.
@@ -74,12 +74,15 @@ nano /etc/gestion-documental/entorno
 
 Detener la aplicación de la PC (`Ctrl+C`) para que nadie suba archivos durante la copia. Desde la PC:
 ```powershell
-scp C:\gestion-documental-uploads\acuses\* root@192.168.129.73:/var/lib/gestion-documental/pdf/
+scp -r C:\gestion-documental-uploads\acuses root@192.168.129.73:/tmp/acuses
 ```
 
-En el servidor:
+En el servidor, comprobando que la cantidad de archivos coincida con la de la carpeta de la PC:
 ```bash
-chown -R gestion_documental:gestion_documental /var/lib/gestion-documental/pdf
+cp -n /tmp/acuses/* /var/lib/gestion-documental/pdf/ && chown -R gestion_documental:gestion_documental /var/lib/gestion-documental/pdf
+```
+```bash
+ls /var/lib/gestion-documental/pdf | wc -l
 ```
 
 Las rutas de Windows que guarda la base no molestan: la aplicación busca cada archivo por su nombre en esta carpeta.
