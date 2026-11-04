@@ -70,9 +70,9 @@
     <!-- ===================== Doble control (auditoría C2) ===================== -->
     <div th:if="${!#lists.isEmpty(pendientes)}" class="card border-warning shadow-sm mb-3">
         <div class="card-header bg-warning-subtle fw-bold">
-            <i class="bi bi-shield-lock me-1"></i>Asignaciones sensibles esperando aprobación
+            <i class="bi bi-shield-lock me-1"></i>Asignaciones esperando aprobación
             <span class="badge bg-warning text-dark ms-1" th:text="${#lists.size(pendientes)}">0</span>
-            <div class="small fw-normal text-muted">Administrador del sistema, o mesa de entrada / responsable de una Dirección o superior. No rigen hasta que las apruebe un administrador distinto de quien las pidió y del beneficiario.</div>
+            <div class="small fw-normal text-muted">No rigen hasta que las apruebe un administrador distinto de quien las pidió y del beneficiario.</div>
         </div>
         <div class="card-body p-0">
             <table class="table table-sm align-middle mb-0 small">
@@ -254,7 +254,7 @@
                             </td>
                             <td class="text-nowrap" th:text="${#temporals.format(a.vigenteDesde, 'dd/MM/yyyy') + ' → ' + (a.vigenteHasta != null ? #temporals.format(a.vigenteHasta, 'dd/MM/yyyy') : 'sin fin')}">fechas</td>
                             <td>
-                                <span th:if="${a.pendiente}" class="badge bg-warning text-dark" title="Asignación sensible: la debe aprobar otro administrador">Pendiente de aprobación</span>
+                                <span th:if="${a.pendiente}" class="badge bg-warning text-dark" title="La debe aprobar otro administrador">Pendiente de aprobación</span>
                                 <span th:if="${a.estadoAprobacion == 'RECHAZADA'}" class="badge bg-danger-subtle text-danger border">Rechazada</span>
                                 <span th:if="${!a.activa && a.estadoAprobacion == 'APROBADA'}" class="badge bg-secondary">Dada de baja</span>
                                 <span th:if="${a.activa && a.vigenteDesde.isAfter(hoy)}" class="badge bg-info">Futura</span>
@@ -328,7 +328,7 @@
                                 <div class="form-text">La suplencia necesita fecha "Hasta" y deja de regir sola ese día.</div>
                             </div>
                         </div>
-                        <div class="small text-muted mt-2"><i class="bi bi-shield-lock me-1"></i>Administrador del sistema, y mesa de entrada o responsable de una Dirección o superior, quedan pendientes hasta que las apruebe otro administrador.</div>
+                        <div class="small text-muted mt-2"><i class="bi bi-shield-lock me-1"></i>Toda asignación queda pendiente hasta que la apruebe otro administrador. Sin una asignación vigente, la cuenta no puede trabajar.</div>
                         <button type="submit" class="btn btn-primary btn-sm mt-2">Agregar asignación</button>
                     </form>
                 </div>

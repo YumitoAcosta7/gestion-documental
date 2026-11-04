@@ -153,7 +153,7 @@ public class AdministracionController {
             var a = administracionService.crearAsignacion(id, rol, ambitoId, incluyeSubordinadas, desde, hasta, esSuplencia,
                     titularId, actoAdministrativo, actual(auth));
             ra.addFlashAttribute("mensajeExito", a.isPendiente()
-                    ? "Solicitud registrada. Es una asignación sensible: no rige hasta que la apruebe otro administrador."
+                    ? "Solicitud registrada: no rige hasta que la apruebe otro administrador."
                     : esSuplencia ? "Suplencia registrada." : "Asignación registrada.");
         } catch (IllegalArgumentException | IllegalStateException e) {
             ra.addFlashAttribute("error", e.getMessage());

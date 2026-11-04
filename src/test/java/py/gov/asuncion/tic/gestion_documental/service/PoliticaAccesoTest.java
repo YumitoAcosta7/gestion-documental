@@ -57,15 +57,14 @@ class PoliticaAccesoTest {
     void unaCuentaDeAdministracionSoloAdministra() {
         Usuario u = usuarioCon(RolAsignacion.ADMIN_SISTEMA);
         assertEquals(EnumSet.of(Accion.ADMINISTRAR_SISTEMA), politica.acciones(u));
-        assertTrue(politica.administraElSistema(u));
-        assertFalse(politica.administraElSistema(usuarioCon()));
+        assertFalse(politica.trabajaEnExpedientes(u));
     }
 
     @Test
     void aunqueTengaOtrasAsignacionesNoTramita() {
         Usuario u = usuarioCon(RolAsignacion.MESA_ENTRADA, RolAsignacion.ADMIN_SISTEMA);
         assertEquals(EnumSet.of(Accion.ADMINISTRAR_SISTEMA), politica.acciones(u));
-        assertTrue(politica.administraElSistema(u));
+        assertFalse(politica.trabajaEnExpedientes(u));
     }
 
     @Test
@@ -74,9 +73,11 @@ class PoliticaAccesoTest {
     }
 
     @Test
-    void sinAsignacionesVigentesTrabajaComoOperador() {
+    void sinAsignacionesVigentesNoSeTrabaja() {
         // Una suplencia vencida ya no aparece entre las vigentes y deja de habilitar sola
-        assertEquals(EnumSet.of(Accion.REGISTRAR_ACTUACION), politica.acciones(usuarioCon()));
+        assertTrue(politica.acciones(usuarioCon()).isEmpty());
+        assertFalse(politica.trabajaEnExpedientes(usuarioCon()));
+        assertTrue(politica.trabajaEnExpedientes(usuarioCon(RolAsignacion.OPERADOR)));
     }
 
     @Test

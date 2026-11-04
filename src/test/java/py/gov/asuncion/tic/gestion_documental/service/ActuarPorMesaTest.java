@@ -51,7 +51,13 @@ class ActuarPorMesaTest {
     }
 
     @Test
-    void enOtraDependenciaLaPropiaSigueAlcanzando() {
+    void sinAsignacionNoSeActuaNiPorLaPropia() {
+        assertFalse(canal.puedeActuarPor(en(redes), redes));
+    }
+
+    @Test
+    void conUnaAsignacionTambienActuaPorLaPropia() {
+        conAsignacion(RolAsignacion.OPERADOR, dtic);
         assertTrue(canal.puedeActuarPor(en(redes), redes));
     }
 
@@ -74,6 +80,8 @@ class ActuarPorMesaTest {
     @Test
     void elAlcanceSigueLaMismaRegla() {
         assertFalse(canal.alcance(en(mesa)).test(mesa));
+        assertFalse(canal.alcance(en(redes)).test(redes));
+        conAsignacion(RolAsignacion.OPERADOR, dtic);
         assertTrue(canal.alcance(en(redes)).test(redes));
     }
 }

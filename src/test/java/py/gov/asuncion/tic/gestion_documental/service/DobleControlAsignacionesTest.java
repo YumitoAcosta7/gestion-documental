@@ -97,7 +97,7 @@ class DobleControlAsignacionesTest {
         // Una asignación que ya terminó o se dio de baja no impide
         when(asignaciones.findHistorial(3)).thenReturn(List.of(Asignacion.builder().rol(RolAsignacion.ADMIN_SISTEMA).usuario(ana)
                 .dependenciaAmbito(dtic).activa(false).estadoAprobacion(Asignacion.APROBADA).vigenteDesde(LocalDate.now().minusDays(5)).build()));
-        assertFalse(pedir(RolAsignacion.OPERADOR, redes, ana, adminA).isPendiente());
+        assertTrue(pedir(RolAsignacion.OPERADOR, redes, ana, adminA).isPendiente());
     }
 
     @Test
@@ -106,18 +106,25 @@ class DobleControlAsignacionesTest {
                 .nivelJerarquicoId(7).activo(true).esMesaEntrada(true).build();
         when(dependencias.findById(11)).thenReturn(Optional.of(mesa));
         assertTrue(pedir(RolAsignacion.MESA_ENTRADA, mesa, ana, adminA).isPendiente(), "aunque sea de nivel unidad");
-        assertTrue(servicio.requiereDobleControl(RolAsignacion.RESPONSABLE, mesa));
-        assertTrue(servicio.requiereDobleControl(RolAsignacion.OPERADOR, mesa));
-        assertFalse(servicio.requiereDobleControl(RolAsignacion.CONSULTA, mesa), "solo lee");
+        assertTrue(servicio.esRolPrivilegiado(RolAsignacion.RESPONSABLE, mesa));
+        assertTrue(servicio.esRolPrivilegiado(RolAsignacion.OPERADOR, mesa));
+        assertFalse(servicio.esRolPrivilegiado(RolAsignacion.CONSULTA, mesa), "solo lee");
     }
 
     @Test
-    void lasComunesRigenEnElActo() {
-        Asignacion operador = pedir(RolAsignacion.OPERADOR, dtic, ana, adminA);
-        assertFalse(operador.isPendiente());
-        assertTrue(operador.getActiva());
-        Asignacion mesaUnidad = pedir(RolAsignacion.RESPONSABLE, redes, ana, adminA);
-        assertTrue(mesaUnidad.getActiva(), "responsable de una unidad: no es sensible");
+    void todaAsignacionQuedaPendiente() {
+        for (RolAsignacion rol : List.of(RolAsignacion.OPERADOR, RolAsignacion.CONSULTA, RolAsignacion.RESPONSABLE)) {
+            Asignacion a = pedir(rol, redes, ana, adminA);
+            assertTrue(a.isPendiente(), rol + ": la aprueba otro administrador");
+            assertFalse(a.getActiva(), rol + ": no rige todavía");
+        }
+    }
+
+    @Test
+    void lasContrasenasDeCuentasComunesNoSonSensibles() {
+        assertFalse(servicio.esRolPrivilegiado(RolAsignacion.OPERADOR, dtic));
+        assertFalse(servicio.esRolPrivilegiado(RolAsignacion.RESPONSABLE, redes));
+        assertTrue(servicio.esRolPrivilegiado(RolAsignacion.MESA_ENTRADA, dtic));
     }
 
     @Test
