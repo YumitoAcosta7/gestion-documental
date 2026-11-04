@@ -80,7 +80,7 @@ scp target\gestion-documental-0.0.1-SNAPSHOT.jar root@192.168.129.73:/tmp/despli
 
 Con el nombre o la IP con que van a entrar los usuarios:
 ```bash
-cd /tmp/despliegue && sed -i 's/\r$//' instalar.sh respaldar.sh entorno.ejemplo *.service *.timer *.conf && bash instalar.sh 192.168.129.73
+cd /tmp/despliegue && sed -i 's/\r$//' instalar.sh respaldar.sh revisar_pdf.sh entorno.ejemplo *.service *.timer *.conf && bash instalar.sh 192.168.129.73
 ```
 
 Instala todo, sin arrancar la aplicación. Si no hay certificado, genera uno interno; el institucional se copia después en `/etc/gestion-documental/tls/` como `certificado.crt` y `certificado.key`, y se aplica con `systemctl reload nginx`.
@@ -140,6 +140,16 @@ Probar el respaldo a mano:
 ```bash
 bash /opt/gestion-documental/respaldar.sh
 ```
+
+**Control de los PDF.** Contar archivos no alcanza: el 03/11/2026 había 26 PDF en el respaldo y aun así faltaba uno que la base pedía. `revisar_pdf.sh` compara la base con el disco y comprueba las huellas guardadas. Es de solo lectura, y `respaldar.sh` lo corre al final de cada pasada: si falta o cambió un archivo, el respaldo se guarda igual, pero el servicio queda en error para que se revise. Para correrlo a mano:
+```bash
+bash /opt/gestion-documental/revisar_pdf.sh --sobrantes
+```
+Para ver si la última pasada encontró problemas:
+```bash
+journalctl -u gestion-documental-respaldo -n 20 --no-pager
+```
+Los archivos sobrantes son solo un aviso: no hace falta borrarlos y el control nunca los toca.
 
 **Copia a otro equipo (obligatoria para el piloto).** Mientras la base, los PDF y los respaldos estén en un solo disco, un fallo lo pierde todo. Con una clave SSH sin contraseña hacia el equipo de destino:
 ```bash

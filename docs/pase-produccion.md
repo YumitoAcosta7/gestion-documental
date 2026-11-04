@@ -212,3 +212,17 @@ Después, arrancar la versión anterior de la aplicación.
   - la IP real del usuario en la auditoría, hasta el primer movimiento;
   - la restauración completa de los PDF.
 - **Desde esta fecha, producción es la del servidor:** no se arranca desde la PC sin el perfil de pruebas.
+
+**03/11/2026, 23:56.** Actualización con los PR #29 (bandeja por situación, bloqueo con la salida registrada, Corregir salida), #30 (falso duplicado de "S/N") y #31 (solo la receptora confirma un pase).
+- **Respaldo previo:** `base_20261103_2355.dump`, con sus PDF y huellas.
+- **Base:** sigue en V22, sin migraciones nuevas. La aplicación arrancó bien.
+- **En pantalla:** la bandeja muestra una acción principal por expediente (con `secretaria_tic`).
+- **Falta un PDF:** comparando la base con el disco se encontró que falta el acuse final de `TIC-2026-000003`, del 13/08/2026 (`TIC-2026-000003_ACUSE_CONFIRMADO_1786648022337.pdf`). No está en el servidor ni en el disco C de la PC.
+  - Faltaba antes de la mudanza: la PC y el servidor tienen los mismos 26 archivos.
+  - Corrige lo anotado a las 22:00: los 26 PDF se contaron, pero no se compararon con la base, así que ese control no probaba que estuvieran todos.
+  - **Reposición:** buscar una copia en otros discos. Si no aparece, escanear el acuse firmado y subirlo con "Reemplazar acuse", indicando el motivo.
+- **Archivos sobrantes:** de los 26, solo 2 son los que pide la base. Los otros 24 no figuran en ella. Sus fechas sugieren una carga anterior con otra numeración, sin que esté confirmado. No se borraron.
+- **Sin comprobar todavía:**
+  - el resultado de "Verificar" en un PDF en esta versión;
+  - la IP real del usuario en la auditoría, hasta el primer movimiento;
+  - la restauración completa de los PDF.
