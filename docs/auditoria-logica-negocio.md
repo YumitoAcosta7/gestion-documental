@@ -225,7 +225,8 @@ Bloque 2, en PR separados:
   - "Anular expediente" (estado `ANULADO`, migración V25), mismas personas, solo sin movimientos. No se borra, el CUTI no se reutiliza, su número queda libre y se liberan las fojas.
 - **A6 y D3, reabrir un finalizado:** la pide quien tiene `FORZAR_CIERRE` y el original, con motivo, y la aprueba otra persona con ese permiso (`solicitudes_reapertura`, migración V26). La base impide aprobar la propia y que haya dos pendientes. Al aprobarse vuelve a `PENDIENTE_SALIDA` con su salida registrada, y el acuse final deja de estar vigente, sin borrarse. Los pases anulados al finalizar no se restituyen.
 - **A5 caso 3, contraseñas de cuentas sensibles:** se consideran sensibles las cuentas con una asignación que requiere doble control. Las pide un administrador con motivo y las aprueba otro, que no sea el dueño de la cuenta (`solicitudes_contrasena`, migración V27). Quien aprueba recibe la temporal, una sola vez, y no se guarda. Con un solo administrador se hace igual, y la auditoría lo dice.
-- **Pendientes:** M6 y M7.
+- **M6 y D3, aislar al administrador:** quien solo tiene `ADMIN_SISTEMA` no tramita, no actúa por su dependencia y no ve expedientes. Una cuenta no puede sumar administrar y tramitar: el servidor lo rechaza. Las cuentas que ya tienen las dos cosas no se tocan solas; **`juan.acosta` y `zlobo` están en esa situación en producción** (consulta del 04/11/2026) y hay que separarlas: ver `docs/viabilidad-piloto.md`.
+- **Pendiente:** M7.
 
 ## Plan propuesto
 

@@ -193,7 +193,9 @@ public class DocumentoService {
             return true;
         }
         // En una mesa de entrada, pertenecer no da acceso: hace falta una asignación aprobada (auditoría A5)
-        if (usuario.getDependencia() == null || Boolean.TRUE.equals(usuario.getDependencia().getEsMesaEntrada())) {
+        // Tampoco si solo administra el sistema: administrar no da acceso a expedientes (auditoría M6)
+        if (usuario.getDependencia() == null || Boolean.TRUE.equals(usuario.getDependencia().getEsMesaEntrada())
+                || politicaAcceso.esSoloAdministrador(usuario)) {
             return false;
         }
 

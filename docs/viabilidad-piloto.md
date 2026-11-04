@@ -53,6 +53,9 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 4. **Cuentas nominales.**
    - **Hoy:** en producción hay cuentas genéricas: `director_tic`, `jefe_bd`, `jefe_operativo`, `jefe_soporte`, `encargado_soporte`, `secretaria_tic`. Una bitácora que registra "Jefe Dpto." no identifica a una persona y no sirve como prueba.
    - **Hace falta:** crear una cuenta por persona y dar de baja las genéricas. La baja conserva su historial.
+   - **Separar administrar de tramitar (decisión D3):** `juan.acosta` (`RESPONSABLE`) y `zlobo` (`MESA_ENTRADA`) hacen las dos cosas con la misma cuenta. Cada uno necesita una cuenta aparte solo para administrar:
+     1. Cada uno crea su cuenta de administración y pide para ella `ADMIN_SISTEMA`. La aprueba el otro.
+     2. Con las cuentas nuevas en uso, se quita `ADMIN_SISTEMA` de `juan.acosta` y `zlobo`, que siguen tramitando.
 5. **Autenticación de la base de producción.**
    - Cambiar la contraseña con `\password gestion_documental` y guardarla en SCRAM.
    - Quitar la regla `trust` de `127.0.0.1`, encontrada el 03/11/2026: cualquier programa del servidor podía entrar como superusuario sin contraseña.

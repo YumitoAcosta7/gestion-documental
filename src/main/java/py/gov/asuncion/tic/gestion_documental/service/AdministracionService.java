@@ -319,6 +319,15 @@ public class AdministracionService {
         if (u.getId().equals(admin.getId()) && rol != RolAsignacion.ADMIN_SISTEMA) {
             throw new IllegalStateException("Un administrador no puede asignarse roles de trámite a sí mismo: debe hacerlo otro administrador.");
         }
+        // Auditoría M6: quien administra no tramita con la misma cuenta. Si una persona hace las dos cosas, usa dos cuentas
+        for (Asignacion existente : asignacionRepository.findHistorial(u.getId())) {
+            boolean enCurso = (Boolean.TRUE.equals(existente.getActiva()) || existente.isPendiente())
+                    && (existente.getVigenteHasta() == null || !existente.getVigenteHasta().isBefore(LocalDate.now()));
+            if (enCurso && (rol == RolAsignacion.ADMIN_SISTEMA) != (existente.getRol() == RolAsignacion.ADMIN_SISTEMA)) {
+                throw new IllegalStateException(u.getUsername() + " ya tiene " + existente.getRol()
+                        + ": administrar y tramitar no van en la misma cuenta. Use otra cuenta para el rol " + rol + ".");
+            }
+        }
         Dependencia ambito = dependenciaActiva(ambitoId);
         LocalDate inicio = desde != null ? desde : LocalDate.now();
         if (hasta != null && hasta.isBefore(inicio)) {

@@ -54,10 +54,12 @@ class PoliticaAccesoTest {
     }
 
     @Test
-    void elAdministradorDelSistemaNoTramitaPorEsaAsignacion() {
-        // Solo con ADMIN_SISTEMA: administra y trabaja como operador de su propia dependencia
-        assertEquals(EnumSet.of(Accion.ADMINISTRAR_SISTEMA, Accion.REGISTRAR_ACTUACION),
-                politica.acciones(usuarioCon(RolAsignacion.ADMIN_SISTEMA)));
+    void quienSoloAdministraNoTramita() {
+        Usuario u = usuarioCon(RolAsignacion.ADMIN_SISTEMA);
+        assertEquals(EnumSet.of(Accion.ADMINISTRAR_SISTEMA), politica.acciones(u));
+        assertTrue(politica.esSoloAdministrador(u));
+        assertFalse(politica.esSoloAdministrador(usuarioCon(RolAsignacion.RESPONSABLE, RolAsignacion.ADMIN_SISTEMA)), "las cuentas anteriores con los dos roles");
+        assertFalse(politica.esSoloAdministrador(usuarioCon()));
     }
 
     @Test
