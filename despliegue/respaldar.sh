@@ -48,3 +48,10 @@ else
 fi
 
 ls -lh "$DUMP" "$PDF" "$HUELLAS"
+
+# Al final, para que un PDF faltante no impida guardar ni copiar el respaldo.
+# Si falla, el servicio queda en error: el respaldo se hizo, pero hay algo que revisar.
+if ! bash "$(dirname "$0")/revisar_pdf.sh"; then
+    echo "ATENCIÓN: el respaldo se guardó, pero el control de PDF encontró problemas (detalle arriba)." >&2
+    exit 1
+fi

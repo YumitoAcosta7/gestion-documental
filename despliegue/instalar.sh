@@ -29,7 +29,7 @@ cd "$(dirname "$(readlink -f "$0")")"
 
 # Comprobaciones: mejor detenerse acá que dejar el servicio a medias
 for archivo in gestion-documental.jar gestion-documental.service entorno.ejemplo nginx-gestion-documental.conf \
-               respaldar.sh gestion-documental-respaldo.service gestion-documental-respaldo.timer; do
+               respaldar.sh revisar_pdf.sh gestion-documental-respaldo.service gestion-documental-respaldo.timer; do
     [ -f "$archivo" ] || { echo "Falta $archivo en $(pwd)." >&2; exit 1; }
 done
 VERSION_JAVA=$(java -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1 || true)
@@ -51,7 +51,7 @@ install -d -o root -g root -m 700 /etc/gestion-documental/tls
 
 # Aplicación y respaldos
 install -o root -g root -m 644 gestion-documental.jar /opt/gestion-documental/gestion-documental.jar
-install -o root -g root -m 750 respaldar.sh /opt/gestion-documental/respaldar.sh
+install -o root -g root -m 750 respaldar.sh revisar_pdf.sh /opt/gestion-documental/
 install -o root -g root -m 644 gestion-documental.service gestion-documental-respaldo.service \
         gestion-documental-respaldo.timer /etc/systemd/system/
 
