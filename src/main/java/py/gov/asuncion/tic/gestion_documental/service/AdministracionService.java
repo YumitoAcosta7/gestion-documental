@@ -201,7 +201,7 @@ public class AdministracionService {
     // Administrador, o mesa de entrada o responsable de una cabecera o de una mesa
     public boolean esCuentaSensible(Usuario u) {
         return asignacionRepository.findVigentes(u.getId(), LocalDate.now()).stream()
-                .anyMatch(a -> requiereDobleControl(a.getRol(), a.getDependenciaAmbito()));
+                .anyMatch(a -> esRolPrivilegiado(a.getRol(), a.getDependenciaAmbito()));
     }
 
     private ContrasenaTemporal generarTemporal(Usuario u, Usuario admin, String detalle) {
@@ -371,8 +371,7 @@ public class AdministracionService {
         if (acto.length() < 3) {
             throw new IllegalArgumentException("Indique el acto administrativo que respalda la asignación (resolución, memo...).");
         }
-        // Auditoría C2: las sensibles quedan pendientes (inactivas) hasta que las apruebe otro administrador
-        boolean sensible = requiereDobleControl(rol, ambito);
+        // Auditoría C2 y M12: toda asignación queda pendiente (inactiva) hasta que la apruebe otro administrador
         Asignacion a = asignacionRepository.save(Asignacion.builder()
                 .usuario(u)
                 .rol(rol)
@@ -384,19 +383,19 @@ public class AdministracionService {
                 .titular(titular)
                 .actoAdministrativo(acto.length() > 100 ? acto.substring(0, 100) : acto)
                 .creadaPor(admin)
-                .activa(!sensible)
-                .estadoAprobacion(sensible ? Asignacion.PENDIENTE : Asignacion.APROBADA)
+                .activa(false)
+                .estadoAprobacion(Asignacion.PENDIENTE)
                 .build());
-        String accion = sensible ? "SOLICITUD_ASIGNACION" : esSuplencia ? "ALTA_SUPLENCIA" : "ALTA_ASIGNACION";
+        String accion = "SOLICITUD_ASIGNACION";
         auditar(admin, accion, "ASIGNACION", a.getId(), describir(a)
-                + (sensible ? ". Queda pendiente: la debe aprobar otro administrador" : ""));
+                + ". Queda pendiente: la debe aprobar otro administrador");
         return a;
     }
 
-    // ADMIN_SISTEMA siempre; MESA_ENTRADA y RESPONSABLE cuando el ámbito es una Dirección o superior,
+    // Lo que hace sensible a una cuenta, para restablecer su contraseña con segunda firma. ADMIN_SISTEMA siempre; MESA_ENTRADA y RESPONSABLE cuando el ámbito es una Dirección o superior,
     // porque dan acceso a todo lo que pasa por esa cabecera. Cualquier rol de trámite en una mesa de entrada
     // también, aunque sea una unidad: por ella pasa el original de toda su dirección (auditoría A5)
-    boolean requiereDobleControl(RolAsignacion rol, Dependencia ambito) {
+    boolean esRolPrivilegiado(RolAsignacion rol, Dependencia ambito) {
         if (rol == RolAsignacion.ADMIN_SISTEMA) {
             return true;
         }

@@ -344,12 +344,13 @@ class GobernanzaExpedienteTest {
     }
 
     @Test
-    void quienSoloAdministraNoAccedePorSuDependencia() {
+    void sinTrabajarEnExpedientesNoAccedePorSuDependencia() {
         usuario.setDependencia(hacienda);
         expediente.setDependenciaOrigen(hacienda);
         when(documentoRepository.existeEnAmbito(anyInt(), eq(500L))).thenReturn(false);
-        assertTrue(servicio.puedeAccederDocumento(usuario, 500L), "sin ese rol, por su dependencia");
-        when(politicaAcceso.administraElSistema(usuario)).thenReturn(true);
+        when(politicaAcceso.trabajaEnExpedientes(usuario)).thenReturn(true);
+        assertTrue(servicio.puedeAccederDocumento(usuario, 500L), "con una asignación, por su dependencia");
+        when(politicaAcceso.trabajaEnExpedientes(usuario)).thenReturn(false);
         assertFalse(servicio.puedeAccederDocumento(usuario, 500L));
     }
 

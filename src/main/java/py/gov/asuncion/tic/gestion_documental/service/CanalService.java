@@ -107,8 +107,8 @@ public class CanalService {
     private static boolean actuaPor(Usuario usuario, List<Asignacion> vigentes, Dependencia dependencia) {
         // Auditoría A5: por una mesa de entrada pasa el original de toda su dirección. Pertenecer a ella no alcanza:
         // hace falta una asignación, que requiere la aprobación de otro administrador
-        // Auditoría M6: una cuenta de administración no actúa por ninguna dependencia, aunque tenga otras asignaciones
-        if (vigentes.stream().anyMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA)) {
+        // Auditoría M6 y M12: sin asignación vigente no se actúa, y una cuenta de administración no actúa por ninguna dependencia
+        if (vigentes.isEmpty() || vigentes.stream().anyMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA)) {
             return false;
         }
         if (usuario.getDependencia() != null && usuario.getDependencia().getId().equals(dependencia.getId())

@@ -351,6 +351,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
   - un finalizado se reabre con motivo y la aprobación de otra persona con `FORZAR_CIERRE` (`solicitudes_reapertura`, V26); vuelve a esperar el acuse;
   - restablecer la contraseña de una cuenta sensible requiere la aprobación de otro administrador (`solicitudes_contrasena`, V27), que recibe la temporal;
   - una cuenta con `ADMIN_SISTEMA` solo administra, aunque tenga otras asignaciones: no tramita ni ve expedientes, y no puede sumar otro rol. Si una persona hace las dos cosas, usa dos cuentas;
+  - toda asignación requiere la aprobación de otro administrador, y sin una asignación vigente no se puede trabajar ni ver expedientes. Antes de instalar, `db/herramientas/revisar_cuentas_sin_asignacion.sql` lista a quién afecta;
   - el duplicado (origen y número) se controla por cabecera: otra dirección registra el mismo documento con su propio CUTI;
   - al finalizar, los pases sin recibir se anulan (`CIERRE_EXPEDIENTE`, V23).
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
@@ -366,6 +367,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
 
 **Tareas periódicas:**
 - Cada semana: `sudo -u postgres bash reforzar_bitacoras.sh gestion_documental --verificar`, y guardar fuera del servidor la última huella que informa (anclaje externo de las bitácoras).
+- Cada semana: revisar en la auditoría de administración los `RESETEO_CONTRASENA` de cuentas comunes, que no llevan segunda firma.
 - Cada día, automático: `revisar_pdf.sh` compara los PDF con la base al final del respaldo. Si el servicio `gestion-documental-respaldo` queda en error, revisar su registro.
 
 **Pendientes técnicos:**

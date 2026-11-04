@@ -33,8 +33,8 @@ public class PoliticaAcceso {
             RolAsignacion.ADMIN_SISTEMA, EnumSet.of(Accion.ADMINISTRAR_SISTEMA),
             RolAsignacion.CONSULTA, EnumSet.noneOf(Accion.class));
 
-    // Sin asignaciones vigentes trabaja como operador de su propia dependencia
-    private static final Set<Accion> SIN_ASIGNACIONES = EnumSet.of(Accion.REGISTRAR_ACTUACION);
+    // Auditoría M12: sin asignación vigente no se trabaja. Toda asignación la aprueba otro administrador,
+    // así que nadie crea una cuenta que tramite por su cuenta
 
     private final AsignacionRepository asignacionRepository;
 
@@ -53,21 +53,16 @@ public class PoliticaAcceso {
         }
         Set<Accion> acciones = EnumSet.noneOf(Accion.class);
         vigentes.forEach(a -> acciones.addAll(ACCIONES_POR_ROL.get(a.getRol())));
-        // Sin ninguna asignación, trabaja como operador de su dependencia: lo mismo que considera el ámbito de
-        // visibilidad (DocumentoRepository.CTE_AMBITO)
-        if (vigentes.isEmpty()) {
-            acciones.addAll(SIN_ASIGNACIONES);
-        }
-        return acciones;
+return acciones;
     }
 
-    // Una cuenta de administración no ve expedientes ni actúa por ninguna dependencia
-    public boolean administraElSistema(Usuario usuario) {
+    // Tiene una asignación vigente y no es una cuenta de administración: puede ver lo de su dependencia
+    public boolean trabajaEnExpedientes(Usuario usuario) {
         if (usuario == null || usuario.getId() == null) {
             return false;
         }
-        return asignacionRepository.findVigentes(usuario.getId(), LocalDate.now()).stream()
-                .anyMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA);
+        List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
+        return !vigentes.isEmpty() && vigentes.stream().noneMatch(a -> a.getRol() == RolAsignacion.ADMIN_SISTEMA);
     }
 
     public boolean puede(Usuario usuario, Accion accion) {
@@ -87,7 +82,7 @@ public class PoliticaAcceso {
         }
         List<Asignacion> vigentes = asignacionRepository.findVigentes(usuario.getId(), LocalDate.now());
         if (vigentes.isEmpty()) {
-            return "Operador";
+            return "Sin asignación vigente: consulte a un administrador";
         }
         return vigentes.stream()
                 .map(a -> {
