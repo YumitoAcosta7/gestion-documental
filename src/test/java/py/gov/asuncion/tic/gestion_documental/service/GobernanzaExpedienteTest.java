@@ -159,6 +159,20 @@ class GobernanzaExpedienteTest {
         verify(documentoRepository, never()).save(any());
     }
 
+    @Test
+    void elFormularioDeSalidaSoloOfreceLoQueElLegajoAcepta() {
+        ActuacionDocumento informe = ActuacionDocumento.builder().id(1L).tipoActuacion("INFORME_TECNICO").numeroActuacion("10/2026")
+                .dependenciaEmisora(operativo).anulada(false).build();
+        ActuacionDocumento anulado = ActuacionDocumento.builder().id(2L).tipoActuacion("MEMO").anulada(true).build();
+        ActuacionDocumento providencia = ActuacionDocumento.builder().id(3L).tipoActuacion("PROVIDENCIA").anulada(false).build();
+        actuaciones.addAll(List.of(informe, anulado, providencia));
+        assertEquals(List.of(informe), servicio.actuacionesParaLegajo(500L));
+
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        servicio.registrarSalidaDocumento(500L, "5/2026", null, "x", "y", null, "NOTA_DIRECCION", List.of(1L), usuario);
+        assertEquals("5/2026", expediente.getNroNotaSalida());
+    }
+
     private void conSalidaRegistrada() {
         when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
         when(canalService.organigrama()).thenReturn(null);

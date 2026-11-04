@@ -1009,10 +1009,7 @@ public class DocumentoService {
             throw new IllegalArgumentException("En la remisión directa marque al menos un informe o memo que compone la respuesta.");
         }
         Map<Long, ActuacionDocumento> delExpediente = new HashMap<>();
-        actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
-                .filter(a -> !Boolean.TRUE.equals(a.getAnulada()))
-                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
-                .forEach(a -> delExpediente.put(a.getId(), a));
+        actuacionesParaLegajo(documentoId).forEach(a -> delExpediente.put(a.getId(), a));
         List<ActuacionDocumento> legajo = new ArrayList<>();
         for (Long id : ids) {
             ActuacionDocumento a = delExpediente.get(id);
@@ -1022,6 +1019,14 @@ public class DocumentoService {
             legajo.add(a);
         }
         return legajo;
+    }
+
+    // Lo que puede integrar el legajo de una salida. La misma lista alimenta el formulario y la validación
+    public List<ActuacionDocumento> actuacionesParaLegajo(Long documentoId) {
+        return actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(documentoId).stream()
+                .filter(a -> !Boolean.TRUE.equals(a.getAnulada()))
+                .filter(a -> "INFORME_TECNICO".equals(a.getTipoActuacion()) || "MEMO".equals(a.getTipoActuacion()))
+                .toList();
     }
 
     // Actuaciones que integran el legajo de una salida: id de actuación -> "Salida N° …"

@@ -756,21 +756,14 @@ public class HomeController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         List<Map<String, Object>> listaJson = new ArrayList<>();
-        List<ActuacionDocumento> actuaciones = documentoService.obtenerActuacionesPorDocumento(id);
-        
-        for (ActuacionDocumento act : actuaciones) {
-            if ("INFORME_TECNICO".equals(act.getTipoActuacion()) || 
-                "MEMO".equals(act.getTipoActuacion()) || 
-                "PROVIDENCIA".equals(act.getTipoActuacion())) {
-                
-                Map<String, Object> map = new HashMap<>();
-                map.put("id", act.getId());
-                map.put("tipo", act.getTipoActuacion());
-                map.put("numero", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
-                map.put("dependencia", act.getDependenciaEmisora().getNombreVisible());
-                map.put("resumen", act.getDescripcionResumen());
-                listaJson.add(map);
-            }
+        for (ActuacionDocumento act : documentoService.actuacionesParaLegajo(id)) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", act.getId());
+            map.put("tipo", act.getTipoActuacion());
+            map.put("numero", act.getNumeroActuacion() != null ? act.getNumeroActuacion() : "S/N");
+            map.put("dependencia", act.getDependenciaEmisora().getNombreVisible());
+            map.put("resumen", act.getDescripcionResumen());
+            listaJson.add(map);
         }
         return ResponseEntity.ok(listaJson);
     }
