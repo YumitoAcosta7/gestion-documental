@@ -223,7 +223,8 @@ Bloque 2, en PR separados:
 - **A6, corregir y anular:**
   - "Corregir datos del ingreso" (tipo, número, origen, asunto y prioridad), con motivo, para quien tiene el original y es mesa de entrada o cargó el expediente. Solo antes de la salida. Los valores anteriores quedan en la bitácora (`CORRECCION_INGRESO`) y el CUTI no cambia.
   - "Anular expediente" (estado `ANULADO`, migración V25), mismas personas, solo sin movimientos. No se borra, el CUTI no se reutiliza, su número queda libre y se liberan las fojas.
-- **Pendientes:** A5 caso 3 (restablecer la contraseña de una cuenta sensible), reabrir un finalizado (A6), M6 y M7.
+- **A6 y D3, reabrir un finalizado:** la pide quien tiene `FORZAR_CIERRE` y el original, con motivo, y la aprueba otra persona con ese permiso (`solicitudes_reapertura`, migración V26). La base impide aprobar la propia y que haya dos pendientes. Al aprobarse vuelve a `PENDIENTE_SALIDA` con su salida registrada, y el acuse final deja de estar vigente, sin borrarse. Los pases anulados al finalizar no se restituyen.
+- **Pendientes:** A5 caso 3 (restablecer la contraseña de una cuenta sensible), M6 y M7.
 
 ## Plan propuesto
 

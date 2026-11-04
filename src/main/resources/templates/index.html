@@ -296,6 +296,27 @@
 
             <!-- PESTAÑA 1: TRÁMITES ACTIVOS -->
             <div th:class="${esBusqueda != null && esBusqueda ? 'tab-pane fade' : 'tab-pane fade show active'}" id="activos-pane" role="tabpanel">
+                <!-- 🔓 Reaperturas de expedientes a su cargo: las aprueba otra persona -->
+                <div th:if="${reaperturasPendientes != null && !reaperturasPendientes.isEmpty()}" class="alert alert-info py-2 mb-3" id="panelReaperturas">
+                    <div class="fw-bold mb-2"><i class="bi bi-unlock me-1"></i>Reaperturas pendientes</div>
+                    <div th:each="r : ${reaperturasPendientes}" class="border-top py-2 small">
+                        <div><strong th:text="${r.cuti()}">CUTI</strong> · <span th:text="${r.asunto()}">Asunto</span></div>
+                        <div class="text-muted">Pedida por <span th:text="${r.solicitante()}">Nombre</span>, <span th:text="${#temporals.format(r.fecha(), 'dd/MM/yyyy HH:mm')}">fecha</span>. Motivo: <span th:text="${r.motivo()}">Motivo</span></div>
+                        <div class="d-flex flex-wrap gap-2 mt-1 align-items-center">
+                            <form th:unless="${r.propia()}" th:action="@{/documentos/reapertura/aprobar}" method="post">
+                                <input type="hidden" name="solicitudId" th:value="${r.id()}">
+                                <button type="submit" class="btn btn-sm btn-primary">Aprobar y reabrir</button>
+                            </form>
+                            <span th:if="${r.propia()}" class="text-muted">La pidió usted: la debe aprobar otra persona.</span>
+                            <form th:action="@{/documentos/reapertura/rechazar}" method="post" class="d-flex gap-1">
+                                <input type="hidden" name="solicitudId" th:value="${r.id()}">
+                                <input type="text" name="motivo" class="form-control form-control-sm" minlength="10" required th:placeholder="${r.propia() ? 'Motivo para cancelarla' : 'Motivo del rechazo'}" aria-label="Motivo">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary" th:text="${r.propia() ? 'Cancelar solicitud' : 'Rechazar'}">Rechazar</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ⏳ Pases emitidos sin acuse fuera de plazo o sin nadie que los reciba (auditoría M2) -->
                 <div th:if="${pasesDemorados != null && pasesDemorados.total() > 0}" class="alert alert-warning py-2 mb-3">
                     <div class="fw-bold mb-1">
@@ -549,6 +570,11 @@
                                             <a th:href="@{/documentos/descargar-acuse/{id}(id=${doc.id})}" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
                                                 <i class="bi bi-file-pdf me-1"></i> Acuse Final
                                             </a>
+                                            <button sec:authorize="hasAuthority('PERMISO_FORZAR_CIERRE')" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 ms-1"
+                                                    data-bs-toggle="modal" data-bs-target="#modalSolicitarReapertura" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"
+                                                    title="Pedir que se reabra: la debe aprobar otra persona">
+                                                <i class="bi bi-unlock"></i> Reabrir
+                                            </button>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -1253,6 +1279,30 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-danger btn-sm">Dejar sin efecto</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Solicitar Reapertura -->
+    <div class="modal fade" id="modalSolicitarReapertura" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Solicitar reapertura <span id="labelCutiReapertura" class="text-muted"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form th:action="@{/documentos/reapertura/solicitar}" method="post">
+                    <div class="modal-body">
+                        <input type="hidden" id="reaperturaDocId" name="documentoId" />
+                        <p class="small text-muted">La debe aprobar otra persona con el mismo permiso. Al aprobarse, el expediente vuelve a esperar el acuse, y el acuse final actual deja de estar vigente, sin borrarse.</p>
+                        <label class="form-label small fw-bold" for="reaperturaMotivo">Motivo *</label>
+                        <textarea class="form-control form-control-sm" id="reaperturaMotivo" name="motivo" rows="3" minlength="20" required placeholder="Ej: el acuse final se cargó en el expediente equivocado"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm">Solicitar</button>
                     </div>
                 </form>
             </div>

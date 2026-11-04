@@ -42,6 +42,7 @@ class GobernanzaExpedienteTest {
     @Mock TipoDocumentoRepository tipoDocumentoRepository;
     @Mock AuditoriaDocumentoRepository auditoriaDocumentoRepository;
     @Mock AdjuntoDocumentoRepository adjuntoRepository;
+    @Mock SolicitudReaperturaRepository solicitudRepository;
     @InjectMocks DocumentoService servicio;
 
     // Dirección de TIC (10) > Departamento Operativo (40); Dirección de Hacienda (20) pidió el informe
@@ -234,6 +235,112 @@ class GobernanzaExpedienteTest {
         assertThrows(IllegalStateException.class, () -> servicio.registrarSalidaDocumento(500L, "5/2026", null, "x", "y", null, usuario));
         assertThrows(IllegalStateException.class, () -> servicio.anularExpediente(500L, "Motivo suficiente", usuario));
         assertThrows(IllegalStateException.class, () -> servicio.corregirIngreso(500L, 1, "9/2026", 20, "Asunto", Prioridad.NORMAL, "Motivo suficiente", usuario));
+    }
+
+    private Usuario otraPersona() {
+        Usuario u = new Usuario();
+        u.setId(8);
+        u.setUsername("otra.persona");
+        when(canalService.puedeActuarPor(eq(u), eq(hacienda))).thenReturn(true);
+        return u;
+    }
+
+    private SolicitudReapertura solicitudDe(Usuario quien) {
+        usuario.setUsername("quien.pide");
+        expediente.setEstadoActual(EstadoDocumento.FINALIZADO);
+        SolicitudReapertura s = SolicitudReapertura.builder().id(70L).documento(expediente).motivo("El acuse se cargó en otro expediente").solicitadaPor(quien).build();
+        when(solicitudRepository.findById(70L)).thenReturn(Optional.of(s));
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        return s;
+    }
+
+    @Test
+    void laReaperturaSolicitadaNoCambiaNadaHastaQueOtroLaApruebe() {
+        expediente.setEstadoActual(EstadoDocumento.FINALIZADO);
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        when(solicitudRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        SolicitudReapertura s = servicio.solicitarReapertura(500L, "El acuse se cargó en otro expediente", usuario);
+        assertEquals(SolicitudReapertura.PENDIENTE, s.getEstado());
+        assertEquals(EstadoDocumento.FINALIZADO, expediente.getEstadoActual());
+        verify(politicaAcceso).exigir(eq(usuario), eq(Accion.FORZAR_CIERRE), any());
+
+        when(solicitudRepository.existePendiente(500L)).thenReturn(true);
+        assertThrows(IllegalStateException.class, () -> servicio.solicitarReapertura(500L, "El acuse se cargó en otro expediente", usuario), "una por expediente");
+    }
+
+    @Test
+    void soloSeReabreLoFinalizadoYConMotivo() {
+        when(canalService.puedeActuarPor(eq(usuario), eq(hacienda))).thenReturn(true);
+        assertThrows(IllegalStateException.class, () -> servicio.solicitarReapertura(500L, "El acuse se cargó en otro expediente", usuario));
+        expediente.setEstadoActual(EstadoDocumento.FINALIZADO);
+        assertThrows(IllegalArgumentException.class, () -> servicio.solicitarReapertura(500L, "corto", usuario));
+    }
+
+    @Test
+    void quienPidioLaReaperturaNoLaAprueba() {
+        solicitudDe(usuario);
+        assertTrue(assertThrows(IllegalStateException.class, () -> servicio.aprobarReapertura(70L, usuario))
+                .getMessage().contains("otra persona"));
+        assertEquals(EstadoDocumento.FINALIZADO, expediente.getEstadoActual());
+    }
+
+    @Test
+    void alAprobarVuelveAEsperarElAcuseYElAnteriorDejaDeEstarVigente() {
+        SolicitudReapertura s = solicitudDe(usuario);
+        AdjuntoDocumento acuse = new AdjuntoDocumento();
+        acuse.setTipoAdjunto("ACUSE_ENTREGA");
+        acuse.setVigente(true);
+        when(adjuntoRepository.findByDocumentoIdAndActuacionIsNullOrderByFechaHoraSubidaAsc(500L)).thenReturn(List.of(acuse));
+        Usuario otra = otraPersona();
+
+        servicio.aprobarReapertura(70L, otra);
+
+        assertEquals(EstadoDocumento.PENDIENTE_SALIDA, expediente.getEstadoActual());
+        assertEquals(SolicitudReapertura.APROBADA, s.getEstado());
+        assertSame(otra, s.getResueltaPor());
+        assertFalse(acuse.getVigente());
+        assertTrue(acuse.getMotivoReemplazo().contains("Reapertura"));
+        verify(auditoriaService).registrarEvento(eq(expediente), eq("REAPERTURA_EXPEDIENTE"), eq(EstadoDocumento.FINALIZADO),
+                eq(EstadoDocumento.PENDIENTE_SALIDA), contains("quien.pide"), eq(otra), isNull());
+        assertThrows(IllegalStateException.class, () -> servicio.aprobarReapertura(70L, otra), "ya resuelta");
+    }
+
+    @Test
+    void sinElOriginalNoSeResuelveLaReapertura() {
+        solicitudDe(usuario);
+        Usuario ajena = new Usuario();
+        ajena.setId(9);
+        when(canalService.puedeActuarPor(eq(ajena), eq(hacienda))).thenReturn(false);
+        assertThrows(AccessDeniedException.class, () -> servicio.aprobarReapertura(70L, ajena));
+    }
+
+    @Test
+    void unaReaperturaRechazadaDejaElExpedienteFinalizado() {
+        SolicitudReapertura s = solicitudDe(usuario);
+        servicio.rechazarReapertura(70L, "No corresponde reabrir", otraPersona());
+        assertEquals(SolicitudReapertura.RECHAZADA, s.getEstado());
+        assertEquals(EstadoDocumento.FINALIZADO, expediente.getEstadoActual());
+        assertEquals("No corresponde reabrir", s.getMotivoRechazo());
+    }
+
+    @Test
+    void lasReaperturasPendientesSoloLasVeQuienTieneElOriginalYElPermiso() {
+        SolicitudReapertura s = solicitudDe(usuario);
+        when(solicitudRepository.findPendientes()).thenReturn(List.of(s));
+        Usuario otra = otraPersona();
+        when(politicaAcceso.puede(any(), eq(Accion.FORZAR_CIERRE))).thenReturn(true);
+        when(canalService.alcance(otra)).thenReturn(d -> d == hacienda);
+        List<DocumentoService.ReaperturaPendiente> vistas = servicio.reaperturasPendientes(otra);
+        assertEquals(1, vistas.size());
+        assertFalse(vistas.get(0).propia());
+
+        Usuario ajena = new Usuario();
+        ajena.setId(9);
+        when(canalService.alcance(ajena)).thenReturn(d -> false);
+        assertTrue(servicio.reaperturasPendientes(ajena).isEmpty());
+
+        when(politicaAcceso.puede(any(), eq(Accion.FORZAR_CIERRE))).thenReturn(false);
+        assertTrue(servicio.reaperturasPendientes(otra).isEmpty(), "sin el permiso");
     }
 
     @Test

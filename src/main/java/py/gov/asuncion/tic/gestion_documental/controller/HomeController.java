@@ -175,6 +175,7 @@ public class HomeController {
         c.medir("sla", () -> agregarIndicadoresSla(model, paraSla, resultadosBusqueda));
         c.medir("archivo", () -> agregarDatosArchivo(model, usuario));
         model.addAttribute("documentosFinalizados", c.medir("finalizados", () -> documentoService.obtenerDocumentosFinalizadosParaUsuario(usuario)));
+        model.addAttribute("reaperturasPendientes", documentoService.reaperturasPendientes(usuario));
 
         boolean conDependencia = usuario != null && usuario.getDependencia() != null;
         model.addAttribute("documentosSalida", c.medir("salidas", () -> conDependencia
@@ -296,6 +297,45 @@ public class HomeController {
             redirectAttributes.addFlashAttribute("mensajeExito", "Salida exterior registrada correctamente.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error al registrar la salida: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
+     * 🔓 REAPERTURA DE UN FINALIZADO: la pide uno y la aprueba otro
+     */
+    @PostMapping("/documentos/reapertura/solicitar")
+    public String solicitarReapertura(@RequestParam("documentoId") Long documentoId,
+                                      @RequestParam("motivo") String motivo,
+                                      RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.solicitarReapertura(documentoId, motivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Reapertura solicitada. La debe aprobar otra persona con ese permiso.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al solicitar la reapertura: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    @PostMapping("/documentos/reapertura/aprobar")
+    public String aprobarReapertura(@RequestParam("solicitudId") Long solicitudId, RedirectAttributes redirectAttributes) {
+        try {
+            Documento doc = documentoService.aprobarReapertura(solicitudId, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Expediente " + doc.getCodigoCuti() + " reabierto: espera el acuse correcto, o que se corrija su salida.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al aprobar la reapertura: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    @PostMapping("/documentos/reapertura/rechazar")
+    public String rechazarReapertura(@RequestParam("solicitudId") Long solicitudId, @RequestParam("motivo") String motivo,
+                                     RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.rechazarReapertura(solicitudId, motivo, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Solicitud de reapertura cerrada: el expediente sigue finalizado.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al rechazar la reapertura: " + mensajeError(e));
         }
         return "redirect:/";
     }
