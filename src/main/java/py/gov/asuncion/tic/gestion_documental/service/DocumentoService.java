@@ -325,6 +325,12 @@ public class DocumentoService {
     }
 
     public static final String REGEX_NUMERO_DOC = "^(S/N|\\d+/\\d{4})$";
+    private static final String SIN_NUMERO = "S/N";
+
+    // En blanco o "S/N", sin importar mayúsculas ni espacios
+    private static boolean esSinNumero(String numero) {
+        return numero == null || numero.isBlank() || numero.replaceAll("\\s+", "").equalsIgnoreCase(SIN_NUMERO);
+    }
 
     private void validarFormatoNumeroDocumento(String numeroDoc) {
         if (numeroDoc == null || numeroDoc.isBlank()) {
@@ -513,8 +519,9 @@ public class DocumentoService {
         LocalDateTime ahora = LocalDateTime.now();
         int anioActual = ahora.getYear();
         
-        if (documento.getNumeroDocumentoOrigen() == null || documento.getNumeroDocumentoOrigen().isBlank()) {
-            documento.setNumeroDocumentoOrigen("S/N");
+        // S/N significa "sin número": dos documentos sin número no son el mismo documento, no hay nada que comparar
+        if (esSinNumero(documento.getNumeroDocumentoOrigen())) {
+            documento.setNumeroDocumentoOrigen(SIN_NUMERO);
         } else {
             documento.setNumeroDocumentoOrigen(documento.getNumeroDocumentoOrigen().trim().toUpperCase());
             validarFormatoNumeroDocumento(documento.getNumeroDocumentoOrigen());
