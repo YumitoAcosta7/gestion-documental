@@ -21,6 +21,7 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -64,6 +65,7 @@ class MatrizAutorizacionTest {
 
     private static final List<Puerta> PUERTAS = List.of(
             new Puerta(HttpMethod.GET, "/admin/usuarios", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
+            new Puerta(HttpMethod.GET, "/admin/auditoria", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             new Puerta(HttpMethod.POST, "/admin/asignaciones/1/aprobar", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             new Puerta(HttpMethod.POST, "/admin/pases/1/retirar", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             new Puerta(HttpMethod.POST, "/admin/traslados", EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
@@ -135,6 +137,27 @@ class MatrizAutorizacionTest {
             }
         }
         assertTrue(errores.isEmpty(), String.join("\n", errores));
+    }
+
+    @Test
+    void unaCuentaDeAdministracionEntraDirectoAAdministracion() throws Exception {
+        when(politicaAcceso.puede(any(), eq(Accion.ADMINISTRAR_SISTEMA)))
+                .thenAnswer(inv -> "admin".equals(((Usuario) inv.getArgument(0)).getUsername()));
+
+        var admin = mvc.perform(request(HttpMethod.GET, "/").with(user("admin")).flashAttr("mensajeExito", "Contraseña cambiada."))
+                .andReturn();
+        assertEquals(302, admin.getResponse().getStatus());
+        assertEquals("/admin/usuarios", admin.getResponse().getRedirectedUrl());
+        assertEquals("Contraseña cambiada.", admin.getFlashMap().get("mensajeExito"), "el aviso llega a su pantalla");
+
+        // Quien tramita sigue en su bandeja (con los servicios simulados, la vista puede fallar al armarse)
+        String destino;
+        try {
+            destino = mvc.perform(request(HttpMethod.GET, "/").with(user("mesa"))).andReturn().getResponse().getRedirectedUrl();
+        } catch (Exception e) {
+            destino = null;
+        }
+        assertNull(destino);
     }
 
     @Test

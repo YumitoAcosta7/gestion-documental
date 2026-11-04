@@ -97,8 +97,19 @@ public class HomeController {
     @GetMapping("/")
     public String index(@RequestParam(value = "bandeja", required = false) BandejaService.Bandeja bandeja,
                         @RequestParam(value = "pagina", defaultValue = "0") int pagina,
-                        Model model) {
-        cargarPantallaPrincipal(model, getUsuarioAutenticado(), List.of(), bandeja, pagina);
+                        Model model, RedirectAttributes redirectAttributes) {
+        Usuario usuario = getUsuarioAutenticado();
+        // Una cuenta de administración no trabaja con expedientes: su pantalla es Administración.
+        // El mensaje que traía (por ejemplo, contraseña cambiada) sigue hasta esa pantalla
+        if (politicaAcceso.puede(usuario, Accion.ADMINISTRAR_SISTEMA)) {
+            for (String mensaje : List.of("mensajeExito", "error")) {
+                if (model.containsAttribute(mensaje)) {
+                    redirectAttributes.addFlashAttribute(mensaje, model.getAttribute(mensaje));
+                }
+            }
+            return "redirect:/admin/usuarios";
+        }
+        cargarPantallaPrincipal(model, usuario, List.of(), bandeja, pagina);
         return "index";
     }
 

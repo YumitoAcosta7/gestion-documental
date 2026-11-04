@@ -350,6 +350,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
   - un ingreso mal cargado se corrige con motivo (`CORRECCION_INGRESO`), antes de la salida; un expediente sin movimientos se anula con motivo (`ANULADO`, V25), sin borrarse y sin reutilizar el CUTI;
   - un finalizado se reabre con motivo y la aprobación de otra persona con `FORZAR_CIERRE` (`solicitudes_reapertura`, V26); vuelve a esperar el acuse;
   - restablecer la contraseña de una cuenta sensible requiere la aprobación de otro administrador (`solicitudes_contrasena`, V27), que recibe la temporal;
+  - una cuenta de administración entra directo a Administración, sin bandeja de expedientes, y busca en toda la auditoría de administración por fecha, cuenta y acción (`/admin/auditoria`); la bitácora de los expedientes no forma parte de esa pantalla;
   - el original de una dependencia de baja o sin nadie que actúe por ella se traslada con motivo, acto administrativo y la aprobación de otro administrador (`solicitudes_traslado_custodia`, V28); una dependencia que funciona lo mueve con un pase;
   - una cuenta con `ADMIN_SISTEMA` solo administra, aunque tenga otras asignaciones: no tramita ni ve expedientes, y no puede sumar otro rol. Si una persona hace las dos cosas, usa dos cuentas;
   - toda asignación requiere la aprobación de otro administrador, y sin una asignación vigente no se puede trabajar ni ver expedientes. Antes de instalar, `db/herramientas/revisar_cuentas_sin_asignacion.sql` lista a quién afecta;

@@ -75,7 +75,31 @@ public class AdministracionService {
 
     public List<AuditoriaSistema> auditoriaReciente(Usuario admin) {
         exigirAdministrador(admin);
-        return auditoriaRepository.findRecientes(PageRequest.of(0, 100));
+        return auditoriaRepository.findRecientes(PageRequest.of(0, AUDITORIA_RECIENTE));
+    }
+
+    private static final int AUDITORIA_RECIENTE = 20;
+    private static final int AUDITORIA_POR_PAGINA = 50;
+    private static final LocalDate SIN_FECHA_DESDE = LocalDate.of(2000, 1, 1);
+    private static final LocalDate SIN_FECHA_HASTA = LocalDate.of(9999, 12, 31);
+
+    // Búsqueda en toda la auditoría de administración. Las dos fechas son inclusivas; cualquier filtro puede faltar
+    public org.springframework.data.domain.Page<AuditoriaSistema> buscarAuditoria(LocalDate desde, LocalDate hasta, String usuario,
+                                                                                  String accion, int pagina, Usuario admin) {
+        exigirAdministrador(admin);
+        if (desde != null && hasta != null && hasta.isBefore(desde)) {
+            throw new IllegalArgumentException("La fecha final no puede ser anterior a la inicial.");
+        }
+        String textoUsuario = usuario == null ? "" : usuario.trim().toLowerCase();
+        return auditoriaRepository.buscar((desde != null ? desde : SIN_FECHA_DESDE).atStartOfDay(),
+                (hasta != null ? hasta : SIN_FECHA_HASTA).plusDays(1).atStartOfDay(),
+                "%" + textoUsuario + "%", accion == null ? "" : accion.trim(),
+                PageRequest.of(Math.max(pagina, 0), AUDITORIA_POR_PAGINA));
+    }
+
+    public List<String> accionesDeAuditoria(Usuario admin) {
+        exigirAdministrador(admin);
+        return auditoriaRepository.accionesRegistradas();
     }
 
     // =====================================================================

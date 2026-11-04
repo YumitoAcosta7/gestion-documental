@@ -64,6 +64,29 @@ public class AdministracionController {
         return "admin";
     }
 
+    // Toda la auditoría de administración, con filtros y por páginas. Solo lectura
+    @GetMapping("/auditoria")
+    public String auditoria(@RequestParam(value = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+                            @RequestParam(value = "hasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+                            @RequestParam(value = "usuario", required = false) String usuario,
+                            @RequestParam(value = "accion", required = false) String accion,
+                            @RequestParam(value = "pagina", defaultValue = "0") int pagina,
+                            Authentication auth, Model model) {
+        Usuario admin = actual(auth);
+        model.addAttribute("admin", admin);
+        model.addAttribute("desde", desde);
+        model.addAttribute("hasta", hasta);
+        model.addAttribute("usuario", usuario);
+        model.addAttribute("accion", accion);
+        model.addAttribute("acciones", administracionService.accionesDeAuditoria(admin));
+        try {
+            model.addAttribute("resultado", administracionService.buscarAuditoria(desde, hasta, usuario, accion, pagina, admin));
+        } catch (IllegalArgumentException e) {
+            model.addAttribute("error", e.getMessage());
+        }
+        return "admin-auditoria";
+    }
+
     @PostMapping("/usuarios")
     public String crear(@RequestParam("username") String username, @RequestParam("nombreCompleto") String nombreCompleto,
                         @RequestParam(value = "email", required = false) String email,

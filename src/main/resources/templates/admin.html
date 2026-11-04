@@ -18,7 +18,8 @@
         </div>
         <div class="d-flex align-items-center gap-2">
             <span class="small fw-semibold" th:text="${admin.username}">admin</span>
-            <a th:href="@{/}" class="btn btn-outline-secondary btn-sm rounded-pill px-3"><i class="bi bi-house me-1"></i>Expedientes</a>
+            <a th:href="@{/admin/auditoria}" class="btn btn-outline-secondary btn-sm rounded-pill px-3"><i class="bi bi-shield-check me-1"></i>Auditoría</a>
+            <a th:href="@{/cuenta/contrasena}" class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Cambiar mi contraseña" aria-label="Cambiar mi contraseña"><i class="bi bi-key"></i></a>
             <form th:action="@{/logout}" method="post" class="m-0">
                 <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3"><i class="bi bi-box-arrow-right"></i></button>
             </form>
@@ -496,7 +497,10 @@
 
     <!-- ===================== Auditoría ===================== -->
     <div class="card border-0 shadow-sm mt-3">
-        <div class="card-header bg-white fw-bold"><i class="bi bi-shield-check me-1"></i>Auditoría de administración <span class="text-muted small fw-normal">(últimos 100 movimientos; no se puede modificar)</span></div>
+        <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-shield-check me-1"></i>Auditoría de administración <span class="text-muted small fw-normal">(últimos movimientos; no se puede modificar)</span></span>
+            <a th:href="@{/admin/auditoria}" class="btn btn-outline-primary btn-sm fw-normal">Buscar en toda la auditoría</a>
+        </div>
         <div class="card-body p-0" style="max-height: 40vh; overflow-y: auto;">
             <table class="table table-sm mb-0 small">
                 <thead class="table-light"><tr><th>Fecha</th><th>Quién</th><th>Acción</th><th>Detalle</th></tr></thead>
