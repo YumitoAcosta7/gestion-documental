@@ -58,11 +58,6 @@
                     <i class="bi bi-plus-lg me-1"></i>Nuevo Documento
                 </button>
 
-                <!-- Botón Registrar Nuevo Documento de Salida (Visible para roles autorizados) -->
-                <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_SALIDA')" class="btn btn-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalNuevoDocSalida">
-                    <i class="bi bi-plus-lg me-1"></i>Nueva Salida
-                </button>
-
                 <!-- Documento propio: lo inicia cualquier dependencia y sale hacia su superior -->
                 <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_ACTUACION')" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#modalDocumentoPropio">
                     <i class="bi bi-pencil-square me-1"></i>Documento propio
@@ -921,83 +916,6 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-send me-1"></i>Crear documento</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modalNuevoDocSalida" tabindex="-1" aria-labelledby="modalNuevoDocSalidaLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <form th:action="@{/documentos/salida-directa}" method="post" enctype="multipart/form-data">
-                
-                <div class="modal-content">
-                    <div class="modal-header bg-primary text-white">
-                        <h5 class="modal-title fw-bold" id="modalNuevoDocSalidaLabel">
-                            <i class="bi bi-box-arrow-right me-2"></i>Registrar Nuevo Documento de Salida
-                        </h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    
-                    <div class="modal-body">
-                        <p class="small text-muted">Cree y despache un documento nativo originado en su dependencia hacia el exterior.</p>
-                        
-                        <div class="row g-3">
-                            <!-- Número de Nota de Salida -->
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">N° de Nota / Salida:</label>
-                                <input type="text" name="nroNotaSalida" class="form-control" required placeholder="Ej: Nota N° 123/2026">
-                            </div>
-
-                            <!-- Dependencia Destino Externa -->
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Dependencia / Destino Externo:</label>
-                                <select name="dependenciaDestinoId" class="form-select" required>
-                                    <option value="" selected disabled>Seleccione dependencia destino...</option>
-                                    <!-- Iterar sobre las dependencias disponibles en tu modelo -->
-                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
-                                </select>
-                            </div>
-
-                            <!-- Tipo de Documento -->
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Tipo de Documento:</label>
-                                <select name="tipoDocumentoId" class="form-select" required>
-                                    <option value="" selected disabled>Seleccione tipo...</option>
-                                    <option th:each="tipo : ${tiposDoc}" th:value="${tipo.id}" th:text="${tipo.nombre}"></option>
-                                </select>
-                            </div>
-
-                            <!-- Asunto -->
-                            <div class="col-12">
-                                <label class="form-label small fw-bold">Asunto:</label>
-                                <textarea name="asunto" class="form-control" rows="2" required placeholder="Describa el asunto del documento..."></textarea>
-                            </div>
-
-                            <!-- Persona que retira -->
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Persona que retira (Físico):</label>
-                                <input type="text" name="personaRetira" class="form-control" placeholder="Nombre de quien retira el oficio">
-                            </div>
-
-                            <!-- Funcionario que entrega -->
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Funcionario que entrega:</label>
-                                <input type="text" name="funcionarioEntrega" class="form-control" placeholder="Funcionario responsable de la entrega">
-                            </div>
-
-                            <!-- Archivo PDF de Acuse / Documento Firmado -->
-                            <div class="col-12">
-                                <label class="form-label small fw-bold">Archivo PDF (Acuse / Copia Firmada):</label>
-                                <input type="file" name="archivoAcuse" class="form-control" accept="application/pdf">
-                                <div class="form-text">Adjunte el respaldo en PDF si lo posee.</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-primary btn-sm fw-bold">Registrar y Despachar</button>
                     </div>
                 </div>
             </form>
