@@ -48,8 +48,10 @@ public class AdministracionController {
         if (usuarioId != null) {
             model.addAttribute("seleccionado", administracionService.obtenerUsuario(usuarioId, admin));
             model.addAttribute("asignaciones", administracionService.asignacionesDe(usuarioId, admin));
+            model.addAttribute("seleccionadoSensible", administracionService.esCuentaSensible(administracionService.obtenerUsuario(usuarioId, admin)));
         }
         model.addAttribute("pendientes", administracionService.pendientesDeAprobacion(admin));
+        model.addAttribute("contrasenasPendientes", administracionService.contrasenasPendientes(admin));
         model.addAttribute("pasesTrabados", documentoService.pasesTrabados(admin));
         model.addAttribute("feriados", feriadoService.calendario(admin));
         model.addAttribute("auditoria", administracionService.auditoriaReciente(admin));
@@ -99,14 +101,42 @@ public class AdministracionController {
     }
 
     @PostMapping("/usuarios/{id}/contrasena")
-    public String restablecer(@PathVariable("id") Integer id, Authentication auth, RedirectAttributes ra) {
+    public String restablecer(@PathVariable("id") Integer id, @RequestParam(value = "motivo", required = false) String motivo,
+                              Authentication auth, RedirectAttributes ra) {
         try {
-            var r = administracionService.restablecerContrasena(id, actual(auth));
-            mostrarTemporal(ra, r, "Contraseña restablecida.");
+            var r = administracionService.restablecerContrasena(id, motivo, actual(auth));
+            if (r.isPresent()) {
+                mostrarTemporal(ra, r.get(), "Contraseña restablecida.");
+            } else {
+                ra.addFlashAttribute("mensajeExito", "Solicitud registrada. Es una cuenta sensible: la contraseña se genera cuando la apruebe otro administrador.");
+            }
         } catch (IllegalArgumentException | IllegalStateException e) {
             ra.addFlashAttribute("error", e.getMessage());
         }
         return "redirect:/admin/usuarios?usuarioId=" + id;
+    }
+
+    // Auditoría A5: otro administrador aprueba el restablecimiento de una cuenta sensible, y recibe la contraseña temporal
+    @PostMapping("/contrasenas/{id}/aprobar")
+    public String aprobarContrasena(@PathVariable("id") Long id, Authentication auth, RedirectAttributes ra) {
+        try {
+            mostrarTemporal(ra, administracionService.aprobarContrasena(id, actual(auth)), "Restablecimiento aprobado.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios";
+    }
+
+    @PostMapping("/contrasenas/{id}/rechazar")
+    public String rechazarContrasena(@PathVariable("id") Long id, @RequestParam("motivo") String motivo,
+                                     Authentication auth, RedirectAttributes ra) {
+        try {
+            administracionService.rechazarContrasena(id, motivo, actual(auth));
+            ra.addFlashAttribute("mensajeExito", "Solicitud de restablecimiento cerrada.");
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            ra.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/usuarios";
     }
 
     @PostMapping("/usuarios/{id}/asignaciones")

@@ -34,6 +34,39 @@
         <div class="small mt-1">Se muestra <strong>una sola vez</strong>. Entréguela al usuario: al entrar deberá cambiarla por una propia.</div>
     </div>
 
+    <!-- ===================== Segunda firma para contraseñas (auditoría A5) ===================== -->
+    <div th:if="${!#lists.isEmpty(contrasenasPendientes)}" class="card border-warning shadow-sm mb-3" id="panelContrasenas">
+        <div class="card-header bg-warning-subtle fw-bold">
+            <i class="bi bi-key me-1"></i>Contraseñas de cuentas sensibles esperando aprobación
+            <div class="small fw-normal text-muted">Quien aprueba recibe la contraseña temporal, una sola vez. No la aprueba quien la pidió ni el dueño de la cuenta.</div>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm align-middle mb-0 small">
+                <thead class="table-light"><tr><th>Cuenta</th><th>Motivo</th><th>Pedida por</th><th></th></tr></thead>
+                <tbody>
+                <tr th:each="c : ${contrasenasPendientes}">
+                    <td th:text="${c.usuario.nombreCompleto + ' (' + c.usuario.username + ')'}">cuenta</td>
+                    <td th:text="${c.motivo}">motivo</td>
+                    <td><span th:text="${c.solicitadaPor.username}">admin</span><div class="text-muted" th:text="${#temporals.format(c.fechaSolicitud, 'dd/MM/yyyy HH:mm')}">fecha</div></td>
+                    <td>
+                        <div th:if="${c.usuario.id == admin.id}" class="text-muted">Es su cuenta: la resuelve otro administrador.</div>
+                        <div th:unless="${c.usuario.id == admin.id}" class="d-flex flex-column gap-1">
+                            <form th:if="${c.solicitadaPor.id != admin.id}" th:action="@{/admin/contrasenas/{id}/aprobar(id=${c.id})}" method="post" class="m-0">
+                                <button class="btn btn-success btn-sm w-100">Aprobar y generar</button>
+                            </form>
+                            <div th:if="${c.solicitadaPor.id == admin.id}" class="text-muted">La pidió usted: la aprueba otro administrador.</div>
+                            <form th:action="@{/admin/contrasenas/{id}/rechazar(id=${c.id})}" method="post" class="d-flex gap-1 m-0">
+                                <input type="text" name="motivo" class="form-control form-control-sm" minlength="5" required placeholder="Motivo" aria-label="Motivo del rechazo">
+                                <button class="btn btn-outline-secondary btn-sm" th:text="${c.solicitadaPor.id == admin.id ? 'Retirar' : 'Rechazar'}">Rechazar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- ===================== Doble control (auditoría C2) ===================== -->
     <div th:if="${!#lists.isEmpty(pendientes)}" class="card border-warning shadow-sm mb-3">
         <div class="card-header bg-warning-subtle fw-bold">
@@ -156,8 +189,11 @@
                         <span th:unless="${seleccionado.activo}" class="badge bg-secondary ms-1">Dado de baja</span>
                     </span>
                     <form th:if="${seleccionado.activo}" th:action="@{/admin/usuarios/{id}/contrasena(id=${seleccionado.id})}" method="post" class="m-0"
-                          data-confirmar="Se generará una contraseña temporal nueva y la actual dejará de servir. ¿Continuar?">
-                        <button class="btn btn-outline-warning btn-sm"><i class="bi bi-key me-1"></i>Restablecer contraseña</button>
+                          th:data-confirmar="${seleccionadoSensible ? 'Es una cuenta sensible: se pedirá la aprobación de otro administrador. ¿Continuar?' : 'Se generará una contraseña temporal nueva y la actual dejará de servir. ¿Continuar?'}">
+                        <div class="d-flex gap-1">
+                            <input th:if="${seleccionadoSensible}" type="text" name="motivo" class="form-control form-control-sm" minlength="10" required placeholder="Motivo (cuenta sensible)" aria-label="Motivo del restablecimiento">
+                            <button class="btn btn-outline-warning btn-sm text-nowrap"><i class="bi bi-key me-1"></i>Restablecer contraseña</button>
+                        </div>
                     </form>
                 </div>
                 <div class="card-body">

@@ -8,6 +8,7 @@ import py.gov.asuncion.tic.gestion_documental.domain.*;
 import py.gov.asuncion.tic.gestion_documental.repository.AsignacionRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.AuditoriaSistemaRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.DependenciaRepository;
+import py.gov.asuncion.tic.gestion_documental.repository.SolicitudContrasenaRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 
 import java.time.LocalDate;
@@ -25,11 +26,12 @@ class AdministracionServiceTest {
     private final DependenciaRepository dependencias = mock(DependenciaRepository.class);
     private final AuditoriaSistemaRepository auditoria = mock(AuditoriaSistemaRepository.class);
     private final PoliticaAcceso politica = mock(PoliticaAcceso.class);
+    private final SolicitudContrasenaRepository solicitudes = mock(SolicitudContrasenaRepository.class);
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
     private final org.springframework.security.core.session.SessionRegistry sesiones =
             new org.springframework.security.core.session.SessionRegistryImpl();
     private final AdministracionService servicio =
-            new AdministracionService(usuarios, asignaciones, dependencias, auditoria, politica, encoder, sesiones);
+            new AdministracionService(usuarios, asignaciones, dependencias, auditoria, politica, encoder, sesiones, solicitudes);
 
     private final Usuario admin = usuario(1, "admin.tic");
     private final Dependencia baseDatos = Dependencia.builder().id(50).nombre("Departamento de Base de Datos").ruta("/1/10/50/").activo(true).build();
@@ -177,8 +179,80 @@ class AdministracionServiceTest {
         when(usuarios.findById(6)).thenReturn(Optional.of(ana));
         var principal = org.springframework.security.core.userdetails.User.withUsername("ana").password("x").authorities(List.of()).build();
         sesiones.registerNewSession("sesion-de-ana", principal);
-        servicio.restablecerContrasena(6, admin);
+        assertTrue(servicio.restablecerContrasena(6, null, admin).isPresent(), "cuenta común: en el acto");
         assertTrue(sesiones.getSessionInformation("sesion-de-ana").isExpired());
+    }
+
+    private Usuario cuentaSensible() {
+        Usuario mesa = usuario(6, "mesa.tic");
+        mesa.setPasswordHash("original");
+        Dependencia mesaTic = Dependencia.builder().id(11).nombre("Secretaría").ruta("/1/10/11/").esMesaEntrada(true).activo(true).build();
+        when(usuarios.findById(6)).thenReturn(Optional.of(mesa));
+        when(asignaciones.findVigentes(eq(6), any())).thenReturn(List.of(
+                Asignacion.builder().rol(RolAsignacion.MESA_ENTRADA).usuario(mesa).dependenciaAmbito(mesaTic).build()));
+        when(asignaciones.contarAdministradoresVigentes(any())).thenReturn(2L);
+        when(solicitudes.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        return mesa;
+    }
+
+    @Test
+    void enUnaCuentaSensibleSoloQuedaPedidoYNoCambiaLaContrasena() {
+        Usuario mesa = cuentaSensible();
+        assertThrows(IllegalArgumentException.class, () -> servicio.restablecerContrasena(6, "corto", admin), "exige motivo");
+        assertTrue(servicio.restablecerContrasena(6, "Olvidó su contraseña", admin).isEmpty());
+        assertEquals("original", mesa.getPasswordHash());
+        verify(solicitudes).save(argThat(s -> s.getUsuario() == mesa && s.getSolicitadaPor() == admin));
+
+        when(solicitudes.existePendiente(6)).thenReturn(true);
+        assertThrows(IllegalStateException.class, () -> servicio.restablecerContrasena(6, "Olvidó su contraseña", admin), "una sola pendiente");
+    }
+
+    @Test
+    void conUnSoloAdministradorSeHaceIgualYQuedaDicho() {
+        Usuario mesa = cuentaSensible();
+        when(asignaciones.contarAdministradoresVigentes(any())).thenReturn(1L);
+        assertTrue(servicio.restablecerContrasena(6, "Olvidó su contraseña", admin).isPresent());
+        assertNotEquals("original", mesa.getPasswordHash());
+        verify(auditoria).save(argThat(e -> e.getDetalle().contains("sin segunda firma")));
+    }
+
+    private SolicitudContrasena pedida(Usuario cuenta, Usuario quien) {
+        SolicitudContrasena s = SolicitudContrasena.builder().id(40L).usuario(cuenta).motivo("Olvidó su contraseña").solicitadaPor(quien).build();
+        when(solicitudes.findById(40L)).thenReturn(Optional.of(s));
+        return s;
+    }
+
+    @Test
+    void otroAdministradorApruebaYRecibeLaTemporal() {
+        Usuario mesa = cuentaSensible();
+        SolicitudContrasena s = pedida(mesa, admin);
+        Usuario otro = usuario(2, "otro.admin");
+        var temporal = servicio.aprobarContrasena(40L, otro);
+        assertTrue(encoder.matches(temporal.contrasena(), mesa.getPasswordHash()));
+        assertTrue(mesa.getDebeCambiarContrasena());
+        assertEquals(SolicitudContrasena.APROBADA, s.getEstado());
+        assertSame(otro, s.getResueltaPor());
+        verify(auditoria).save(argThat(e -> "RESETEO_CONTRASENA".equals(e.getAccion()) && e.getDetalle().contains("la pidió admin.tic")
+                && !e.getDetalle().contains(temporal.contrasena())));
+        assertThrows(IllegalStateException.class, () -> servicio.aprobarContrasena(40L, otro), "ya resuelta");
+    }
+
+    @Test
+    void nadieApruebaLoQuePidioNiSuPropiaCuenta() {
+        Usuario mesa = cuentaSensible();
+        pedida(mesa, admin);
+        assertThrows(IllegalStateException.class, () -> servicio.aprobarContrasena(40L, admin), "quien la pidió");
+        assertThrows(IllegalStateException.class, () -> servicio.aprobarContrasena(40L, mesa), "el dueño de la cuenta");
+        assertEquals("original", mesa.getPasswordHash());
+    }
+
+    @Test
+    void unaSolicitudRechazadaNoCambiaLaContrasena() {
+        Usuario mesa = cuentaSensible();
+        SolicitudContrasena s = pedida(mesa, admin);
+        servicio.rechazarContrasena(40L, "Ya la recordó", admin);
+        assertEquals(SolicitudContrasena.RECHAZADA, s.getEstado());
+        assertEquals("original", mesa.getPasswordHash());
     }
 
     @Test

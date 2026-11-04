@@ -7,6 +7,7 @@ import py.gov.asuncion.tic.gestion_documental.domain.*;
 import py.gov.asuncion.tic.gestion_documental.repository.AsignacionRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.AuditoriaSistemaRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.DependenciaRepository;
+import py.gov.asuncion.tic.gestion_documental.repository.SolicitudContrasenaRepository;
 import py.gov.asuncion.tic.gestion_documental.repository.UsuarioRepository;
 
 import java.time.LocalDate;
@@ -27,7 +28,7 @@ class DobleControlAsignacionesTest {
     private final AuditoriaSistemaRepository auditoria = mock(AuditoriaSistemaRepository.class);
     private final AdministracionService servicio = new AdministracionService(usuarios, asignaciones, dependencias, auditoria,
             mock(PoliticaAcceso.class), new BCryptPasswordEncoder(4),
-            new org.springframework.security.core.session.SessionRegistryImpl());
+            new org.springframework.security.core.session.SessionRegistryImpl(), mock(SolicitudContrasenaRepository.class));
 
     private final Usuario adminA = usuario(1, "admin.a");
     private final Usuario adminB = usuario(2, "admin.b");
