@@ -196,6 +196,22 @@ class MatrizAutorizacionTest {
     }
 
     @Test
+    void conClaveTemporalLaPantallaDeCambioCargaSusEstilos() throws Exception {
+        Usuario conTemporal = new Usuario();
+        conTemporal.setId(90);
+        conTemporal.setUsername("temporal");
+        conTemporal.setActivo(true);
+        conTemporal.setDebeCambiarContrasena(true);
+        when(usuarioRepository.findByUsernameAndActivoTrue("temporal")).thenReturn(Optional.of(conTemporal));
+
+        var pagina = mvc.perform(request(HttpMethod.GET, "/").with(user("temporal"))).andReturn().getResponse();
+        assertEquals("/cuenta/contrasena", pagina.getRedirectedUrl(), "todo lo demás lleva a cambiar la contraseña");
+        for (String ruta : List.of("/vendor/bootstrap/bootstrap.min.css", "/vendor/bootstrap-icons/bootstrap-icons.css", "/css/institucional.css", "/images/escudo.png")) {
+            assertEquals(200, mvc.perform(request(HttpMethod.GET, ruta).with(user("temporal"))).andReturn().getResponse().getStatus(), ruta);
+        }
+    }
+
+    @Test
     void lasRespuestasLlevanLasCabecerasDeSeguridad() throws Exception {
         var r = mvc.perform(request(HttpMethod.GET, "/login")).andReturn().getResponse();
         String csp = r.getHeader("Content-Security-Policy");

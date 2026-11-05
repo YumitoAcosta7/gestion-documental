@@ -1,6 +1,6 @@
 # Plan: empezar el piloto con una base limpia
 
-**Estado:** propuesta del 04/11/2026. Todavía no se ejecutó nada, y el script del paso 3 todavía no existe.
+**Estado:** propuesta del 04/11/2026. La copia a `.71` ya funciona. Los scripts del paso 3 están escritos en `db/piloto`, y todavía no se ensayaron.
 
 **Objetivo:** que el primer expediente real del piloto arranque sin datos de prueba: sin expedientes, cuentas ni bitácoras de prueba, y con la numeración desde el principio. Hoy es posible porque, según informó el usuario el 04/11/2026, todos los expedientes de producción son de prueba.
 
@@ -102,7 +102,7 @@ Tiene que decir `inactive` y mostrar los tres archivos con la hora actual.
 
 ### 3. Ensayo, sin tocar producción
 
-1. Escribir `db/piloto/crear_base_limpia.sh`, a partir del script de pruebas. Lee producción, nunca la modifica, y se detiene si la base de destino ya existe.
+1. Copiar al servidor `db/piloto/*.sh`, `db/seguridad/proteger_bitacoras.sh` y `db/seguridad/reforzar_bitacoras.sh`. `crear_base_limpia.sh` lee producción, nunca la modifica, y se detiene si la base de destino ya existe.
 2. Crear con él `gestion_documental_ensayo`.
 3. Instalar las protecciones de las bitácoras en esa base y verificarlas.
 4. Arrancar la aplicación contra esa base, con otra carpeta de PDF.
@@ -123,7 +123,7 @@ Lo ejecuta un administrador en el servidor. Los usuarios ya avisados.
 4. Renombrar la base actual a `gestion_documental_prueba_<fecha>`, y la nueva a `gestion_documental`.
 5. Mover `/var/lib/gestion-documental/pdf` a `pdf_prueba_<fecha>`, y crear la carpeta vacía con su dueño `gestion_documental`.
 6. Instalar `proteger_bitacoras.sh` y `reforzar_bitacoras.sh`, y comprobar con `--verificar`.
-7. Crear el primer administrador con su contraseña definida por esa misma persona (`db/herramientas/DefinirContrasena.java`).
+7. Crear el primer administrador con `db/piloto/crear_primer_admin.sh`, con el acto real. Esa persona cambia la contraseña temporal al entrar.
 8. Arrancar la aplicación y confirmar `Started GestionDocumentalApplication`.
 
 ### 5. Comprobar, o volver atrás
@@ -159,3 +159,19 @@ Lo ejecuta un administrador en el servidor. Los usuarios ya avisados.
 | Queda un dato real en la base anterior | Antes del corte, confirmar por escrito que no hay ninguno, porque alguien pudo cargarlo después del 04/11/2026 |
 | Una sola persona con las dos cuentas de administración | Zaimy Lobo presente en el paso 6 |
 | Falla el respaldo y nadie se entera | Revisión semanal, o agregar un aviso antes del piloto (ya pasó el 03/11/2026) |
+
+## Resultado del ensayo (05/11/2026)
+
+En `gestion_documental_ensayo`, sin tocar producción:
+
+- **Creación:** los catálogos coinciden con producción (581 dependencias, 6 tipos, 7 niveles, 18 feriados, 23 migraciones). Las demás tablas quedaron vacías, y no hubo tablas sin prever.
+- **Aplicación:** arrancó contra esa base sin migraciones pendientes.
+- **Cuentas:** primer administrador por script, segundo aprobado por el DBA, mesas aprobadas por otro administrador.
+- **Circuito:** `DGAF-2026-000001` se registró, se derivó, se recibió, tuvo acta y salida, y finalizó. "Verificar" dio "Íntegro", y la DGAF lo vio en "Respuestas recibidas".
+- **Bitácoras:** ÍNTEGRAS, con 7 y 14 filas.
+- **Control comprobado:** una cuenta sin asignación aprobada recibió 403 al registrar.
+- **Encontrado:** con clave temporal, la pantalla de cambio quedaba sin estilos, por no excluir `/vendor` del control. Corregido.
+
+**Sin ensayar todavía:** volver a correr el script con la comparación corregida, y la vuelta atrás renombrando bases.
+
+**Para el piloto:** una mesa de una sola persona no puede recibir por sus subordinadas sin usuarios, porque quien envía no confirma. Cada mesa debe tener al menos dos personas, o las unidades, sus cuentas.

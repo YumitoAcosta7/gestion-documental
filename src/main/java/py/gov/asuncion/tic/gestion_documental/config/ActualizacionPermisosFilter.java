@@ -31,7 +31,7 @@ public class ActualizacionPermisosFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String ruta = request.getServletPath();
-        return ruta.startsWith("/css/") || ruta.startsWith("/js/") || ruta.startsWith("/images/");
+        return ruta.startsWith("/css/") || ruta.startsWith("/js/") || ruta.startsWith("/images/") || ruta.startsWith("/vendor/");
     }
 
     @Override

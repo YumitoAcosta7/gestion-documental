@@ -284,3 +284,10 @@ Después, arrancar la versión anterior de la aplicación.
   - `auditoria_sistema`, 16 filas: `99af1d50ee92e7dce23365d42c6b86b2d3583433608c3ec08d9f4a8d22087da2`
 - **Para revisar:** la cuenta `griveros`, con `MESA_ENTRADA` en `DTIC-SA`. Falta confirmar quién la usa.
 - **Sin hacer:** la copia a `192.168.129.71`. El usuario confirmó que `.71` y `.73` son equipos distintos.
+
+**05/11/2026, 08:21.** Actualización con el PR #50 (quien envía un pase no lo confirma, "Respuestas recibidas"). Sin migraciones: sigue en V28.
+- **Respaldo previo:** `base_20261105_0820.dump`, copiado también a `192.168.129.71`.
+- **Aplicación:** arrancó a las 08:21:28. `/login` responde 200.
+- **Copia a otro equipo, configurada:** `respaldo@192.168.129.71:/srv/respaldos/gestion_documental`. A las 08:11, las huellas de la base y de los PDF coincidieron en los dos servidores. El usuario confirmó que son equipos físicos distintos.
+- **Falta confirmar:** la copia automática de las 22:00 del 05/11/2026, y que la bandeja cargue en producción con esta versión.
+- **Sin resolver:** la limpieza de los respaldos en `.71` y su cifrado.
