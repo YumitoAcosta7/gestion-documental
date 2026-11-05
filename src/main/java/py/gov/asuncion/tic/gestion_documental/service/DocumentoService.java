@@ -330,7 +330,8 @@ public class DocumentoService {
 
     // 🧭 Lo que muestra el modal de derivación: desde dónde se deriva y a dónde permite el canal
     // conReceptor = false: nadie usa todavía el sistema en esa dependencia (el modal la muestra deshabilitada)
-    public record DestinoPase(Integer id, String nombre, String sigla, String movimiento, boolean conReceptor) {}
+    // soloUsted = true: el único que podría recibirlo es quien lo envía, y eso no está permitido (también deshabilitada)
+    public record DestinoPase(Integer id, String nombre, String sigla, String movimiento, boolean conReceptor, boolean soloUsted) {}
 
     // soloElevar: el usuario no tiene el permiso de derivar; solo puede elevar el original a su superior
     public record OpcionesDerivacion(String custodia, boolean puedeDerivar, boolean soloElevar, List<DestinoPase> destinos) {}
@@ -355,6 +356,8 @@ public class DocumentoService {
                 .toList();
         java.util.Set<Integer> conReceptor = canal.isEmpty() ? java.util.Set.of()
                 : new java.util.HashSet<>(dependenciaRepository.findConReceptor(canal.stream().map(d -> d.nodo().id()).toList()));
+        java.util.Set<Integer> soloUsted = !exigirReceptor || conReceptor.isEmpty() ? java.util.Set.of()
+                : new java.util.HashSet<>(dependenciaRepository.findSinOtroReceptor(conReceptor, usuario.getId()));
         List<DestinoPase> destinos = canal.stream()
                 .map(d -> {
                     Organigrama.Nodo efectivo = organigrama.nodoEfectivo(d.nodo());
@@ -362,7 +365,7 @@ public class DocumentoService {
                     return new DestinoPase(d.nodo().id(),
                             esMesa ? efectivo.nombre() + " (mesa de entrada)" : d.nodo().nombre(),
                             esMesa ? efectivo.sigla() : d.nodo().sigla(), d.movimiento().name(),
-                            !exigirReceptor || conReceptor.contains(d.nodo().id()));
+                            !exigirReceptor || conReceptor.contains(d.nodo().id()), soloUsted.contains(d.nodo().id()));
                 })
                 .toList();
         return new OpcionesDerivacion(custodia.getNombreVisible(), puede, soloElevar, destinos);
@@ -944,6 +947,10 @@ public class DocumentoService {
             throw new IllegalStateException("Nadie puede recibir la devolución en " + depDestino.getNombreVisible()
                     + ". Consulte a un administrador antes de mover el original.");
         }
+        if (exigirReceptor && !dependenciaRepository.findSinOtroReceptor(List.of(depDestino.getId()), usuarioActual.getId()).isEmpty()) {
+            throw new IllegalStateException("Nadie más que usted puede recibir la devolución en " + depDestino.getNombreVisible()
+                    + ", y quien envía no puede confirmarla. Pida que se habilite a alguien de esa dependencia, o a otra persona en la mesa.");
+        }
 
         EstadoDocumento estadoAnterior = documento.getEstadoActual();
 
@@ -1063,6 +1070,7 @@ public class DocumentoService {
                 throw new IllegalStateException("Nadie usa todavía el sistema en: " + String.join(", ", sinReceptor)
                         + ". El pase quedaría sin recibir; envíelo en papel o pida que se habiliten usuarios.");
             }
+            exigirOtroReceptor(destinos, usuario, organigrama);
         }
         // Con un trámite esperando acuse, el original está en camino: nadie más puede pasarlo, ni en trámite
         // ni para informe o conocimiento, porque la dependencia emisora ya no lo tiene
@@ -2070,9 +2078,25 @@ public class DocumentoService {
                     a.getDependenciaEmisora().getNombreVisible(), receptora != null ? receptora.getNombreVisible() : "(sin receptora)",
                     a.getTipoPase(), a.getFechaHoraActuacion(),
                     FeriadoService.diasHabilesEntre(a.getFechaHoraActuacion().toLocalDate(), hoy, feriados),
-                    receptora == null || !conReceptor.contains(receptora.getId())));
+                    receptora == null || !conReceptor.contains(receptora.getId()) || soloLoRecibeQuienEnvio(a)));
         }
         return new AvisoPases(total, resultado);
+    }
+
+    // Quien envía no confirma su pase: si nadie más puede actuar por la receptora, no hay quién lo reciba
+    private boolean soloLoRecibeQuienEnvio(ActuacionDocumento pase) {
+        Dependencia receptora = pase.getDependenciaReceptoraPase();
+        return receptora != null && pase.getUsuario() != null
+                && !dependenciaRepository.findSinOtroReceptor(List.of(receptora.getId()), pase.getUsuario().getId()).isEmpty();
+    }
+
+    private void exigirOtroReceptor(List<Integer> destinos, Usuario usuario, Organigrama organigrama) {
+        List<String> soloUsted = dependenciaRepository.findSinOtroReceptor(destinos, usuario.getId()).stream()
+                .map(id -> organigrama.nodo(id).nombre()).toList();
+        if (!soloUsted.isEmpty()) {
+            throw new IllegalStateException("Nadie más que usted puede recibir este pase en " + String.join(", ", soloUsted)
+                    + ", y quien envía no puede confirmarlo. Pida que se habilite a alguien de esa dependencia, o a otra persona en la mesa.");
+        }
     }
 
     // Último día en que pudo emitirse un pase para que hoy ya lleve app.sla.dias-critico días hábiles
@@ -2102,7 +2126,8 @@ public class DocumentoService {
         }
         Dependencia receptora = pase.getDependenciaReceptoraPase();
         boolean sinReceptor = receptora == null || Boolean.FALSE.equals(receptora.getActivo())
-                || dependenciaRepository.findConReceptor(List.of(receptora.getId())).isEmpty();
+                || dependenciaRepository.findConReceptor(List.of(receptora.getId())).isEmpty()
+                || soloLoRecibeQuienEnvio(pase);
         if (!sinReceptor) {
             throw new IllegalStateException("La dependencia receptora tiene quién reciba el pase: lo confirma o rechaza ella, o lo retira la emisora.");
         }

@@ -118,6 +118,22 @@ class PasesTrabadosTest {
     }
 
     @Test
+    void siSoloLoPodriaRecibirQuienLoEnvioFiguraSinReceptorYSeRetira() {
+        Usuario quienEnvio = new Usuario();
+        quienEnvio.setId(7);
+        ActuacionDocumento a = pase(3, dgaf, 1);
+        a.setUsuario(quienEnvio);
+        when(dependenciaRepository.findSinOtroReceptor(List.of(101), 7)).thenReturn(List.of(101));
+        when(actuacionRepository.receptorasDePasesPendientes(1, true)).thenReturn(List.of(101));
+        when(actuacionRepository.contarPasesDemorados(eq(1), eq(true), any(), any())).thenReturn(1L);
+        when(actuacionRepository.pasesDemorados(eq(1), eq(true), any(), any(), eq(200))).thenReturn(List.of(a));
+
+        assertTrue(servicio.pasesTrabados(admin).pases().get(0).sinReceptor());
+        servicio.retirarPaseTrabado(3L, "Solo podría recibirlo quien lo envió", admin);
+        assertTrue(a.getAnulada());
+    }
+
+    @Test
     void siLaReceptoraTieneQuienLoRecibaElAdministradorNoLoRetira() {
         ActuacionDocumento a = pase(2, dgaf, 30);
         assertThrows(IllegalStateException.class, () -> servicio.retirarPaseTrabado(2L, "Pase demorado hace mucho", admin));

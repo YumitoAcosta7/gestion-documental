@@ -97,6 +97,30 @@ class UnidadDeExpedienteTest {
     }
 
     @Test
+    void siSoloLoPodriaRecibirQuienEnviaNoSeEnviaYSeAvisaEnLaLista() {
+        ReflectionTestUtils.setField(servicio, "exigirReceptor", true);
+        when(dependenciaRepository.findConReceptor(anyCollection())).thenReturn(List.of(40));
+        when(dependenciaRepository.findSinOtroReceptor(anyCollection(), eq(8))).thenReturn(List.of(40));
+
+        assertTrue(servicio.obtenerOpcionesDerivacion(200L, operadorRedes).destinos().get(0).soloUsted());
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> servicio.derivarDocumento(200L, List.of(40),
+                "Se eleva el memo de la unidad", TipoPase.TRAMITE, operadorRedes));
+        assertTrue(e.getMessage().contains("Nadie más que usted"));
+        verify(actuacionRepository, never()).save(any());
+    }
+
+    @Test
+    void siOtraPersonaPuedeRecibirloSeEnviaNormalmente() {
+        ReflectionTestUtils.setField(servicio, "exigirReceptor", true);
+        when(dependenciaRepository.findConReceptor(anyCollection())).thenReturn(List.of(40));
+        when(dependenciaRepository.findSinOtroReceptor(anyCollection(), eq(8))).thenReturn(List.of());
+
+        assertFalse(servicio.obtenerOpcionesDerivacion(200L, operadorRedes).destinos().get(0).soloUsted());
+        servicio.derivarDocumento(200L, List.of(40), "Se eleva el memo de la unidad", TipoPase.TRAMITE, operadorRedes);
+        verify(actuacionRepository).save(any());
+    }
+
+    @Test
     void conElOriginalEnCaminoNoSePasaNiSiquieraUnaCopia() {
         when(politicaAcceso.puede(operadorRedes, Accion.DERIVAR)).thenReturn(true);
         when(actuacionRepository.existePaseTramitePendiente(200L)).thenReturn(true);

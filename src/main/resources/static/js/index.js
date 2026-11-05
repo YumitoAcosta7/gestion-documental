@@ -63,12 +63,15 @@
                     aviso.classList.remove('d-none');
                     return;
                 }
+                // Quien envía no confirma su pase: si nadie más puede recibirlo, ese destino tampoco se ofrece
+                const habilitado = d => d.conReceptor && !d.soloUsted;
+                const marcaDestino = d => !d.conReceptor ? ' — sin usuarios en el sistema' : (d.soloUsted ? ' — solo usted podría recibirlo' : '');
                 selectUnico.innerHTML = '<option value="" selected disabled>Seleccione dependencia...</option>'
-                    + datos.destinos.map(d => `<option value="${d.id}" ${d.conReceptor ? '' : 'disabled'}>${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''} · ${ETIQUETA_MOVIMIENTO[d.movimiento] || ''}${d.conReceptor ? '' : ' — sin usuarios en el sistema'}</option>`).join('');
+                    + datos.destinos.map(d => `<option value="${d.id}" ${habilitado(d) ? '' : 'disabled'}>${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''} · ${ETIQUETA_MOVIMIENTO[d.movimiento] || ''}${marcaDestino(d)}</option>`).join('');
                 lista.innerHTML = datos.destinos.map(d => `
                     <div class="form-check">
-                        <input class="form-check-input check-dependencia" type="checkbox" name="dependenciaDestinoId" value="${d.id}" id="check_${d.id}" data-sin-receptor="${!d.conReceptor}" ${d.conReceptor ? '' : 'disabled'}>
-                        <label class="form-check-label small ${d.conReceptor ? '' : 'text-muted'}" for="check_${d.id}">${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''} <span class="text-muted">· ${ETIQUETA_MOVIMIENTO[d.movimiento] || ''}${d.conReceptor ? '' : ' — sin usuarios en el sistema'}</span></label>
+                        <input class="form-check-input check-dependencia" type="checkbox" name="dependenciaDestinoId" value="${d.id}" id="check_${d.id}" data-sin-receptor="${!habilitado(d)}" ${habilitado(d) ? '' : 'disabled'}>
+                        <label class="form-check-label small ${habilitado(d) ? '' : 'text-muted'}" for="check_${d.id}">${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''} <span class="text-muted">· ${ETIQUETA_MOVIMIENTO[d.movimiento] || ''}${marcaDestino(d)}</span></label>
                     </div>`).join('');
                 alternarTipoPase(document.getElementById('selectTipoPase').value);
                 enviar.disabled = false;
