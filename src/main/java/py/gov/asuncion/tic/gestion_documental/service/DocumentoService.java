@@ -331,7 +331,9 @@ public class DocumentoService {
     // 🧭 Lo que muestra el modal de derivación: desde dónde se deriva y a dónde permite el canal
     // conReceptor = false: nadie usa todavía el sistema en esa dependencia (el modal la muestra deshabilitada)
     // soloUsted = true: el único que podría recibirlo es quien lo envía, y eso no está permitido (también deshabilitada)
-    public record DestinoPase(Integer id, String nombre, String sigla, String movimiento, boolean conReceptor, boolean soloUsted) {}
+    // alcance: camino del destino (INTERNO, EXTERNO o ELEVAR). clase: INTENDENCIA, DIRECCION_GENERAL, DIRECCION o AREA
+    public record DestinoPase(Integer id, String nombre, String sigla, String movimiento, boolean conReceptor, boolean soloUsted,
+                              String alcance, String clase) {}
 
     // soloElevar: el usuario no tiene el permiso de derivar; solo puede elevar el original a su superior
     public record OpcionesDerivacion(String custodia, boolean puedeDerivar, boolean soloElevar, List<DestinoPase> destinos) {}
@@ -365,10 +367,32 @@ public class DocumentoService {
                     return new DestinoPase(d.nodo().id(),
                             esMesa ? efectivo.nombre() + " (mesa de entrada)" : d.nodo().nombre(),
                             esMesa ? efectivo.sigla() : d.nodo().sigla(), d.movimiento().name(),
-                            !exigirReceptor || conReceptor.contains(d.nodo().id()), soloUsted.contains(d.nodo().id()));
+                            !exigirReceptor || conReceptor.contains(d.nodo().id()), soloUsted.contains(d.nodo().id()),
+                            organigrama.alcance(custodia.getId(), d).name(), claseDeDestino(efectivo));
                 })
                 .toList();
         return new OpcionesDerivacion(custodia.getNombreVisible(), puede, soloElevar, destinos);
+    }
+
+    private static String claseDeDestino(Organigrama.Nodo nodo) {
+        if (nodo.padreId() == null) {
+            return "INTENDENCIA";
+        }
+        if (nodo.ordenNivel() < Organigrama.ORDEN_DIRECCION) {
+            return "DIRECCION_GENERAL";
+        }
+        return nodo.ordenNivel() == Organigrama.ORDEN_DIRECCION ? "DIRECCION" : "AREA";
+    }
+
+    // Un envío toma un solo camino. Al superior se eleva el original o se le manda una copia: no se le pide un informe
+    private void exigirUnSoloCamino(Dependencia custodia, List<Integer> destinos, TipoPase tipoPase, Organigrama organigrama) {
+        java.util.Set<Organigrama.Alcance> alcances = organigrama.alcances(custodia.getId(), destinos);
+        if (alcances.size() > 1) {
+            throw new IllegalArgumentException("Un envío no puede mezclar áreas propias, otras direcciones y el superior. Haga un envío para cada caso.");
+        }
+        if (alcances.contains(Organigrama.Alcance.ELEVAR) && tipoPase == TipoPase.INFORME) {
+            throw new IllegalArgumentException("Al superior se le eleva el original o se le envía una copia para conocimiento: no se le pide un informe.");
+        }
     }
 
     // 🔢 CUTI por cabecera (docs/diseno-fase2-multiarea.md §5): DTIC-2026-000001, DHAC-2026-000001...
@@ -1048,7 +1072,7 @@ public class DocumentoService {
         for (Integer depId : destinos) {
             if (!organigrama.puedePasar(custodia.getId(), depId)) {
                 throw new AccessDeniedException("El canal no permite pasar de " + custodia.getNombreVisible() + " a la dependencia seleccionada (ID "
-                        + depId + "): el expediente sube por su dependencia superior y pasa entre direcciones por sus mesas de entrada.");
+                        + depId + "): el expediente sube y baja de a un nivel, y las direcciones de una Dirección General se comunican por ella.");
             }
         }
         // Quien no tiene el permiso de derivar (un operador de una unidad) igual puede ELEVAR el mismo
@@ -1061,6 +1085,7 @@ public class DocumentoService {
                 throw new AccessDeniedException("Sin el permiso de derivar solo se puede elevar el expediente a la dependencia superior, con un pase de trámite.");
             }
         }
+        exigirUnSoloCamino(custodia, destinos, tipoPase, organigrama);
         // Auditoría M2: sin nadie que lo reciba, el pase quedaría pendiente para siempre
         if (exigirReceptor) {
             java.util.Set<Integer> conReceptor = new java.util.HashSet<>(dependenciaRepository.findConReceptor(destinos));

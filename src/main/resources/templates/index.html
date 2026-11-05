@@ -1026,6 +1026,20 @@
                         <div class="small text-muted mb-2" id="derivarDesde"></div>
                         <div class="alert alert-warning small py-2 d-none" id="derivarSinPermiso"></div>
 
+                        <!-- Cada envío toma un solo camino: la lista muestra solo sus destinos -->
+                        <div class="mb-3 d-none" id="contenedorAlcance">
+                            <span class="form-label fw-bold small d-block">¿A dónde va?</span>
+                            <div class="btn-group btn-group-sm w-100" role="group" aria-label="Camino del envío">
+                                <input type="radio" class="btn-check" name="alcanceEnvio" id="alcanceInterno" value="INTERNO" autocomplete="off">
+                                <label class="btn btn-outline-primary" for="alcanceInterno"><i class="bi bi-diagram-3 me-1"></i>Dentro de mi área</label>
+                                <input type="radio" class="btn-check" name="alcanceEnvio" id="alcanceExterno" value="EXTERNO" autocomplete="off">
+                                <label class="btn btn-outline-primary" for="alcanceExterno"><i class="bi bi-arrow-left-right me-1"></i>A otras direcciones</label>
+                                <input type="radio" class="btn-check" name="alcanceEnvio" id="alcanceElevar" value="ELEVAR" autocomplete="off">
+                                <label class="btn btn-outline-primary" for="alcanceElevar"><i class="bi bi-arrow-up me-1"></i>Elevar al superior</label>
+                            </div>
+                            <div class="form-text" id="ayudaAlcance"></div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label fw-bold small">Tipo de pase</label>
                             <select class="form-select form-select-sm" name="tipoPase" id="selectTipoPase" required>
@@ -1033,6 +1047,10 @@
                                 <option value="INFORME">📝 Para informe: se espera respuesta (una o varias)</option>
                                 <option value="CONOCIMIENTO">👁️ Para conocimiento: copia (una o varias)</option>
                             </select>
+                        </div>
+
+                        <div class="mb-2 d-none" id="contenedorBuscarDestino">
+                            <input type="search" class="form-control form-control-sm" id="buscarDestino" placeholder="Buscar por nombre o sigla..." aria-label="Buscar destino" autocomplete="off">
                         </div>
 
                         <!-- Trámite: un solo destino -->
@@ -1043,8 +1061,12 @@
 
                         <!-- Informe o conocimiento: uno o varios destinos -->
                         <div class="mb-3 d-none" id="contenedorMultiple">
-                            <label class="form-label fw-bold small">Dependencias destino</label>
-                            <div class="card p-2 bg-light" style="max-height: 180px; overflow-y: auto;" id="listaDestinosMultiple"></div>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-bold small mb-0">Dependencias destino</label>
+                                <span class="small text-muted" id="contadorDestinos"></span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mb-2 d-none" id="marcarDirecciones">Marcar todas mis direcciones</button>
+                            <div class="card d-block p-2 bg-light" style="max-height: 180px; overflow-y: auto;" id="listaDestinosMultiple"></div>
                         </div>
 
                         <div class="mb-3">
