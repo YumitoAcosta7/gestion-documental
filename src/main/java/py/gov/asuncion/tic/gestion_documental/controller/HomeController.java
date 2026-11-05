@@ -185,7 +185,10 @@ public class HomeController {
         List<Documento> paraSla = activos;
         c.medir("sla", () -> agregarIndicadoresSla(model, paraSla, resultadosBusqueda));
         c.medir("archivo", () -> agregarDatosArchivo(model, usuario));
-        model.addAttribute("documentosFinalizados", c.medir("finalizados", () -> documentoService.obtenerDocumentosFinalizadosParaUsuario(usuario)));
+        List<Documento> finalizados = c.medir("finalizados", () -> documentoService.obtenerDocumentosFinalizadosParaUsuario(usuario));
+        model.addAttribute("documentosFinalizados", finalizados);
+        model.addAttribute("reabribles", documentoService.reabribles(usuario, finalizados));
+        model.addAttribute("respuestasRecibidas", c.medir("respuestas", () -> documentoService.respuestasRecibidas(usuario)));
         model.addAttribute("reaperturasPendientes", documentoService.reaperturasPendientes(usuario));
 
         boolean conDependencia = usuario != null && usuario.getDependencia() != null;

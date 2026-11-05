@@ -229,9 +229,36 @@ public class DocumentoService {
         for (Documento d : documentos) {
             boolean loCargo = d.getUsuarioCargaIngreso() != null && usuario.getId().equals(d.getUsuarioCargaIngreso().getId());
             resultado.put(d.getId(), SituacionExpediente.de(d, custodiaDe(d), porDocumento.getOrDefault(d.getId(), List.of()),
-                    actuaPor, usuario.getDependencia(), new SituacionExpediente.Permisos(actuacion, derivar, salida, cierre, ingreso || loCargo)));
+                    actuaPor, usuario.getDependencia(), new SituacionExpediente.Permisos(actuacion, derivar, salida, cierre, ingreso || loCargo),
+                    usuario.getId()));
         }
         return resultado;
+    }
+
+    // De los finalizados de una lista, aquellos cuya reapertura puede pedir el usuario: con el permiso y el original
+    public Set<Long> reabribles(Usuario usuario, List<Documento> documentos) {
+        if (usuario == null || !politicaAcceso.puede(usuario, Accion.FORZAR_CIERRE)) {
+            return Set.of();
+        }
+        java.util.function.Predicate<Dependencia> actuaPor = canalService.alcance(usuario);
+        Set<Long> resultado = new HashSet<>();
+        for (Documento d : documentos) {
+            if (actuaPor.test(custodiaDe(d))) {
+                resultado.add(d.getId());
+            }
+        }
+        return resultado;
+    }
+
+    static final int DIAS_RESPUESTAS_RECIENTES = 30;
+
+    // Lo que pidió el ámbito del usuario y otra dependencia ya respondió: el expediente sale de sus bandejas al
+    // finalizar, y sin esto quien lo pidió no se entera
+    public List<Documento> respuestasRecibidas(Usuario usuario) {
+        if (usuario == null || !politicaAcceso.trabajaEnExpedientes(usuario)) {
+            return List.of();
+        }
+        return documentoRepository.respuestasRecibidas(usuario.getId(), LocalDate.now().minusDays(DIAS_RESPUESTAS_RECIENTES).atStartOfDay());
     }
 
     // Los expedientes de la lista que el usuario puede ver, conservando el orden. Misma regla que
@@ -1108,7 +1135,7 @@ public class DocumentoService {
         // 🛡️ REGISTRO DE AUDITORÍA
         auditoriaService.registrarEvento(
             doc,
-            "DERIVACION_MULTIPLE",
+            destinos.size() == 1 ? "DERIVACION" : "DERIVACION_MULTIPLE",
             estadoAnterior,
             doc.getEstadoActual(),
             "Pase de " + tipoPase.name().toLowerCase() + " desde " + custodia.getNombreVisible() + " a " + destinos.size()
@@ -1546,6 +1573,10 @@ public class DocumentoService {
         }
 
         Dependencia receptora = actuacion.getDependenciaReceptoraPase();
+        if (esQuienEnvio(actuacion, usuarioSesion)) {
+            throw new AccessDeniedException("No puede confirmar un pase que envió usted: lo confirma otra persona de la dependencia receptora. "
+                    + "Si lo envió por error, puede retirarlo.");
+        }
         if (!puedeConfirmarPase(actuacion, usuarioSesion)) {
             throw new AccessDeniedException("Solo la dependencia receptora del pase puede confirmar su recepción. "
                     + "Si el pase se envió por error, quien lo emitió puede retirarlo.");
@@ -1921,9 +1952,16 @@ public class DocumentoService {
     // 🛡️ Separación de funciones: confirma solo quien actúa por la receptora (ella misma o la mesa de su dirección).
     // El acuse prueba la entrega y mueve la custodia, así que quien envía no puede dar por recibido su propio pase;
     // si el receptor no lo va a recibir, el emisor lo retira (y el administrador, si no queda nadie que lo reciba).
+    // Una mesa o un responsable actúan también por sus subordinadas: por eso no alcanza con mirar la dependencia.
+    // Otra persona de la mesa sí puede recibir por una subordinada que no tiene usuarios.
     public boolean puedeConfirmarPase(ActuacionDocumento act, Usuario usuario) {
         return esPasePendiente(act) && usuario != null && act.getDependenciaReceptoraPase() != null
+                && !esQuienEnvio(act, usuario)
                 && canalService.puedeActuarPor(usuario, act.getDependenciaReceptoraPase());
+    }
+
+    private static boolean esQuienEnvio(ActuacionDocumento act, Usuario usuario) {
+        return act.getUsuario() != null && usuario != null && act.getUsuario().getId().equals(usuario.getId());
     }
 
     // Retira el pase la dependencia que lo emitió (o quien supervisa los pases del ámbito)
@@ -1937,7 +1975,7 @@ public class DocumentoService {
 
     // Rechaza la recepción únicamente la dependencia receptora
     public boolean puedeRechazarPase(ActuacionDocumento act, Usuario usuario) {
-        if (!esPasePendiente(act) || usuario == null || usuario.getDependencia() == null) {
+        if (!esPasePendiente(act) || usuario == null || usuario.getDependencia() == null || esQuienEnvio(act, usuario)) {
             return false;
         }
         Dependencia receptora = act.getDependenciaReceptoraPase();

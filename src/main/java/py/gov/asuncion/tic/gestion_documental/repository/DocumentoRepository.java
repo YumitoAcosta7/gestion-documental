@@ -138,6 +138,10 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
             SELECT DISTINCT a.documento_id AS id FROM actuaciones_documento a
              WHERE a.tipo_actuacion = 'PASE_INTERNO' AND NOT a.pase_confirmado AND NOT a.anulada
                AND a.dependencia_receptora_pase_id IN (SELECT id FROM deps)
+               AND a.usuario_id <> :usuarioId
+        ), en_camino AS (
+            SELECT DISTINCT a.documento_id AS id FROM actuaciones_documento a
+             WHERE a.tipo_actuacion = 'PASE_INTERNO' AND a.tipo_pase = 'TRAMITE' AND NOT a.pase_confirmado AND NOT a.anulada
         ), emitio AS (
             SELECT DISTINCT a.documento_id AS id FROM actuaciones_documento a WHERE a.dependencia_emisora_id IN (SELECT id FROM deps)
         )
@@ -161,6 +165,19 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     @Query(value = CTE_AMBITO + "SELECT d.* FROM documentos d WHERE d.estado_actual = 'FINALIZADO' AND "
                  + DOCUMENTO_ACCESIBLE + " ORDER BY d.fecha_hora_salida DESC NULLS LAST, d.id DESC LIMIT 50", nativeQuery = true)
     List<Documento> findFinalizadosAccesibles(@Param("usuarioId") Integer usuarioId);
+
+    // Respuestas a lo que pidió el ámbito del usuario: expedientes finalizados desde :desde, que tienen a ese ámbito
+    // como origen o destino de la salida, y cuyo original quedó a cargo de otra dependencia
+    @Query(value = CTE_AMBITO + """
+        SELECT d.* FROM documentos d
+         WHERE d.estado_actual = 'FINALIZADO' AND d.fecha_hora_salida >= :desde
+           AND (d.dependencia_origen_id IN (SELECT id FROM deps UNION SELECT id FROM propia)
+                OR d.dependencia_destino_salida_id IN (SELECT id FROM deps UNION SELECT id FROM propia))
+           AND COALESCE(d.dependencia_custodia_id, d.dependencia_registro_id, d.dependencia_origen_id)
+               NOT IN (SELECT id FROM deps UNION SELECT id FROM propia)
+         ORDER BY d.fecha_hora_salida DESC, d.id DESC LIMIT 10
+        """, nativeQuery = true)
+    List<Documento> respuestasRecibidas(@Param("usuarioId") Integer usuarioId, @Param("desde") LocalDateTime desde);
 
     // Máximo de resultados del buscador: para más, el usuario afina los filtros
     int MAXIMO_RESULTADOS_BUSQUEDA = 500;

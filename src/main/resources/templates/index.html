@@ -187,6 +187,34 @@
             </div>
         </div>
 
+        <!-- Respuestas a lo que pidió esta dependencia: al finalizar, el expediente sale de sus bandejas -->
+        <div th:if="${!#lists.isEmpty(respuestasRecibidas)}" class="card border-0 shadow-sm rounded-3 mb-4" id="respuestasRecibidas">
+            <div class="card-header bg-white py-2">
+                <span class="fw-bold"><i class="bi bi-reply-all me-2 text-primary" aria-hidden="true"></i>Respuestas recibidas</span>
+                <span class="small text-muted ms-1">Finalizadas por otra dependencia en los últimos 30 días</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 small">
+                    <thead class="table-light"><tr><th>Expediente</th><th>Asunto</th><th>Respondió</th><th>Fecha</th><th></th></tr></thead>
+                    <tbody>
+                    <tr th:each="doc : ${respuestasRecibidas}">
+                        <td class="text-nowrap">
+                            <div class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</div>
+                            <div class="text-muted" th:text="${'Salida: ' + (doc.nroNotaSalida != null ? doc.nroNotaSalida : 'S/N')}">Salida: 120/2026</div>
+                        </td>
+                        <td th:text="${doc.asunto}">Asunto</td>
+                        <td th:text="${doc.dependenciaCustodia != null ? doc.dependenciaCustodia.nombreVisible : '-'}">Dependencia</td>
+                        <td class="text-nowrap" th:text="${#temporals.format(doc.fechaHoraSalida, 'dd/MM/yyyy HH:mm')}">03/08/2026 15:00</td>
+                        <td class="text-end text-nowrap">
+                            <button type="button" class="btn btn-sm btn-outline-secondary btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}">Ver respuesta</button>
+                            <a th:href="@{/documentos/descargar-acuse/{id}(id=${doc.id})}" target="_blank" class="btn btn-sm btn-outline-secondary">Acuse</a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Pestañas de Navegación -->
         <ul class="nav nav-tabs mb-3 border-bottom-0" id="docTabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -549,7 +577,7 @@
                                             <a th:href="@{/documentos/descargar-acuse/{id}(id=${doc.id})}" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
                                                 <i class="bi bi-file-pdf me-1"></i> Acuse Final
                                             </a>
-                                            <button sec:authorize="hasAuthority('PERMISO_FORZAR_CIERRE')" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 ms-1"
+                                            <button th:if="${reabribles != null and reabribles.contains(doc.id)}" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 ms-1"
                                                     data-bs-toggle="modal" data-bs-target="#modalSolicitarReapertura" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"
                                                     title="Pedir que se reabra: la debe aprobar otra persona">
                                                 <i class="bi bi-unlock"></i> Reabrir
@@ -1048,7 +1076,7 @@
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Modalidad de Despacho <span class="text-danger">*</span></label>
                                 <select class="form-select form-select-sm" name="tipoRemision" id="selectTipoRemision">
-                                    <option value="NOTA_DIRECCION">📄 Con Nota / Remisión formal emitida por la Dirección de TIC</option>
+                                    <option value="NOTA_DIRECCION">📄 Con Nota / Remisión formal emitida por la Dirección</option>
                                     <option value="DIRECTO_INFORME">📑 Remisión Directa citando Informe(s) Técnico(s) de Dependencia(s)</option>
                                 </select>
                             </div>
