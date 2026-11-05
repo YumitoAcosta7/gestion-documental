@@ -1,76 +1,86 @@
 # Viabilidad de la prueba de campo (piloto en producción)
 
-Revisión del 03/11/2026, con producción en V22. Estado actualizado el 04/11/2026, con producción en V28.
+Revisión del 03/11/2026, con producción en V22. Estado actualizado el 05/11/2026, con producción en V28.
 
 ## Veredicto
 
-**Todavía no.** El código está listo, la infraestructura no. Con los 6 bloqueantes de abajo resueltos, sí se puede iniciar un piloto acotado.
+**En lo funcional sirve para un piloto acotado, pero todavía no conviene arrancarlo.** Lo que falta es sobre todo de operación y de personas, no de desarrollo. Con designaciones a tiempo, la preparación se estima en 1 a 2 semanas.
 
-Las reglas de negocio, la seguridad de la aplicación y la trazabilidad están en condiciones de operar con datos reales. Al hacer esta revisión, lo que faltaba era la forma de operar (el avance está en la tabla de estado):
-- la aplicación de producción corre desde una PC de desarrollo;
-- sin HTTPS;
-- sin respaldos automáticos;
-- con varias cuentas genéricas.
+Todos los expedientes de producción son de prueba, según informó el usuario el 04/11/2026. El piloto arranca con una base limpia ([plan-base-limpia.md](plan-base-limpia.md)).
 
-Un fallo de esa PC o una contraseña capturada en la red comprometerían expedientes reales.
-
-
-## Estado de los bloqueantes (04/11/2026)
+## Estado de los bloqueantes (05/11/2026)
 
 | # | Bloqueante | Estado |
 |---|---|---|
 | 1 | Servidor de aplicación | ✅ Servicio en 192.168.129.73 |
-| 2 | HTTPS | ✅ Con certificado interno. Falta que TIC lo instale en los equipos, o reemplazarlo por uno institucional |
-| 3 | Respaldos | 🟡 Restauración de la base probada. El automático del 03/11/2026 falló por falta de `tar`; el servicio funcionó a mano el 04/11/2026 y **falta confirmar la ejecución de las 22:00**. **Falta la copia a otro equipo** (`RESPALDO_DESTINO`) |
-| 4 | Cuentas nominales | 🟡 Administrar y tramitar ya están separados (`juan.admin` y `zlobo.admin`). **Faltan las cuentas por persona:** siguen las 6 genéricas |
+| 2 | HTTPS | 🟡 Funciona con certificado interno. **Falta instalarlo en los equipos del piloto,** o reemplazarlo por uno institucional |
+| 3 | Respaldos | 🟡 El automático local de las 22:00 funcionó el 04/11/2026. La copia a `192.168.129.71` funcionó a mano el 05/11/2026, con huellas coincidentes. **Falta confirmar la copia automática, definir la limpieza y el cifrado en `.71`, y probar una restauración completa con los PDF** |
+| 4 | Cuentas nominales | 🟡 Administrar y tramitar están separados (`juan.admin` y `zlobo.admin`). **Faltan las cuentas por persona:** la base limpia no copia las 6 genéricas ni a ningún usuario |
 | 5 | Autenticación de la base | ✅ Contraseña cambiada, SCRAM y sin `trust` |
-| 6 | Datos del piloto anterior | 🟡 `revisar_pendientes_salida.sql` no encontró casos y `revisar_pdf.sh` no informa faltantes. Faltan los pases sin acuse: 8 en la base, 7 en el panel el 04/11/2026 |
+| 6 | Datos de prueba | 🟡 El corte a la base limpia los deja fuera, y se conservan en la base anterior y en el respaldo. Está ensayado de punta a punta. **Falta hacerlo:** es el último paso |
+
+## Lo que falta antes de arrancar
+
+### Técnico
+
+- [ ] Instalar en producción los PR #56 (derivación interna y externa) y #57 (reparto). El último registrado es el PR #54, instalado el 05/11/2026 a las 09:27; falta anotarlo en `docs/pase-produccion.md`.
+- [ ] Confirmar la copia automática de las 22:00 en `.71`.
+- [ ] Definir la limpieza y el cifrado de las copias en `.71`.
+- [ ] Probar una restauración completa, incluidos los PDF.
+- [ ] Instalar el certificado en los equipos del piloto.
+- [ ] Cargar los feriados trasladables y los asuetos de 2026.
+- [ ] Separar los roles de PostgreSQL antes del corte.
+- [ ] Revisar M11 (`docs/auditoria-logica-negocio.md`): un trámite interno solo termina con una salida externa.
+- [ ] Pasar OWASP ZAP (modo baseline) contra la base de pruebas.
+- [ ] Hacer el corte a la base limpia.
+
+### Personas y actos
+
+- [ ] Lista de personas del piloto, con su dependencia, rol y acto administrativo. Producción todavía no tiene cuentas en la DGAF.
+- [ ] Al menos dos personas por mesa, o cuentas en sus dependencias subordinadas: quien envía un pase no puede confirmarlo.
+- [ ] Un acto real para los dos administradores.
+- [ ] Zaimy Lobo con sus propias contraseñas. Juan Carlos Acosta operó `zlobo` y `zlobo.admin` durante las pruebas: hasta que eso cambie, el doble control no es real (`docs/pase-produccion.md`, 04/11/2026, 13:07).
+- [ ] Capacitación a mesas y responsables. Para el operador, el punto clave es "Derivar / Elevar" en lugar de crear un documento nuevo.
+- [ ] Quién hace la verificación semanal de la huella, y dónde se guarda la última.
+- [ ] Escudo oficial y confirmación de Comunicación sobre el color y el logo "ASU".
+
+### Decisiones
+
+- [ ] **Consulta a Asuntos Jurídicos:** cómo se concilia la regla de pasar por la Dirección General y de nivel en nivel con el art. 50 de la Ley 6715/21 y el art. 3 de la Res. 2653/12. También el cómputo de plazos entre niveles, la constancia de las copias y el acto necesario para el piloto. No frena técnicamente el piloto, pero conviene tener la respuesta antes de presentarlo como procedimiento.
+- [ ] Copias para conocimiento: acuse en PDF, como hoy, o un "visto" registrado en el sistema.
+- [ ] Dirección que acompaña a la DTIC. Con la DGAF, sus direcciones solo participan si tienen usuarios.
 
 ## Lo que está listo
 
 | Área | Estado |
 |---|---|
 | Unidad de expediente | Un asunto, un CUTI, con serie por cabecera. Se elevan los documentos sin crear expedientes nuevos. Se rechazan los documentos repetidos. Las respuestas quedan cosidas a su pedido, y se registra el legajo de la salida. Se quitó la salida directa. |
-| Custodia | Solo quien tiene el original deriva, devuelve, da salida o agrega actuaciones. Con el original en camino, no se modifica nada. |
-| Acceso | Ámbito por asignación y vigencia, con control en el servidor de cada operación. Matriz de autorización automatizada. La administración está separada de los expedientes, con doble control (dos administradores: `juan.admin` y `zlobo.admin`, que no tramitan). |
+| Custodia | Solo quien tiene el original deriva, devuelve, da salida o agrega actuaciones. Con el original en camino, no se modifica nada. Traslado de custodia con doble control. |
+| Canal | Se sube y se baja de a un nivel, y las direcciones de una Dirección General se comunican por ella. Cada envío toma un solo camino: dentro del área, a otras direcciones o al superior. El servidor lo controla. |
+| Reparto | Quien recibe una copia o un pedido de informe, sin tener el original, lo baja a su nivel inferior. Cada nivel responde por el suyo. |
+| Acceso | Ámbito por asignación y vigencia, con control en el servidor de cada operación. Matriz de autorización automatizada. La administración está separada de los expedientes, con doble control. |
 | Sesiones | Bloqueo por usuario y por IP. Las sesiones se cierran al dar de baja, restablecer o cambiar la contraseña. Vencen a los 30 minutos sin actividad. |
 | Contenido | CSP estricta sin scripts en línea, bibliotecas servidas por la propia aplicación (sin CDN) y cookies `HttpOnly`/`SameSite`. Los PDF se analizan con PDFBox. |
-| Trazabilidad | Bitácoras inmutables, propiedad de otro rol, con huella SHA-256 encadenada e IP. Verificación disponible y ÍNTEGRA en las dos bases. |
-| Rendimiento | Medido con 200 000 expedientes: listas de 12 a 84 ms, página principal en 1,5 s. Buscador con trigramas. |
-| Pruebas | 230 automáticas: 229 pasan y 1 se saltea. Flujos probados en pantalla sobre la base de pruebas. |
+| Trazabilidad | Bitácoras inmutables, propiedad de otro rol, con huella SHA-256 encadenada e IP. Verificación disponible. |
+| Rendimiento | Medido con 200 000 expedientes: listas de 12 a 84 ms, página principal en 1,5 s. Buscador con trigramas. No se probó con muchos usuarios a la vez. |
+| Pruebas | 266 automáticas: 265 pasan y 1 se saltea. Pedido de PC y reparto probados en pantalla, con varias cuentas, sobre la base de pruebas. |
+| Material | Manual de uso y presentación ejecutiva en `docs/material`. |
 
-## Bloqueantes antes del "Go"
+## Sin probar con cuentas reales
 
-1. **Servidor de aplicación.**
-   - **Hoy:** producción se arranca con `mvnw spring-boot:run` desde una PC de desarrollo. Si esa PC se apaga, se reinicia o se usa para otra cosa, el sistema se cae. Al reiniciar se cierran todas las sesiones.
-   - **Hace falta:** empaquetar el `.jar` y correrlo como servicio, con arranque automático, en un servidor o una PC dedicada.
-2. **HTTPS.**
-   - **Hoy:** las contraseñas y los expedientes viajan sin cifrar por la red municipal.
-   - **Hace falta:** un certificado (un proxy inverso alcanza), `APP_COOKIE_SEGURA=true` y `server.forward-headers-strategy=native`, para que la bitácora registre la IP real.
-3. **Respaldos automáticos y restauración probada.**
-   - **Hoy:** los respaldos son manuales, y los PDF están en el disco de la PC de la aplicación.
-   - **Hace falta:** un `pg_dump` diario de `gestion_documental` y una copia diaria de la carpeta de PDF a otro equipo, más una restauración completa probada en la base de pruebas.
-4. **Cuentas nominales.**
-   - **Hoy:** en producción hay cuentas genéricas: `director_tic`, `jefe_bd`, `jefe_operativo`, `jefe_soporte`, `encargado_soporte`, `secretaria_tic`. Una bitácora que registra "Jefe Dpto." no identifica a una persona y no sirve como prueba.
-   - **Hace falta:** crear una cuenta por persona y dar de baja las genéricas. La baja conserva su historial.
-   - **Hoy el doble control no es real:** Juan Carlos Acosta operó también `zlobo` y `zlobo.admin` durante la separación de cuentas. Antes del piloto, Zaimy Lobo cambia esas dos contraseñas, y cada administrador usa solo su cuenta (`docs/pase-produccion.md`, 04/11/2026, 13:07).
-   - **Separar administrar de tramitar (decisión D3): hecho el 04/11/2026,** antes de instalar la V28. Administran `juan.admin` y `zlobo.admin`; `juan.acosta` (`RESPONSABLE`) y `zlobo` (`MESA_ENTRADA`) solo tramitan. La consulta de la sección "Cuentas" de `docs/auditoria-logica-negocio.md` debe seguir saliendo vacía.
-5. **Autenticación de la base de producción.**
-   - Cambiar la contraseña con `\password gestion_documental` y guardarla en SCRAM.
-   - Quitar la regla `trust` de `127.0.0.1`, encontrada el 03/11/2026: cualquier programa del servidor podía entrar como superusuario sin contraseña.
-   - Los pasos están en `docs/despliegue-servidor.md`, sección 1b.
-6. **Datos del piloto anterior.**
-   - Resolver los pases sin acuse desde agosto y septiembre (8 en la base). Administración → Pases trabados muestra 7, porque no incluye el de `TIC-2026-000003`, que está finalizado.
-   - Revisar los expedientes que muestre `db/herramientas/revisar_pendientes_salida.sql`.
-   - **Todos los expedientes de producción son de prueba, según informó el usuario el 04/11/2026; todavía no hay ninguno real.** Decidir antes del piloto si se cierran o si se empieza con una base limpia, conservando un respaldo de la actual.
-   - `TIC-2026-000003` es de prueba, según informó el usuario: su acuse vigente es un PDF cualquiera, sin valor de constancia. Si estos expedientes se conservan, deben quedar identificados como datos de prueba (`docs/pase-produccion.md`, 04/11/2026, 13:07).
+Están cubiertos por pruebas automáticas, salvo el marcado de todas las dependencias y el texto del aviso al responder. La base de pruebas no tiene receptores en las direcciones de la DGAF.
 
-## Antes del "Go", sin ser bloqueantes
+- El reparto de una Dirección General a sus direcciones, y el marcado de todas.
+- Responder sin esperar a las áreas, y el aviso que lo anticipa.
+- El bloqueo de pases entre direcciones de una misma Dirección General.
 
-- Cargar los feriados trasladables y los asuetos de 2026.
-- Pasar OWASP ZAP (modo baseline) contra la base de pruebas.
-- Capacitar a las mesas de entrada y a los responsables del piloto. Para el operador, el punto clave es "Derivar / Elevar" en lugar de crear un documento nuevo.
-- Acordar quién hace la verificación semanal de la huella y dónde se guarda la última.
+## Riesgos conocidos para el piloto
+
+- **Plazos:** el sistema usa un plazo general, de 5 y 10 días, o de 2 y 4 si es urgente. La Res. 2653/12 fija 48 horas para las mesas y 8 días hábiles para informes y dictámenes, así que avisa tarde a las mesas. Durante el piloto se controla en el seguimiento semanal.
+- **Protección en la base:** quedan pendientes M5 y M8. Afectan a quien tenga acceso directo a la base.
+- **Interfaz:** a 1280 píxeles la tabla corta el botón "Más", algunos encabezados de ventanas no siguen el tema, y aparecen códigos crudos como `PASE_CONFIRMADO`.
+- **Documentos informativos archivados:** la opción de repartir no aparece en la pestaña de Archivo físico.
+- **Una sola persona en una mesa:** no puede enviar a una subordinada sin usuarios, porque nadie más podría recibirlo.
 
 ## Propuesta de alcance del piloto
 
@@ -80,6 +90,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 - **En paralelo:** se sigue llevando el libro de mesa de entrada en papel.
 - **Seguimiento semanal:** pases trabados, demoras en rojo, verificación de la huella y observaciones de los usuarios.
 - **Criterio para ampliar:** ningún expediente perdido o duplicado, las bitácoras ÍNTEGRAS y ningún error que obligue a corregir datos a mano.
+- **Fuera de alcance:** la consulta de ciudadanos, la carátula y la contraseña, y la integración con el seguimiento de expedientes (SISE), que queda para una fase futura.
 
 ## Pendientes técnicos que pueden esperar al piloto
 
@@ -87,3 +98,4 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 - Cargar los contadores después de mostrar la página, para ámbitos muy grandes como la Intendencia.
 - OWASP Dependency-Check en cada versión.
 - Inicio de sesión con LDAP de Carbonio.
+- Plazos por etapa según la Res. 2653/12, y registro del urgimiento de la Ley 4679/12.
