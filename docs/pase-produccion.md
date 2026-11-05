@@ -273,3 +273,14 @@ Después, arrancar la versión anterior de la aplicación.
   - las bitácoras con la verificación de huella;
   - la IP real del usuario en la auditoría;
   - la restauración completa de los PDF.
+
+**05/11/2026, 07:18.** Actualización con los PR #48 (logos, plan de base limpia) y #49 (Bootstrap y sus íconos servidos desde la aplicación). Sin migraciones: sigue en V28.
+- **Respaldo automático:** el del 04/11/2026 a las 22:00 terminó bien, con base, PDF y huellas. Queda confirmado el arreglo del fallo anterior.
+- **Respaldo previo:** `base_20261105_0718.dump`, con sus PDF y huellas. Control de PDF: 0 faltantes, 0 alterados, 1 versión anterior sin archivo y 24 sobrantes.
+- **Aplicación:** arrancó a las 07:18:45. `/login` responde 200 y ya no referencia `cdn.jsdelivr.net`.
+- **En pantalla, según informó el usuario:** el acceso muestra los logos, `juan.admin` ve solo Administración y `juan.acosta`, su bandeja.
+- **Bitácoras, verificadas con `--verificar`:** ÍNTEGRAS.
+  - `auditorias_documento`, 26 filas: `4a72c3eac157d8eaeeae8bb40fc119357d1bd6f065fc0ea54c4f78a2baff466e`
+  - `auditoria_sistema`, 16 filas: `99af1d50ee92e7dce23365d42c6b86b2d3583433608c3ec08d9f4a8d22087da2`
+- **Para revisar:** la cuenta `griveros`, con `MESA_ENTRADA` en `DTIC-SA`. Falta confirmar quién la usa.
+- **Sin hacer:** la copia a `192.168.129.71`. El usuario confirmó que `.71` y `.73` son equipos distintos.

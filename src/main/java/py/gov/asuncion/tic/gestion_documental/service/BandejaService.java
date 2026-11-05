@@ -33,6 +33,7 @@ public class BandejaService {
         EN_MI_PODER("En mi poder", """
             d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO', 'ANULADO')
             AND d.dependencia_custodia_id IN (SELECT id FROM deps)
+            AND d.id NOT IN (SELECT id FROM en_camino)
             """),
         INFORMES_PENDIENTES("Informes pendientes", """
             d.estado_actual = 'EN_ESPERA_INFORME'
@@ -52,7 +53,8 @@ public class BandejaService {
             """),
         EN_SEGUIMIENTO("En seguimiento", """
             d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO', 'ANULADO')
-            AND (d.dependencia_custodia_id IS NULL OR d.dependencia_custodia_id NOT IN (SELECT id FROM deps))
+            AND (d.dependencia_custodia_id IS NULL OR d.dependencia_custodia_id NOT IN (SELECT id FROM deps)
+                 OR d.id IN (SELECT id FROM en_camino))
             AND (d.dependencia_registro_id IN (SELECT id FROM deps) OR d.id IN (SELECT id FROM emitio))
             """);
 
@@ -77,6 +79,8 @@ public class BandejaService {
                 .replace(DocumentoRepository.DOCUMENTO_ACCESIBLE, "acc.id IS NOT NULL")
                 .replace(DocumentoRepository.EN_ACC, "acc.id IS NOT NULL")
                 .replace("d.id IN (SELECT id FROM recibir)", "recibir.id IS NOT NULL")
+                .replace("d.id NOT IN (SELECT id FROM en_camino)", "en_camino.id IS NULL")
+                .replace("d.id IN (SELECT id FROM en_camino)", "en_camino.id IS NOT NULL")
                 .replace("d.id IN (SELECT id FROM emitio)", "emitio.id IS NOT NULL");
     }
 
@@ -133,6 +137,7 @@ public class BandejaService {
                   FROM documentos d
                   LEFT JOIN acc ON acc.id = d.id
                   LEFT JOIN recibir ON recibir.id = d.id
+                  LEFT JOIN en_camino ON en_camino.id = d.id
                   LEFT JOIN emitio ON emitio.id = d.id
                  WHERE d.estado_actual NOT IN ('FINALIZADO', 'ARCHIVADO', 'ANULADO')
                 """);

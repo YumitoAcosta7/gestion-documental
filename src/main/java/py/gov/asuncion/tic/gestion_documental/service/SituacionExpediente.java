@@ -45,6 +45,12 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
 
     public static SituacionExpediente de(Documento doc, Dependencia custodia, List<ActuacionDocumento> actuaciones,
                                          Predicate<Dependencia> actuaPor, Dependencia propia, Permisos permisos) {
+        return de(doc, custodia, actuaciones, actuaPor, propia, permisos, null);
+    }
+
+    // usuarioId: quien mira. Un pase que envió esa misma persona no es algo que le toque recibir
+    public static SituacionExpediente de(Documento doc, Dependencia custodia, List<ActuacionDocumento> actuaciones,
+                                         Predicate<Dependencia> actuaPor, Dependencia propia, Permisos permisos, Integer usuarioId) {
         EstadoDocumento estado = doc.getEstadoActual();
         boolean abierto = estado != EstadoDocumento.FINALIZADO && estado != EstadoDocumento.ARCHIVADO && estado != EstadoDocumento.ANULADO;
         boolean tieneOriginal = custodia != null && actuaPor.test(custodia);
@@ -56,6 +62,7 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
         // El trámite primero: es el que entrega el original
         ActuacionDocumento recibir = pendientes.stream()
                 .filter(p -> p.getDependenciaReceptoraPase() != null && actuaPor.test(p.getDependenciaReceptoraPase()))
+                .filter(p -> usuarioId == null || p.getUsuario() == null || !usuarioId.equals(p.getUsuario().getId()))
                 .min(Comparator.comparing((ActuacionDocumento p) -> p.getTipoPase() == TipoPase.TRAMITE ? 0 : 1))
                 .orElse(null);
         ActuacionDocumento retirar = pendientes.stream()

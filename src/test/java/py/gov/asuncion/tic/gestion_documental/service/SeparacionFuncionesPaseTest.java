@@ -118,6 +118,38 @@ class SeparacionFuncionesPaseTest {
     }
 
     @Test
+    void quienEnvioNoConfirmaAunqueSuRolAbarqueALaReceptora() {
+        // Caso observado en pruebas: la mesa de la DTIC derivó a su Departamento Operativo y veía "Confirmar recepción"
+        Usuario mesaConSubordinadas = new Usuario();
+        mesaConSubordinadas.setId(3);
+        mesaConSubordinadas.setDependencia(dtic);
+        when(canalService.puedeActuarPor(mesaConSubordinadas, dgaf)).thenReturn(true);
+        pase.setUsuario(mesaConSubordinadas);
+
+        assertFalse(servicio.puedeConfirmarPase(pase, mesaConSubordinadas));
+        assertFalse(servicio.puedeRechazarPase(pase, mesaConSubordinadas));
+        AccessDeniedException e = assertThrows(AccessDeniedException.class,
+                () -> servicio.confirmarRecepcionPaseInterno(5L, acuse(), mesaConSubordinadas));
+        assertTrue(e.getMessage().contains("envió usted"));
+        assertFalse(pase.getPaseConfirmado());
+        assertEquals(dtic, expediente.getDependenciaCustodia());
+        verifyNoInteractions(archivoService);
+    }
+
+    @Test
+    void otraPersonaDeLaMesaSiRecibePorLaSubordinada() {
+        Usuario quienEnvia = new Usuario();
+        quienEnvia.setId(3);
+        Usuario otraPersona = new Usuario();
+        otraPersona.setId(4);
+        otraPersona.setDependencia(dtic);
+        when(canalService.puedeActuarPor(otraPersona, dgaf)).thenReturn(true);
+        pase.setUsuario(quienEnvia);
+
+        assertTrue(servicio.puedeConfirmarPase(pase, otraPersona));
+    }
+
+    @Test
     void elEmisorConservaElRetiroYNoRechazaPorLaReceptora() {
         assertTrue(servicio.puedeRetirarPase(pase, mesaDtic));
         assertFalse(servicio.puedeRechazarPase(pase, mesaDtic));

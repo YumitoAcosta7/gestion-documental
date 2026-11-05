@@ -62,6 +62,25 @@ class SituacionExpedienteTest {
     }
 
     @Test
+    void loQueEnvioUnoMismoNoSeOfreceParaRecibir() {
+        Usuario yo = new Usuario();
+        yo.setId(50);
+        ActuacionDocumento propio = pase(7, nosotros, nosotros, TipoPase.TRAMITE, false, 1);
+        propio.setUsuario(yo);
+        Documento d = doc(EstadoDocumento.EN_REVISION);
+
+        SituacionExpediente mia = SituacionExpediente.de(d, nosotros, List.of(propio), actuaPor, nosotros, mesa, 50);
+        assertEquals(Tipo.EN_CAMINO, mia.tipo());
+        assertNull(mia.paseRecibir());
+        assertFalse(mia.puedeRechazar());
+        assertEquals(7L, mia.paseRetirar(), "lo que envió sigue pudiendo retirarlo");
+
+        SituacionExpediente deOtraPersona = SituacionExpediente.de(d, nosotros, List.of(propio), actuaPor, nosotros, mesa, 51);
+        assertEquals(Tipo.RECIBIR, deOtraPersona.tipo());
+        assertEquals(7L, deOtraPersona.paseRecibir());
+    }
+
+    @Test
     void quienLoTieneDerivaYSoloLaMesaDaSalida() {
         SituacionExpediente deLaMesa = de(doc(EstadoDocumento.EN_REVISION), nosotros, mesa);
         assertEquals(Tipo.EN_PODER, deLaMesa.tipo());
