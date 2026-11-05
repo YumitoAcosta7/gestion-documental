@@ -1,6 +1,6 @@
 # Plan: empezar el piloto con una base limpia
 
-**Estado:** propuesta del 04/11/2026. La copia a `.71` ya funciona. Los scripts del paso 3 están escritos en `db/piloto`, y todavía no se ensayaron.
+**Estado:** propuesta del 04/11/2026. La copia a `.71` ya funciona. Los scripts del paso 3 están en `db/piloto` y se ensayaron el 05/11/2026. El corte todavía no se hizo.
 
 **Objetivo:** que el primer expediente real del piloto arranque sin datos de prueba: sin expedientes, cuentas ni bitácoras de prueba, y con la numeración desde el principio. Hoy es posible porque, según informó el usuario el 04/11/2026, todos los expedientes de producción son de prueba.
 
@@ -172,6 +172,8 @@ En `gestion_documental_ensayo`, sin tocar producción:
 - **Control comprobado:** una cuenta sin asignación aprobada recibió 403 al registrar.
 - **Encontrado:** con clave temporal, la pantalla de cambio quedaba sin estilos, por no excluir `/vendor` del control. Corregido.
 
-**Sin ensayar todavía:** volver a correr el script con la comparación corregida, y la vuelta atrás renombrando bases.
+**También ensayado:** el script corregido terminó sin avisos, y la vuelta atrás renombrando bases funcionó. Las dos bases de ensayo se borraron: quedan `gestion_documental` y `gestion_documental_pruebas`.
+
+**No se ensayó:** mover la carpeta de PDF. Se hace con la aplicación detenida, y se vuelve atrás renombrándola.
 
 **Para el piloto:** una mesa de una sola persona no puede recibir por sus subordinadas sin usuarios, porque quien envía no confirma. Cada mesa debe tener al menos dos personas, o las unidades, sus cuentas.
