@@ -282,7 +282,7 @@ Después, arrancar la versión anterior de la aplicación.
 - **Bitácoras, verificadas con `--verificar`:** ÍNTEGRAS.
   - `auditorias_documento`, 26 filas: `4a72c3eac157d8eaeeae8bb40fc119357d1bd6f065fc0ea54c4f78a2baff466e`
   - `auditoria_sistema`, 16 filas: `99af1d50ee92e7dce23365d42c6b86b2d3583433608c3ec08d9f4a8d22087da2`
-- **Para revisar:** la cuenta `griveros`, con `MESA_ENTRADA` en `DTIC-SA`. Falta confirmar quién la usa.
+- **Cuenta `griveros`, aclarada:** es de Giovanni Riveros, de la mesa de entrada de la Dirección de TIC, según informó el usuario. Es una cuenta nominal, de trabajo diario.
 - **Sin hacer:** la copia a `192.168.129.71`. El usuario confirmó que `.71` y `.73` son equipos distintos.
 
 **05/11/2026, 08:21.** Actualización con el PR #50 (quien envía un pase no lo confirma, "Respuestas recibidas"). Sin migraciones: sigue en V28.
@@ -291,3 +291,9 @@ Después, arrancar la versión anterior de la aplicación.
 - **Copia a otro equipo, configurada:** `respaldo@192.168.129.71:/srv/respaldos/gestion_documental`. A las 08:11, las huellas de la base y de los PDF coincidieron en los dos servidores. El usuario confirmó que son equipos físicos distintos.
 - **Falta confirmar:** la copia automática de las 22:00 del 05/11/2026, y que la bandeja cargue en producción con esta versión.
 - **Sin resolver:** la limpieza de los respaldos en `.71` y su cifrado.
+
+**05/11/2026, 08:57.** Actualización con el PR #51 (estilos de la pantalla de clave temporal). Sin migraciones: sigue en V28.
+- **Respaldo previo:** `base_20261105_0856.dump`, copiado también a `192.168.129.71`. Control de PDF: 0 faltantes y 0 alterados.
+- **Aplicación:** arrancó a las 08:57:24. `/login` responde 200.
+- **En pantalla, según informó el usuario:** `juan.acosta` ve su bandeja sin errores, y sin expedientes en ella. Es la primera comprobación de las bandejas en producción desde el PR #50.
+- **Sin comprobar:** la pantalla de clave temporal vista en un navegador, y la copia automática de las 22:00.
