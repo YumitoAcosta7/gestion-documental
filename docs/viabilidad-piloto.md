@@ -23,7 +23,7 @@ Todos los expedientes de producción son de prueba, según informó el usuario e
 
 ### Técnico
 
-- [ ] Instalar en producción los PR #56 (derivación interna y externa) y #57 (reparto). El último registrado es el PR #54, instalado el 05/11/2026 a las 09:27; falta anotarlo en `docs/pase-produccion.md`.
+- [x] Instalar en producción los PR #56 (derivación interna y externa) y #57 (reparto): instalados el 05/11/2026, servicio activo desde las 14:09:40. Falta verlos en pantalla en producción.
 - [ ] Confirmar la copia automática de las 22:00 en `.71`.
 - [ ] Definir la limpieza y el cifrado de las copias en `.71`.
 - [ ] Probar una restauración completa, incluidos los PDF.
