@@ -170,6 +170,8 @@ Desde la dependencia que tiene la custodia, los destinos permitidos son tres:
 
 Queda por consultar con Asuntos Jurídicos cómo se concilia esta regla con el art. 50 de la Ley 6715/21 y el art. 3 de la Res. 2653/12, que hablan de comunicar o remitir directamente los pedidos de informe.
 
+**Una copia o un pedido de informe también baja de a un nivel** (decisión del 05/11). Quien lo recibe lo reparte a su nivel inmediato inferior sin mover el original, y una Dirección General puede hacerlo a todas sus direcciones a la vez. Cada nivel consolida las respuestas de sus áreas y responde a quien le pidió.
+
 Por ejemplo, de Hacienda a la DTIC:
 
 ```

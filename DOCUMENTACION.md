@@ -230,6 +230,11 @@ Reglas adicionales:
   - *Dentro de mi área*: el nivel inmediato inferior. Una Dirección General puede marcar todas sus direcciones a la vez.
   - *A otras direcciones*: las otras Direcciones Generales y direcciones sin Dirección General.
   - *Elevar al superior*: trámite o copia para conocimiento. Al superior no se le pide un informe.
+- **Reparto:** quien recibió una copia o un pedido de informe, sin tener el original, lo baja al nivel inmediato inferior con "Repartir a mis áreas" (`POST /documentos/repartir`, permiso `DERIVAR`). Así llega de la Dirección General a la Dirección, al Departamento y a la Unidad.
+  - El original no se mueve. El pase nuevo guarda en `actuacion_padre_id` el pase recibido del que sale.
+  - Una copia se reparte como copia. Un pedido se reparte como pedido mientras siga sin responder, o como copia.
+  - Cada dependencia responde su propio pedido: las respuestas de sus áreas no cierran el que le hicieron a ella. Los pedidos internos abiertos también bloquean la salida.
+  - Quien repartió puede responder sin esperar: los pedidos internos dejan de esperarse (`requiere_informe = false`), los que no se recibieron se anulan y la bitácora lo registra con `CIERRE_PEDIDOS_INTERNOS`. El formulario lo avisa antes de responder.
 - **Tipos de pase:**
   - `TRAMITE` entrega el original a una sola dependencia y no puede haber dos pendientes a la vez.
   - `INFORME` (`EN_ESPERA_INFORME`) y `CONOCIMIENTO` (`EN_REVISION`) van a una o varias dependencias y no mueven la custodia.

@@ -42,6 +42,32 @@ class SituacionExpedienteTest {
         return SituacionExpediente.de(d, custodia, List.of(actuaciones), actuaPor, nosotros, permisos);
     }
 
+    private SituacionExpediente conAreas(Documento d, Dependencia custodia, Permisos permisos, ActuacionDocumento... actuaciones) {
+        return SituacionExpediente.de(d, custodia, List.of(actuaciones), actuaPor, nosotros, permisos, 1, x -> true);
+    }
+
+    @Test
+    void loRecibidoSinElOriginalSeReparte() {
+        Documento d = doc(EstadoDocumento.EN_ESPERA_INFORME);
+        SituacionExpediente s = conAreas(d, otra, mesa, pase(3, otra, nosotros, TipoPase.INFORME, true, 5));
+        assertEquals(3L, s.paseRepartir());
+        assertTrue(s.isConMenu());
+        assertEquals(4L, conAreas(doc(EstadoDocumento.EN_REVISION), otra, mesa, pase(4, otra, nosotros, TipoPase.CONOCIMIENTO, true, 5)).paseRepartir());
+    }
+
+    @Test
+    void noSeOfreceRepartirSiNoCorresponde() {
+        ActuacionDocumento recibido = pase(3, otra, nosotros, TipoPase.INFORME, true, 5);
+        Documento activo = doc(EstadoDocumento.EN_ESPERA_INFORME);
+        assertNull(conAreas(activo, nosotros, mesa, recibido).paseRepartir(), "con el original, se deriva");
+        assertNull(conAreas(activo, otra, operador, recibido).paseRepartir(), "sin el permiso de derivar");
+        assertNull(conAreas(activo, otra, mesa, pase(4, otra, nosotros, TipoPase.INFORME, false, 5)).paseRepartir(), "todavía no se recibió");
+        assertNull(conAreas(activo, otra, mesa, pase(5, otra, nosotros, TipoPase.TRAMITE, true, 5)).paseRepartir(), "un trámite entrega el original");
+        assertNull(conAreas(doc(EstadoDocumento.FINALIZADO), otra, mesa, recibido).paseRepartir(), "ya finalizó");
+        assertNull(de(activo, otra, mesa, recibido).paseRepartir(), "sin áreas a las que bajarlo");
+        assertNull(conAreas(activo, otra, mesa, pase(6, nosotros, nosotros, TipoPase.CONOCIMIENTO, true, 5)).paseRepartir(), "lo bajó su propio ámbito");
+    }
+
     @Test
     void sinElOriginalSoloSeConsulta() {
         SituacionExpediente s = de(doc(EstadoDocumento.EN_REVISION), otra, mesa);
