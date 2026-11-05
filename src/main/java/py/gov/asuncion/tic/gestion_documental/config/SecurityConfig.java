@@ -25,15 +25,15 @@ import py.gov.asuncion.tic.gestion_documental.service.PoliticaAcceso;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    // Política de contenido: solo recursos propios y los de cdn.jsdelivr.net (con SRI en las plantillas).
+    // Política de contenido: solo recursos propios. Bootstrap y sus íconos se sirven desde static/vendor.
     // Los scripts no admiten código en línea: todo el JavaScript está en /js y los eventos se asignan con
     // addEventListener. Un texto inyectado en una página no puede ejecutar código. Los estilos en línea
     // (atributos style) se siguen admitiendo: no ejecutan código.
     static final String POLITICA_CONTENIDO = String.join("; ",
             "default-src 'self'",
-            "script-src 'self' https://cdn.jsdelivr.net",
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-            "font-src 'self' https://cdn.jsdelivr.net",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline'",
+            "font-src 'self'",
             "img-src 'self' data:",
             "connect-src 'self'",
             "object-src 'none'",
@@ -93,7 +93,7 @@ public class SecurityConfig {
             
             // 🔐 Reglas de autorización por acción (PoliticaAcceso: rol × ámbito × vigencia)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/css/**", "/js/**", "/images/**", "/login").permitAll()
+                .requestMatchers("/css/**", "/js/**", "/images/**", "/vendor/**", "/login").permitAll()
                 .requestMatchers("/admin/**").hasAuthority(Accion.ADMINISTRAR_SISTEMA.autoridad())
                 .requestMatchers("/documentos/guardar").hasAuthority(Accion.REGISTRAR_INGRESO.autoridad())
                 .requestMatchers("/documentos/salida", "/documentos/confirmar-acuse", "/documentos/reemplazar-acuse", "/documentos/corregir-salida")
