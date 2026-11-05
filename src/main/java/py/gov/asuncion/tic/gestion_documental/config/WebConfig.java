@@ -16,6 +16,6 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(cambioContrasenaInterceptor)
-                .excludePathPatterns("/cuenta/**", "/login", "/logout", "/error", "/css/**", "/js/**", "/images/**");
+                .excludePathPatterns("/cuenta/**", "/login", "/logout", "/error", "/css/**", "/js/**", "/images/**", "/vendor/**");
     }
 }
