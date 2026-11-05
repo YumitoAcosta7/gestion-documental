@@ -297,3 +297,19 @@ Después, arrancar la versión anterior de la aplicación.
 - **Aplicación:** arrancó a las 08:57:24. `/login` responde 200.
 - **En pantalla, según informó el usuario:** `juan.acosta` ve su bandeja sin errores, y sin expedientes en ella. Es la primera comprobación de las bandejas en producción desde el PR #50.
 - **Sin comprobar:** la pantalla de clave temporal vista en un navegador, y la copia automática de las 22:00.
+
+**05/11/2026, 09:27.** Actualización con el PR #54 (aviso y bloqueo de un pase que solo podría recibir quien lo envía). Sin migraciones: sigue en V28.
+- **Respaldo previo:** de las 09:27 (`huellas_20261105_0927.txt`).
+- **Aplicación:** arrancó a las 09:27:53.
+
+**05/11/2026, 13:51.** Respaldo y, por la hora, instalación del PR #56 (derivación interna y externa), fusionado a las 13:50. Sin migraciones: sigue en V28.
+- **Respaldo:** `base_20261105_1351.dump`, con sus PDF y huellas.
+- **Sin evidencia directa:** esta instalación se deduce del respaldo y de la fusión. La siguiente reemplazó ese `.jar`.
+
+**05/11/2026, 14:09.** Actualización con el PR #57 (reparto de copias y pedidos de informe), que incluye al #56. Sin migraciones: sigue en V28.
+- **Respaldo previo:** `base_20261105_1409.dump`, con sus PDF y huellas.
+- **Aplicación:** `.jar` de las 14:09, y servicio activo desde las 14:09:40.
+- **Comprobado:** el JavaScript publicado en `https://192.168.129.73/js/index.js` contiene el código de los dos PR.
+- **Copia a otro equipo:** los tres archivos de las 13:51 y de las 14:09 están en `192.168.129.71`, según informó el usuario.
+- **En pantalla, según informó el usuario:** `juan.acosta` ve su bandeja vacía, como antes.
+- **Sin comprobar:** los caminos nuevos vistos en pantalla en producción, con una cuenta que tenga expedientes, y la copia automática de las 22:00.
