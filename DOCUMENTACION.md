@@ -353,14 +353,14 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
   - una cuenta de administración entra directo a Administración, sin bandeja de expedientes, y busca en toda la auditoría de administración por fecha, cuenta y acción (`/admin/auditoria`); la bitácora de los expedientes no forma parte de esa pantalla;
   - el original de una dependencia de baja o sin nadie que actúe por ella se traslada con motivo, acto administrativo y la aprobación de otro administrador (`solicitudes_traslado_custodia`, V28); una dependencia que funciona lo mueve con un pase;
   - una cuenta con `ADMIN_SISTEMA` solo administra, aunque tenga otras asignaciones: no tramita ni ve expedientes, y no puede sumar otro rol. Si una persona hace las dos cosas, usa dos cuentas;
-  - quien envió un pase no lo confirma ni lo rechaza, aunque su rol abarque a la receptora: lo hace otra persona, o lo retira quien lo envió. Con el original en camino, el expediente figura en "En seguimiento" y no en "En mi poder";
+  - quien envió un pase no lo confirma ni lo rechaza, aunque su rol abarque a la receptora: lo hace otra persona, o lo retira quien lo envió. Si nadie más podría recibirlo, el destino figura como "solo usted podría recibirlo" y el servidor no acepta el pase. Con el original en camino, el expediente figura en "En seguimiento" y no en "En mi poder";
   - "Respuestas recibidas" muestra a la dependencia de origen o de destino lo que otra finalizó en los últimos 30 días;
   - toda asignación requiere la aprobación de otro administrador, y sin una asignación vigente no se puede trabajar ni ver expedientes. Antes de instalar, `db/herramientas/revisar_cuentas_sin_asignacion.sql` lista a quién afecta;
   - el duplicado (origen y número) se controla por cabecera: otra dirección registra el mismo documento con su propio CUTI;
   - al finalizar, los pases sin recibir se anulan (`CIERRE_EXPEDIENTE`, V23).
 - **Base de pruebas** en el servidor, con usuarios de prueba y script de volumen. Medido con 200 000 expedientes.
 - **Bibliotecas de pantalla:** Bootstrap 5.3.0 y Bootstrap Icons 1.11.0 se sirven desde `static/vendor`, sin internet ni CDN. Para actualizarlas, se reemplazan esos archivos, comprobando sus huellas contra el paquete publicado.
-- **Pruebas automatizadas:** 235, incluidas la matriz de autorización (`MatrizAutorizacionTest`), la revisión de las consultas nativas (`ConsultasNativasTest`) y la gobernanza del expediente (`GobernanzaExpedienteTest`).
+- **Pruebas automatizadas:** 238, incluidas la matriz de autorización (`MatrizAutorizacionTest`), la revisión de las consultas nativas (`ConsultasNativasTest`) y la gobernanza del expediente (`GobernanzaExpedienteTest`).
 
 **Prueba de campo:** el veredicto y los bloqueantes están en [docs/viabilidad-piloto.md](docs/viabilidad-piloto.md). El despliegue en el servidor, con servicio, HTTPS y respaldos, está en [docs/despliegue-servidor.md](docs/despliegue-servidor.md).
 

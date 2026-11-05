@@ -21,29 +21,43 @@ public interface DependenciaRepository extends JpaRepository<Dependencia, Intege
     @Query("SELECT n FROM NivelJerarquico n")
     List<NivelJerarquico> findNiveles();
 
-    // De las dependencias indicadas, las que tienen quién actúe por ellas (auditoría M2 y M7: sin nadie, un pase
-    // queda trabado y un original, inmóvil). Es la misma regla de CanalService.actuaPor: una cuenta activa, con
-    // asignación vigente y que no sea de administración; por su propia dependencia si no es una mesa, o por las
+    // Cuentas que pueden actuar por la dependencia d. Es la misma regla de CanalService.actuaPor: una cuenta activa,
+    // con asignación vigente y que no sea de administración; por su propia dependencia si no es una mesa, o por las
     // que abarque una asignación de trámite
+    String QUIEN_ACTUA_POR_D = """
+        SELECT 1 FROM asignaciones a
+          JOIN usuarios u ON u.id = a.usuario_id
+          JOIN dependencias amb ON amb.id = a.dependencia_ambito_id
+         WHERE u.activo AND a.activa
+           AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)
+           AND NOT EXISTS (SELECT 1 FROM asignaciones adm
+                            WHERE adm.usuario_id = u.id AND adm.rol = 'ADMIN_SISTEMA' AND adm.activa
+                              AND adm.vigente_desde <= CURRENT_DATE
+                              AND (adm.vigente_hasta IS NULL OR adm.vigente_hasta >= CURRENT_DATE))
+           AND ((u.dependencia_id = d.id AND d.es_mesa_entrada IS NOT TRUE)
+                OR (a.rol IN ('MESA_ENTRADA', 'RESPONSABLE', 'OPERADOR')
+                    AND (amb.id = d.id
+                         OR (a.incluye_subordinadas AND a.rol <> 'OPERADOR' AND d.ruta LIKE amb.ruta || '%'))))
+        """;
+
+    // De las dependencias indicadas, las que tienen quién actúe por ellas (auditoría M2 y M7: sin nadie, un pase
+    // queda trabado y un original, inmóvil)
     @Query(value = """
         SELECT d.id FROM dependencias d
          WHERE d.id IN (:ids)
            AND d.activo IS NOT FALSE
-           AND EXISTS (SELECT 1 FROM asignaciones a
-                         JOIN usuarios u ON u.id = a.usuario_id
-                         JOIN dependencias amb ON amb.id = a.dependencia_ambito_id
-                        WHERE u.activo AND a.activa
-                          AND a.vigente_desde <= CURRENT_DATE AND (a.vigente_hasta IS NULL OR a.vigente_hasta >= CURRENT_DATE)
-                          AND NOT EXISTS (SELECT 1 FROM asignaciones adm
-                                           WHERE adm.usuario_id = u.id AND adm.rol = 'ADMIN_SISTEMA' AND adm.activa
-                                             AND adm.vigente_desde <= CURRENT_DATE
-                                             AND (adm.vigente_hasta IS NULL OR adm.vigente_hasta >= CURRENT_DATE))
-                          AND ((u.dependencia_id = d.id AND d.es_mesa_entrada IS NOT TRUE)
-                               OR (a.rol IN ('MESA_ENTRADA', 'RESPONSABLE', 'OPERADOR')
-                                   AND (amb.id = d.id
-                                        OR (a.incluye_subordinadas AND a.rol <> 'OPERADOR' AND d.ruta LIKE amb.ruta || '%')))))
-        """, nativeQuery = true)
+           AND EXISTS (
+        """ + QUIEN_ACTUA_POR_D + ")", nativeQuery = true)
     List<Integer> findConReceptor(@Param("ids") Collection<Integer> ids);
+
+    // De las dependencias indicadas, aquellas en las que nadie MÁS que el usuario puede actuar. Quien envía un pase
+    // no puede confirmarlo: enviarlo ahí lo dejaría sin nadie que lo reciba
+    @Query(value = """
+        SELECT d.id FROM dependencias d
+         WHERE d.id IN (:ids)
+           AND NOT EXISTS (
+        """ + QUIEN_ACTUA_POR_D + " AND u.id <> :usuarioId)", nativeQuery = true)
+    List<Integer> findSinOtroReceptor(@Param("ids") Collection<Integer> ids, @Param("usuarioId") Integer usuarioId);
 
     // Versión del organigrama (V16): cambia con cada alta, baja o modificación de dependencias, niveles o atajos
     @Query(value = "SELECT version FROM organigrama_version WHERE id = 1", nativeQuery = true)
