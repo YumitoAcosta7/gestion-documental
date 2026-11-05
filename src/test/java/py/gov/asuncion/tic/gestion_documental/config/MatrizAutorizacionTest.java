@@ -188,11 +188,20 @@ class MatrizAutorizacionTest {
     }
 
     @Test
+    void laPantallaDeAccesoCargaSusBibliotecasSinSesion() throws Exception {
+        for (String ruta : List.of("/vendor/bootstrap/bootstrap.min.css", "/vendor/bootstrap/bootstrap.bundle.min.js",
+                "/vendor/bootstrap-icons/bootstrap-icons.css", "/vendor/bootstrap-icons/fonts/bootstrap-icons.woff2")) {
+            assertEquals(200, mvc.perform(request(HttpMethod.GET, ruta)).andReturn().getResponse().getStatus(), ruta);
+        }
+    }
+
+    @Test
     void lasRespuestasLlevanLasCabecerasDeSeguridad() throws Exception {
         var r = mvc.perform(request(HttpMethod.GET, "/login")).andReturn().getResponse();
         String csp = r.getHeader("Content-Security-Policy");
         assertNotNull(csp);
-        assertTrue(csp.contains("script-src 'self' https://cdn.jsdelivr.net"), csp);
+        assertTrue(csp.contains("script-src 'self';"), csp);
+        assertFalse(csp.contains("https:"), "todo se sirve desde la aplicación: " + csp);
         assertFalse(csp.contains("script-src 'self' 'unsafe-inline'"), "los scripts no admiten código en línea");
         assertTrue(csp.contains("object-src 'none'"));
         assertEquals("SAMEORIGIN", r.getHeader("X-Frame-Options"));

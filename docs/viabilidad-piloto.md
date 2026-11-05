@@ -34,7 +34,7 @@ Un fallo de esa PC o una contraseña capturada en la red comprometerían expedie
 | Custodia | Solo quien tiene el original deriva, devuelve, da salida o agrega actuaciones. Con el original en camino, no se modifica nada. |
 | Acceso | Ámbito por asignación y vigencia, con control en el servidor de cada operación. Matriz de autorización automatizada. La administración está separada de los expedientes, con doble control (dos administradores: `juan.admin` y `zlobo.admin`, que no tramitan). |
 | Sesiones | Bloqueo por usuario y por IP. Las sesiones se cierran al dar de baja, restablecer o cambiar la contraseña. Vencen a los 30 minutos sin actividad. |
-| Contenido | CSP estricta sin scripts en línea, SRI y cookies `HttpOnly`/`SameSite`. Los PDF se analizan con PDFBox. |
+| Contenido | CSP estricta sin scripts en línea, bibliotecas servidas por la propia aplicación (sin CDN) y cookies `HttpOnly`/`SameSite`. Los PDF se analizan con PDFBox. |
 | Trazabilidad | Bitácoras inmutables, propiedad de otro rol, con huella SHA-256 encadenada e IP. Verificación disponible y ÍNTEGRA en las dos bases. |
 | Rendimiento | Medido con 200 000 expedientes: listas de 12 a 84 ms, página principal en 1,5 s. Buscador con trigramas. |
 | Pruebas | 230 automáticas: 229 pasan y 1 se saltea. Flujos probados en pantalla sobre la base de pruebas. |
