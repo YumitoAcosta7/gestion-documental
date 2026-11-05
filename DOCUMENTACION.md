@@ -223,9 +223,13 @@ Reglas adicionales:
 - **Canal jerárquico** (`Organigrama`, `CanalService`, diseño §4.3): se deriva **desde quien tiene el original** y solo a estos destinos:
   - su superior inmediato;
   - sus subordinadas directas;
-  - otra cabecera con el mismo superior.
+  - otra cabecera con el mismo superior, solo entre las Direcciones Generales y las direcciones sin Dirección General, que dependen de la Intendencia.
 
-  Un pase dirigido a una cabecera llega a su mesa de entrada, que actúa en su nombre. Entre direcciones de distintas Direcciones Generales se pasa por ellas (Hacienda → DGAF → DTIC). La tabla `reglas_derivacion` permite habilitar atajos sin tocar código. Lo controla el servidor; el modal de derivación pide los destinos a `GET /api/documentos/{id}/destinos`.
+  Un pase dirigido a una cabecera llega a su mesa de entrada, que actúa en su nombre. Las direcciones de una Dirección General se comunican por ella, también entre sí (Hacienda → DGAF → Recaudaciones), y nunca se saltea un nivel. La tabla `reglas_derivacion` permite habilitar atajos sin tocar código. Lo controla el servidor; el modal de derivación pide los destinos a `GET /api/documentos/{id}/destinos`.
+- **Un solo camino por envío:** el modal pregunta primero a dónde va, y el servidor rechaza mezclar destinos de caminos distintos.
+  - *Dentro de mi área*: el nivel inmediato inferior. Una Dirección General puede marcar todas sus direcciones a la vez.
+  - *A otras direcciones*: las otras Direcciones Generales y direcciones sin Dirección General.
+  - *Elevar al superior*: trámite o copia para conocimiento. Al superior no se le pide un informe.
 - **Tipos de pase:**
   - `TRAMITE` entrega el original a una sola dependencia y no puede haber dos pendientes a la vez.
   - `INFORME` (`EN_ESPERA_INFORME`) y `CONOCIMIENTO` (`EN_REVISION`) van a una o varias dependencias y no mueven la custodia.

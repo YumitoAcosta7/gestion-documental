@@ -18,6 +18,9 @@ public final class Organigrama {
 
     public enum Movimiento { SUBIR, BAJAR, CABECERA, ATAJO }
 
+    // Cada envío toma un solo camino: dentro del área, a otras direcciones o al superior
+    public enum Alcance { INTERNO, EXTERNO, ELEVAR }
+
     public record Destino(Nodo nodo, Movimiento movimiento) {}
 
     private final Map<Integer, Nodo> porId = new HashMap<>();
@@ -108,7 +111,8 @@ public final class Organigrama {
         }
         Optional<Nodo> superior = padre(efectivo);
         superior.ifPresent(p -> agregar.accept(p, Movimiento.SUBIR));
-        if (esCabecera(efectivo) && superior.isPresent()) {
+        // Entre cabeceras se pasa solo en lo más alto: las direcciones de una Dirección General se comunican por ella
+        if (esCabecera(efectivo) && superior.isPresent() && superior.get().padreId() == null) {
             for (Nodo hermana : hijos(superior.get())) {
                 if (esCabecera(hermana) && !hermana.id().equals(efectivo.id())) {
                     agregar.accept(hermana, Movimiento.CABECERA);
@@ -128,6 +132,28 @@ public final class Organigrama {
 
     public boolean puedePasar(Integer custodiaId, Integer destinoId) {
         return destinos(custodiaId).stream().anyMatch(d -> d.nodo().id().equals(destinoId));
+    }
+
+    // Un atajo es interno si no sale de la cabecera de quien tiene el original
+    public Alcance alcance(Integer custodiaId, Destino destino) {
+        return switch (destino.movimiento()) {
+            case SUBIR -> Alcance.ELEVAR;
+            case BAJAR -> Alcance.INTERNO;
+            case CABECERA -> Alcance.EXTERNO;
+            case ATAJO -> cabecera(nodoEfectivo(destino.nodo())).id().equals(cabecera(nodoEfectivo(nodo(custodiaId))).id())
+                    ? Alcance.INTERNO : Alcance.EXTERNO;
+        };
+    }
+
+    // Los caminos que toma un envío a estos destinos. Los que el canal no permite no cuentan
+    public Set<Alcance> alcances(Integer custodiaId, Collection<Integer> destinoIds) {
+        Set<Alcance> resultado = EnumSet.noneOf(Alcance.class);
+        for (Destino d : destinos(custodiaId)) {
+            if (destinoIds.contains(d.nodo().id())) {
+                resultado.add(alcance(custodiaId, d));
+            }
+        }
+        return resultado;
     }
 
     // Recorrido sugerido hacia un destino lejano: cada paso es un pase permitido por el canal.
@@ -151,10 +177,12 @@ public final class Organigrama {
         }
 
         List<Nodo> pasos = new ArrayList<>();
-        // Hijos del ancestro común de cada lado: si ambos son cabeceras, se pasa directo entre ellas
+        // Hijos del ancestro común de cada lado: si ambos son cabeceras de lo más alto, se pasa directo entre ellas.
+        // Dentro de una Dirección General se pasa por ella
         Nodo ladoOrigen = iComun > 0 ? subida.get(iComun - 1) : null;
         Nodo ladoDestino = jComun > 0 ? bajada.get(jComun - 1) : null;
-        boolean entreHermanas = ladoOrigen != null && ladoDestino != null && esCabecera(ladoOrigen) && esCabecera(ladoDestino);
+        boolean entreHermanas = comun.padreId() == null && ladoOrigen != null && ladoDestino != null
+                && esCabecera(ladoOrigen) && esCabecera(ladoDestino);
 
         int tope = entreHermanas ? iComun - 1 : iComun;
         for (int i = 1; i <= tope; i++) {

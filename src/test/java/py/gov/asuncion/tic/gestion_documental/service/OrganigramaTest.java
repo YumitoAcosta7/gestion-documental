@@ -1,6 +1,7 @@
 package py.gov.asuncion.tic.gestion_documental.service;
 
 import org.junit.jupiter.api.Test;
+import py.gov.asuncion.tic.gestion_documental.service.Organigrama.Alcance;
 import py.gov.asuncion.tic.gestion_documental.service.Organigrama.Movimiento;
 import py.gov.asuncion.tic.gestion_documental.service.Organigrama.Nodo;
 
@@ -46,6 +47,10 @@ class OrganigramaTest {
         return org.destinos(custodia).stream().map(d -> d.nodo().id()).toList();
     }
 
+    private Alcance alcanceDe(int custodia, int destino) {
+        return org.alcance(custodia, org.destinos(custodia).stream().filter(d -> d.nodo().id() == destino).findFirst().orElseThrow());
+    }
+
     private List<Integer> recorrido(int origen, int destino) {
         return org.recorrido(origen, destino).stream().map(Nodo::id).toList();
     }
@@ -76,10 +81,53 @@ class OrganigramaTest {
     }
 
     @Test
-    void entreDireccionesDeLaMismaDireccionGeneralSePasaDirecto() {
-        assertTrue(destinos(DHAC_SA).contains(DREC_SA));
+    void lasDireccionesDeUnaDireccionGeneralSeComunicanPorElla() {
+        assertFalse(destinos(DHAC_SA).contains(DREC_SA), "a Recaudaciones se llega por la DGAF");
         assertTrue(destinos(DHAC_SA).contains(DGAF_SA));
         assertFalse(destinos(DHAC_SA).contains(DTIC_SA), "a TIC se llega por la DGAF");
+    }
+
+    @Test
+    void lasCabecerasDeLoMasAltoPasanEntreSi() {
+        assertTrue(destinos(DGAF_SA).contains(DTIC_SA));
+        assertTrue(destinos(DTIC_SA).contains(DGAF_SA));
+    }
+
+    @Test
+    void cadaDestinoTieneSuCamino() {
+        assertEquals(Alcance.INTERNO, alcanceDe(DTIC_SA, OPERATIVO));
+        assertEquals(Alcance.EXTERNO, alcanceDe(DTIC_SA, DGAF_SA));
+        assertEquals(Alcance.ELEVAR, alcanceDe(DTIC_SA, INT));
+        assertEquals(Alcance.INTERNO, alcanceDe(DGAF_SA, DHAC_SA), "las direcciones de una Dirección General son internas para ella");
+        assertEquals(Alcance.ELEVAR, alcanceDe(DHAC_SA, DGAF_SA));
+        assertEquals(Set.of(Alcance.INTERNO, Alcance.EXTERNO), org.alcances(DTIC_SA, List.of(OPERATIVO, DGAF_SA)));
+    }
+
+    @Test
+    void elCaminoDeUnAtajoDependeDeSiSaleDeLaCabecera() {
+        Organigrama conAtajos = new Organigrama(List.of(
+                nodo(INT, "Intendencia Municipal", null, 1, false),
+                nodo(DTIC, "Dirección de TIC", INT, 4, false),
+                nodo(OPERATIVO, "Departamento Operativo de Informática", DTIC, 6, false),
+                nodo(REDES, "Unidad de Redes", OPERATIVO, 7, false),
+                nodo(CODENI, "Dirección de CODENI", INT, 4, false),
+                nodo(CODENI_D01, "Departamento de CODENI", CODENI, 6, false)),
+                Map.of(REDES, Set.of(DTIC, CODENI_D01)));
+        Map<Integer, Alcance> caminos = new java.util.HashMap<>();
+        conAtajos.destinos(REDES).forEach(d -> caminos.put(d.nodo().id(), conAtajos.alcance(REDES, d)));
+        assertEquals(Alcance.INTERNO, caminos.get(DTIC));
+        assertEquals(Alcance.EXTERNO, caminos.get(CODENI_D01));
+    }
+
+    @Test
+    void laMesaCentralEsUnDepartamentoQueSubeALaMesaDeSuDireccion() {
+        final int DSG = 20, DSG_SA = 21, MESA_CENTRAL = 22;
+        Organigrama conMesaCentral = new Organigrama(List.of(
+                nodo(INT, "Intendencia Municipal", null, 1, false),
+                nodo(DSG, "Dirección de Secretaría General", INT, 4, false),
+                nodo(DSG_SA, "Unidad de Secretaría Administrativa", DSG, 7, true),
+                nodo(MESA_CENTRAL, "Departamento Mesa Central de Entradas", DSG, 6, true)), Map.of());
+        assertEquals(List.of(DSG_SA), conMesaCentral.destinos(MESA_CENTRAL).stream().map(d -> d.nodo().id()).toList());
     }
 
     @Test
@@ -107,7 +155,7 @@ class OrganigramaTest {
     @Test
     void recorridoDentroDeLaMismaDireccionSubeYBaja() {
         assertEquals(List.of(OPERATIVO, SOPORTE), recorrido(REDES, SOPORTE));
-        assertEquals(List.of(DREC_SA), recorrido(DHAC_SA, DREC_SA));
+        assertEquals(List.of(DGAF_SA, DREC_SA), recorrido(DHAC_SA, DREC_SA));
     }
 
     @Test

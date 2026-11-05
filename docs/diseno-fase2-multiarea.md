@@ -164,9 +164,13 @@ Desde la dependencia que tiene la custodia, los destinos permitidos son tres:
 |---|---|---|
 | **Subir** | Su superior inmediato. Si el superior es una cabecera, el pase llega a su mesa de entrada | Unidad de Redes → Dpto. Operativo de Informática → DTIC |
 | **Bajar** | Sus subordinadas directas | Dpto. de Contabilidad → Unidad de Bancos |
-| **Pasar a otra cabecera** | Solo entre cabeceras **hermanas**, es decir con el mismo superior, y a su mesa de entrada | DTIC → DGAF (ambas dependen de la Intendencia); Hacienda → Recaudaciones (ambas en la DGAF) |
+| **Pasar a otra cabecera** | Solo entre las cabeceras que dependen de la Intendencia, y a su mesa de entrada | DTIC → DGAF; DGAF → DGO |
 
-**Entre direcciones de distintas Direcciones Generales se pasa por las Direcciones Generales** (decisión del 02/11). Por ejemplo, de Hacienda a la DTIC:
+**Las direcciones de una Dirección General se comunican por ella**, incluso entre sí (decisión del 05/11, que reemplaza el pase directo entre direcciones hermanas): Hacienda → DGAF → Recaudaciones. Tampoco se saltea un nivel para pedir un informe: la mesa de una Dirección pasa por el Departamento antes de llegar a una Unidad.
+
+Queda por consultar con Asuntos Jurídicos cómo se concilia esta regla con el art. 50 de la Ley 6715/21 y el art. 3 de la Res. 2653/12, que hablan de comunicar o remitir directamente los pedidos de informe.
+
+Por ejemplo, de Hacienda a la DTIC:
 
 ```
 Hacienda → DGAF → DTIC

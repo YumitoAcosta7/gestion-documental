@@ -25,37 +25,116 @@
             selectUnico.required = !esMultiple;
             // Las dependencias sin usuarios en el sistema quedan siempre deshabilitadas
             checks.forEach(c => c.disabled = !esMultiple || c.dataset.sinReceptor === "true");
+            actualizarContadorDestinos();
         }
 
-        const ETIQUETA_MOVIMIENTO = { SUBIR: '⬆ Superior', BAJAR: '⬇ Subordinada', CABECERA: '↔ Otra dirección', ATAJO: '⤳ Atajo habilitado' };
+        // Lo que se cargó para el expediente abierto en el modal de derivación
+        let derivacion = { destinos: [], soloElevar: false, difusion: false };
+
+        const AYUDA_ALCANCE = {
+            INTERNO: 'El pase baja al nivel inmediato inferior. Para llegar más abajo, sigue de nivel en nivel.',
+            EXTERNO: 'El pase llega a la mesa de entrada de cada una. A una dirección que depende de una Dirección General se llega por ella.',
+            ELEVAR: 'El pase sube a su superior inmediato. Para comunicarse con otras direcciones, elévelo primero a su Dirección General.'
+        };
+        const GRUPOS_DESTINO = [['DIRECCION_GENERAL', 'Direcciones Generales'], ['DIRECCION', 'Direcciones'], ['AREA', 'Áreas'], ['INTENDENCIA', 'Intendencia']];
+
+        // Quien envía no confirma su pase: si nadie más puede recibirlo, ese destino tampoco se ofrece
+        const destinoHabilitado = d => d.conReceptor && !d.soloUsted;
+        const marcaDestino = d => !d.conReceptor ? ' — sin usuarios en el sistema' : (d.soloUsted ? ' — solo usted podría recibirlo' : '');
+        const nombreDestino = d => `${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''}`;
+
+        // Solo los tipos de pase que admite el camino elegido
+        function ajustarTiposPase(alcance) {
+            const selTipo = document.getElementById('selectTipoPase');
+            const opcion = t => selTipo.querySelector(`option[value="${t}"]`);
+            opcion('TRAMITE').disabled = derivacion.difusion;
+            opcion('INFORME').disabled = derivacion.difusion || derivacion.soloElevar || alcance === 'ELEVAR';
+            opcion('CONOCIMIENTO').disabled = derivacion.soloElevar;
+            if (selTipo.selectedOptions[0] && selTipo.selectedOptions[0].disabled) {
+                selTipo.value = [...selTipo.options].find(o => !o.disabled).value;
+            }
+        }
+
+        function actualizarContadorDestinos() {
+            const contador = document.getElementById('contadorDestinos');
+            const marcadas = document.querySelectorAll('#listaDestinosMultiple .check-dependencia:checked').length;
+            contador.textContent = marcadas > 0 ? `${marcadas} seleccionada${marcadas === 1 ? '' : 's'}` : '';
+            const boton = document.getElementById('marcarDirecciones');
+            const direcciones = [...document.querySelectorAll('#listaDestinosMultiple .check-dependencia[data-clase="DIRECCION"]:not([data-sin-receptor="true"])')];
+            boton.textContent = direcciones.length > 0 && direcciones.every(c => c.checked) ? 'Desmarcar mis direcciones' : 'Marcar todas mis direcciones';
+        }
+
+        // Pinta los destinos de un solo camino, agrupados por nivel
+        function pintarDestinosDerivacion(alcance) {
+            const delCamino = derivacion.destinos.filter(d => d.alcance === alcance);
+            const grupos = GRUPOS_DESTINO.map(([clase, titulo]) => ({ clase, titulo, destinos: delCamino.filter(d => d.clase === clase) }))
+                .filter(g => g.destinos.length > 0);
+            const conTitulos = grupos.length > 1;
+
+            const opcion = d => `<option value="${d.id}" data-buscar="${esc((d.nombre + ' ' + (d.sigla || '')).toLowerCase())}" ${destinoHabilitado(d) ? '' : 'disabled'}>${nombreDestino(d)}${marcaDestino(d)}</option>`;
+            document.getElementById('selectDestinoUnico').innerHTML = '<option value="" selected disabled>Seleccione dependencia...</option>'
+                + grupos.map(g => conTitulos ? `<optgroup label="${esc(g.titulo)}">${g.destinos.map(opcion).join('')}</optgroup>` : g.destinos.map(opcion).join('')).join('');
+
+            const fila = d => `
+                    <div class="form-check" data-buscar="${esc((d.nombre + ' ' + (d.sigla || '')).toLowerCase())}">
+                        <input class="form-check-input check-dependencia" type="checkbox" name="dependenciaDestinoId" value="${d.id}" id="check_${d.id}" data-clase="${esc(d.clase)}" data-sin-receptor="${!destinoHabilitado(d)}" ${destinoHabilitado(d) ? '' : 'disabled'}>
+                        <label class="form-check-label small ${destinoHabilitado(d) ? '' : 'text-muted'}" for="check_${d.id}">${nombreDestino(d)}<span class="text-muted">${marcaDestino(d)}</span></label>
+                    </div>`;
+            document.getElementById('listaDestinosMultiple').innerHTML = grupos
+                .map(g => (conTitulos ? `<div class="small fw-bold text-muted mt-1" data-titulo-grupo="true">${esc(g.titulo)}</div>` : '') + g.destinos.map(fila).join(''))
+                .join('');
+
+            // Una Dirección General puede pedir a todas sus direcciones a la vez
+            const conDirecciones = alcance === 'INTERNO' && delCamino.filter(d => d.clase === 'DIRECCION' && destinoHabilitado(d)).length > 1;
+            document.getElementById('marcarDirecciones').classList.toggle('d-none', !conDirecciones);
+
+            const buscar = document.getElementById('buscarDestino');
+            buscar.value = '';
+            document.getElementById('contenedorBuscarDestino').classList.toggle('d-none', delCamino.length <= 8);
+            document.getElementById('ayudaAlcance').textContent = AYUDA_ALCANCE[alcance] || '';
+
+            ajustarTiposPase(alcance);
+            alternarTipoPase(document.getElementById('selectTipoPase').value);
+        }
+
+        // El buscador oculta lo que no coincide: lo ya marcado sigue marcado, y el contador lo muestra
+        function filtrarDestinosDerivacion(texto) {
+            const buscado = texto.trim().toLowerCase();
+            const coincide = el => !buscado || el.dataset.buscar.includes(buscado);
+            document.querySelectorAll('#selectDestinoUnico option[data-buscar]').forEach(o => { o.hidden = !coincide(o); });
+            document.querySelectorAll('#listaDestinosMultiple .form-check').forEach(f => f.classList.toggle('d-none', !coincide(f)));
+            document.querySelectorAll('#listaDestinosMultiple [data-titulo-grupo]').forEach(titulo => {
+                titulo.classList.toggle('d-none', Boolean(buscado));
+            });
+        }
 
         // Carga los destinos que permite el canal desde quien tiene el original del expediente
         async function cargarDestinosDerivacion(docId) {
             const desde = document.getElementById('derivarDesde');
             const aviso = document.getElementById('derivarSinPermiso');
-            const selectUnico = document.getElementById('selectDestinoUnico');
-            const lista = document.getElementById('listaDestinosMultiple');
+            const contenedorAlcance = document.getElementById('contenedorAlcance');
             const enviar = document.querySelector('#formDerivar [type=submit]');
             desde.textContent = 'Cargando destinos...';
             aviso.classList.add('d-none');
-            selectUnico.innerHTML = '';
-            lista.innerHTML = '';
+            contenedorAlcance.classList.add('d-none');
+            document.getElementById('contenedorBuscarDestino').classList.add('d-none');
+            document.getElementById('marcarDirecciones').classList.add('d-none');
+            document.getElementById('selectDestinoUnico').innerHTML = '';
+            document.getElementById('listaDestinosMultiple').innerHTML = '';
             enviar.disabled = true;
             try {
                 const res = await fetch(`/api/documentos/${docId}/destinos`);
                 if (!res.ok) throw new Error(res.status);
                 const datos = await res.json();
+                derivacion.destinos = datos.destinos;
+                derivacion.soloElevar = datos.soloElevar;
                 desde.innerHTML = `El original está en <strong>${esc(datos.custodia)}</strong>.`;
                 // Sin permiso de derivar (operador de una unidad): solo puede elevar el mismo expediente a su superior
-                const selTipo = document.getElementById('selectTipoPase');
-                ['INFORME', 'CONOCIMIENTO'].forEach(t => {
-                    const opcion = selTipo.querySelector(`option[value="${t}"]`);
-                    if (datos.soloElevar) { opcion.disabled = true; }
-                });
                 if (datos.soloElevar) {
-                    selTipo.value = 'TRAMITE';
+                    document.getElementById('selectTipoPase').value = 'TRAMITE';
                     desde.innerHTML += ' Usted puede <strong>elevarlo a su dependencia superior</strong> con un pase de trámite: el expediente conserva su CUTI.';
                 }
+                ajustarTiposPase(null);
                 if (!datos.puedeDerivar || datos.destinos.length === 0) {
                     aviso.textContent = datos.puedeDerivar
                         ? 'No hay destinos habilitados desde esta dependencia.'
@@ -63,17 +142,18 @@
                     aviso.classList.remove('d-none');
                     return;
                 }
-                // Quien envía no confirma su pase: si nadie más puede recibirlo, ese destino tampoco se ofrece
-                const habilitado = d => d.conReceptor && !d.soloUsted;
-                const marcaDestino = d => !d.conReceptor ? ' — sin usuarios en el sistema' : (d.soloUsted ? ' — solo usted podría recibirlo' : '');
-                selectUnico.innerHTML = '<option value="" selected disabled>Seleccione dependencia...</option>'
-                    + datos.destinos.map(d => `<option value="${d.id}" ${habilitado(d) ? '' : 'disabled'}>${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''} · ${ETIQUETA_MOVIMIENTO[d.movimiento] || ''}${marcaDestino(d)}</option>`).join('');
-                lista.innerHTML = datos.destinos.map(d => `
-                    <div class="form-check">
-                        <input class="form-check-input check-dependencia" type="checkbox" name="dependenciaDestinoId" value="${d.id}" id="check_${d.id}" data-sin-receptor="${!habilitado(d)}" ${habilitado(d) ? '' : 'disabled'}>
-                        <label class="form-check-label small ${habilitado(d) ? '' : 'text-muted'}" for="check_${d.id}">${esc(d.nombre)}${d.sigla ? ' (' + esc(d.sigla) + ')' : ''} <span class="text-muted">· ${ETIQUETA_MOVIMIENTO[d.movimiento] || ''}${marcaDestino(d)}</span></label>
-                    </div>`).join('');
-                alternarTipoPase(document.getElementById('selectTipoPase').value);
+                // Solo se ofrecen los caminos que tienen destinos; empieza por el propio
+                const radios = [...document.querySelectorAll('input[name="alcanceEnvio"]')];
+                radios.forEach(r => {
+                    const hay = datos.destinos.some(d => d.alcance === r.value);
+                    r.disabled = !hay;
+                    r.nextElementSibling.classList.toggle('d-none', !hay);
+                    r.checked = false;
+                });
+                const primero = radios.find(r => !r.disabled);
+                primero.checked = true;
+                contenedorAlcance.classList.remove('d-none');
+                pintarDestinosDerivacion(primero.value);
                 enviar.disabled = false;
             } catch (e) {
                 desde.textContent = '';
@@ -420,6 +500,13 @@
             // Modal Derivación
             const modalDerivar = document.getElementById('modalDerivar');
             if (modalDerivar) {
+                document.getElementById('buscarDestino').addEventListener('input', e => filtrarDestinosDerivacion(e.target.value));
+                document.getElementById('marcarDirecciones').addEventListener('click', () => {
+                    const direcciones = [...document.querySelectorAll('#listaDestinosMultiple .check-dependencia[data-clase="DIRECCION"]:not([data-sin-receptor="true"])')];
+                    const marcar = !direcciones.every(c => c.checked);
+                    direcciones.forEach(c => { c.checked = marcar; });
+                    actualizarContadorDestinos();
+                });
                 modalDerivar.addEventListener('show.bs.modal', function (event) {
                     const button = event.relatedTarget;
                     if (button) {
@@ -429,9 +516,10 @@
                         // Difusión de un informativo: solo para conocimiento; el resto empieza en trámite
                         const esInformativo = button.getAttribute('data-informativo') === 'true';
                         const selTipo = document.getElementById('selectTipoPase');
-                        selTipo.querySelector('option[value="TRAMITE"]').disabled = esInformativo;
-                        selTipo.querySelector('option[value="INFORME"]').disabled = esInformativo;
+                        derivacion.difusion = esInformativo;
+                        derivacion.soloElevar = false;
                         selTipo.value = esInformativo ? 'CONOCIMIENTO' : 'TRAMITE';
+                        ajustarTiposPase(null);
                         alternarTipoPase(selTipo.value);
 
                         cargarDestinosDerivacion(button.getAttribute('data-doc-id'));
@@ -788,6 +876,10 @@
                 actualizarTextoReferenciaSalida();
             } else if (t.id === 'selectTipoPase') {
                 alternarTipoPase(t.value);
+            } else if (t.name === 'alcanceEnvio') {
+                pintarDestinosDerivacion(t.value);
+            } else if (t.classList && t.classList.contains('check-dependencia')) {
+                actualizarContadorDestinos();
             } else if (t.id === 'selectTipoRemision') {
                 alternarTipoRemision(t.value);
             } else if (t.id === 'ingresoTipo') {

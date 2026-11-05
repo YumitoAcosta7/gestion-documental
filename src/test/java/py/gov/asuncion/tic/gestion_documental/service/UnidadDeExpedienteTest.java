@@ -47,7 +47,12 @@ class UnidadDeExpedienteTest {
             new Organigrama.Nodo(11, "Unidad de Secretaría Administrativa", "DTIC-SA", 10, 7, true, true),
             new Organigrama.Nodo(40, "Departamento Operativo", "DTIC-D03", 10, 6, true, false),
             new Organigrama.Nodo(75, "Unidad de Redes", "DTIC-D03-U01", 40, 7, true, false),
-            new Organigrama.Nodo(76, "Unidad de Soporte", "DTIC-D03-U02", 40, 7, true, false)), Map.of());
+            new Organigrama.Nodo(76, "Unidad de Soporte", "DTIC-D03-U02", 40, 7, true, false),
+            new Organigrama.Nodo(100, "Dirección General de Administración", "DGAF", 1, 2, true, false),
+            new Organigrama.Nodo(101, "Unidad de Secretaría Administrativa", "DGAF-SA", 100, 7, true, true),
+            new Organigrama.Nodo(110, "Dirección de Recaudaciones", "DREC", 100, 4, true, false),
+            new Organigrama.Nodo(140, "Dirección de Hacienda", "DHAC", 100, 4, true, false),
+            new Organigrama.Nodo(30, "Dirección de Recursos Humanos", "DRRHH", 1, 4, true, false)), Map.of());
 
     private final Dependencia redes = Dependencia.builder().id(75).nombre("Unidad de Redes").ruta("/1/10/40/75/").activo(true).build();
     private final Usuario operadorRedes = new Usuario();
@@ -118,6 +123,71 @@ class UnidadDeExpedienteTest {
         assertFalse(servicio.obtenerOpcionesDerivacion(200L, operadorRedes).destinos().get(0).soloUsted());
         servicio.derivarDocumento(200L, List.of(40), "Se eleva el memo de la unidad", TipoPase.TRAMITE, operadorRedes);
         verify(actuacionRepository).save(any());
+    }
+
+    // El expediente en la mesa de la DTIC, o de la cabecera que se indique, con quien puede derivar
+    private void conOriginalEn(int dependenciaId) {
+        expediente.setDependenciaCustodia(Dependencia.builder().id(dependenciaId).nombre("Dep " + dependenciaId).activo(true).build());
+        when(politicaAcceso.puede(operadorRedes, Accion.DERIVAR)).thenReturn(true);
+    }
+
+    @Test
+    void unEnvioNoMezclaAreasPropiasConOtrasDirecciones() {
+        conOriginalEn(11);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> servicio.derivarDocumento(200L,
+                List.of(40, 101), "Para informe de ambas áreas", TipoPase.INFORME, operadorRedes));
+        assertTrue(e.getMessage().contains("no puede mezclar"));
+        verify(actuacionRepository, never()).save(any());
+    }
+
+    @Test
+    void aOtrasDireccionesSePideInformeAVariasALaVez() {
+        conOriginalEn(11);
+        servicio.derivarDocumento(200L, List.of(101, 30), "Para informe de ambas direcciones", TipoPase.INFORME, operadorRedes);
+        verify(actuacionRepository, times(2)).save(argThat(a -> a.getTipoPase() == TipoPase.INFORME));
+    }
+
+    @Test
+    void unaDireccionGeneralPideInformeATodasSusDireccionesALaVez() {
+        conOriginalEn(101);
+        servicio.derivarDocumento(200L, List.of(110, 140), "Para informe de sus direcciones", TipoPase.INFORME, operadorRedes);
+        verify(actuacionRepository, times(2)).save(any());
+    }
+
+    @Test
+    void unaDireccionDeUnaDireccionGeneralNoEnviaDirectoASuHermana() {
+        conOriginalEn(110);
+        assertThrows(AccessDeniedException.class, () -> servicio.derivarDocumento(200L, List.of(140),
+                "Para su conocimiento", TipoPase.CONOCIMIENTO, operadorRedes));
+        verify(actuacionRepository, never()).save(any());
+    }
+
+    @Test
+    void alSuperiorSeLeEnviaCopiaPeroNoSeLePideInforme() {
+        conOriginalEn(11);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> servicio.derivarDocumento(200L,
+                List.of(1), "Para informe del superior", TipoPase.INFORME, operadorRedes));
+        assertTrue(e.getMessage().contains("no se le pide un informe"));
+        verify(actuacionRepository, never()).save(any());
+
+        servicio.derivarDocumento(200L, List.of(1), "Para su conocimiento", TipoPase.CONOCIMIENTO, operadorRedes);
+        verify(actuacionRepository).save(any());
+    }
+
+    @Test
+    void lasOpcionesIndicanElCaminoYElNivelDeCadaDestino() {
+        conOriginalEn(11);
+        Map<Integer, DocumentoService.DestinoPase> destinos = new java.util.HashMap<>();
+        servicio.obtenerOpcionesDerivacion(200L, operadorRedes).destinos().forEach(d -> destinos.put(d.id(), d));
+
+        assertEquals(java.util.Set.of(1, 40, 101, 30), destinos.keySet());
+        assertEquals("INTERNO", destinos.get(40).alcance());
+        assertEquals("AREA", destinos.get(40).clase());
+        assertEquals("EXTERNO", destinos.get(101).alcance());
+        assertEquals("DIRECCION_GENERAL", destinos.get(101).clase());
+        assertEquals("DIRECCION", destinos.get(30).clase());
+        assertEquals("ELEVAR", destinos.get(1).alcance());
+        assertEquals("INTENDENCIA", destinos.get(1).clase());
     }
 
     @Test
