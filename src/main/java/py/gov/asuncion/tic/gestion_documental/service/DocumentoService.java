@@ -225,12 +225,14 @@ public class DocumentoService {
         boolean salida = politicaAcceso.puede(usuario, Accion.REGISTRAR_SALIDA);
         boolean cierre = politicaAcceso.puede(usuario, Accion.FORZAR_CIERRE);
         boolean ingreso = politicaAcceso.puede(usuario, Accion.REGISTRAR_INGRESO);
+        Organigrama organigrama = canalService.organigrama();
+        java.util.function.Predicate<Dependencia> tieneAreas = dep -> !bajadas(dep, organigrama).isEmpty();
         Map<Long, SituacionExpediente> resultado = new HashMap<>();
         for (Documento d : documentos) {
             boolean loCargo = d.getUsuarioCargaIngreso() != null && usuario.getId().equals(d.getUsuarioCargaIngreso().getId());
             resultado.put(d.getId(), SituacionExpediente.de(d, custodiaDe(d), porDocumento.getOrDefault(d.getId(), List.of()),
                     actuaPor, usuario.getDependencia(), new SituacionExpediente.Permisos(actuacion, derivar, salida, cierre, ingreso || loCargo),
-                    usuario.getId()));
+                    usuario.getId(), tieneAreas));
         }
         return resultado;
     }
@@ -356,11 +358,15 @@ public class DocumentoService {
         List<Organigrama.Destino> canal = !puede ? List.of() : organigrama.destinos(custodia.getId()).stream()
                 .filter(d -> !soloElevar || d.movimiento() == Organigrama.Movimiento.SUBIR)
                 .toList();
+        return new OpcionesDerivacion(custodia.getNombreVisible(), puede, soloElevar, destinosPase(custodia.getId(), canal, organigrama, usuario));
+    }
+
+    private List<DestinoPase> destinosPase(Integer origenId, List<Organigrama.Destino> canal, Organigrama organigrama, Usuario usuario) {
         java.util.Set<Integer> conReceptor = canal.isEmpty() ? java.util.Set.of()
                 : new java.util.HashSet<>(dependenciaRepository.findConReceptor(canal.stream().map(d -> d.nodo().id()).toList()));
         java.util.Set<Integer> soloUsted = !exigirReceptor || conReceptor.isEmpty() ? java.util.Set.of()
                 : new java.util.HashSet<>(dependenciaRepository.findSinOtroReceptor(conReceptor, usuario.getId()));
-        List<DestinoPase> destinos = canal.stream()
+        return canal.stream()
                 .map(d -> {
                     Organigrama.Nodo efectivo = organigrama.nodoEfectivo(d.nodo());
                     boolean esMesa = !efectivo.id().equals(d.nodo().id());
@@ -368,10 +374,9 @@ public class DocumentoService {
                             esMesa ? efectivo.nombre() + " (mesa de entrada)" : d.nodo().nombre(),
                             esMesa ? efectivo.sigla() : d.nodo().sigla(), d.movimiento().name(),
                             !exigirReceptor || conReceptor.contains(d.nodo().id()), soloUsted.contains(d.nodo().id()),
-                            organigrama.alcance(custodia.getId(), d).name(), claseDeDestino(efectivo));
+                            organigrama.alcance(origenId, d).name(), claseDeDestino(efectivo));
                 })
                 .toList();
-        return new OpcionesDerivacion(custodia.getNombreVisible(), puede, soloElevar, destinos);
     }
 
     private static String claseDeDestino(Organigrama.Nodo nodo) {
@@ -1086,17 +1091,7 @@ public class DocumentoService {
             }
         }
         exigirUnSoloCamino(custodia, destinos, tipoPase, organigrama);
-        // Auditoría M2: sin nadie que lo reciba, el pase quedaría pendiente para siempre
-        if (exigirReceptor) {
-            java.util.Set<Integer> conReceptor = new java.util.HashSet<>(dependenciaRepository.findConReceptor(destinos));
-            List<String> sinReceptor = destinos.stream().filter(id -> !conReceptor.contains(id))
-                    .map(id -> organigrama.nodo(id).nombre()).toList();
-            if (!sinReceptor.isEmpty()) {
-                throw new IllegalStateException("Nadie usa todavía el sistema en: " + String.join(", ", sinReceptor)
-                        + ". El pase quedaría sin recibir; envíelo en papel o pida que se habiliten usuarios.");
-            }
-            exigirOtroReceptor(destinos, usuario, organigrama);
-        }
+        exigirQuienReciba(destinos, usuario, organigrama);
         // Con un trámite esperando acuse, el original está en camino: nadie más puede pasarlo, ni en trámite
         // ni para informe o conocimiento, porque la dependencia emisora ya no lo tiene
         if (actuacionDocumentoRepository.existePaseTramitePendiente(documentoId)) {
@@ -1109,17 +1104,7 @@ public class DocumentoService {
             throw new IllegalArgumentException("Un documento informativo no se tramita ni se deriva para informe: solo puede difundirse para conocimiento.");
         }
 
-        // No se duplica un pase que todavía espera el acuse de la misma dependencia
-        List<String> conPasePendiente = new ArrayList<>();
-        for (Integer depId : destinos) {
-            if (actuacionDocumentoRepository.existePasePendiente(documentoId, depId)) {
-                conPasePendiente.add(dependenciaRepository.findById(depId).map(Dependencia::getNombre).orElse("ID " + depId));
-            }
-        }
-        if (!conPasePendiente.isEmpty()) {
-            throw new IllegalStateException("Ya existe un pase pendiente de acuse para: " + String.join(", ", conPasePendiente)
-                    + ". Espere la confirmación o retire ese pase antes de volver a derivar.");
-        }
+        exigirSinPasePendiente(documentoId, destinos);
 
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
 
@@ -1136,35 +1121,8 @@ public class DocumentoService {
         }
         documentoRepository.save(doc);
 
-        String tipoPaseStr = switch (tipoPase) {
-            case TRAMITE -> "PASE DE TRÁMITE";
-            case INFORME -> "PASE PARA INFORME";
-            case CONOCIMIENTO -> "PASE PARA CONOCIMIENTO";
-        };
-        String detalleObservacion = observacion.trim();
-
-        for (Integer depId : destinos) {
-            Dependencia destino = dependenciaRepository.findById(depId)
-                    .orElseThrow(() -> new RuntimeException("Dependencia no encontrada: " + depId));
-
-            // Emite el pase la dependencia que tiene el original, aunque lo cargue un usuario de su ámbito
-            ActuacionDocumento paseInterno = ActuacionDocumento.builder()
-                    .documento(doc)
-                    .dependenciaEmisora(custodia)
-                    .dependenciaReceptoraPase(destino)
-                    .tipoActuacion("PASE_INTERNO")
-                    .numeroActuacion("S/N")
-                    .descripcionResumen(tipoPaseStr + " ➔ " + destino.getNombreVisible() + ": " + detalleObservacion)
-                    .ubicacionBibliorato(doc.getUbicacionBibliorato())
-                    .fechaHoraActuacion(LocalDateTime.now())
-                    .paseConfirmado(false)
-                    .requiereInforme(esInformeRequerido)
-                    .tipoPase(tipoPase)
-                    .usuario(usuario)
-                    .build();
-
-            actuacionDocumentoRepository.save(paseInterno);
-        }
+        // Emite el pase la dependencia que tiene el original, aunque lo cargue un usuario de su ámbito
+        registrarPases(doc, custodia, destinos, tipoPase, observacion.trim(), usuario, null);
         // 🛡️ REGISTRO DE AUDITORÍA
         auditoriaService.registrarEvento(
             doc,
@@ -1178,6 +1136,196 @@ public class DocumentoService {
         );
 
         return doc;
+    }
+
+    // Auditoría M2: sin nadie que lo reciba, el pase quedaría pendiente para siempre
+    private void exigirQuienReciba(List<Integer> destinos, Usuario usuario, Organigrama organigrama) {
+        if (!exigirReceptor) {
+            return;
+        }
+        java.util.Set<Integer> conReceptor = new java.util.HashSet<>(dependenciaRepository.findConReceptor(destinos));
+        List<String> sinReceptor = destinos.stream().filter(id -> !conReceptor.contains(id))
+                .map(id -> organigrama.nodo(id).nombre()).toList();
+        if (!sinReceptor.isEmpty()) {
+            throw new IllegalStateException("Nadie usa todavía el sistema en: " + String.join(", ", sinReceptor)
+                    + ". El pase quedaría sin recibir; envíelo en papel o pida que se habiliten usuarios.");
+        }
+        exigirOtroReceptor(destinos, usuario, organigrama);
+    }
+
+    // No se duplica un pase que todavía espera el acuse de la misma dependencia
+    private void exigirSinPasePendiente(Long documentoId, List<Integer> destinos) {
+        List<String> conPasePendiente = new ArrayList<>();
+        for (Integer depId : destinos) {
+            if (actuacionDocumentoRepository.existePasePendiente(documentoId, depId)) {
+                conPasePendiente.add(dependenciaRepository.findById(depId).map(Dependencia::getNombre).orElse("ID " + depId));
+            }
+        }
+        if (!conPasePendiente.isEmpty()) {
+            throw new IllegalStateException("Ya existe un pase pendiente de acuse para: " + String.join(", ", conPasePendiente)
+                    + ". Espere la confirmación o retire ese pase antes de volver a derivar.");
+        }
+    }
+
+    // repartidoDe: el pase recibido del que sale este, cuando quien lo emite no tiene el original
+    private void registrarPases(Documento doc, Dependencia emisora, List<Integer> destinos, TipoPase tipoPase, String observacion,
+                                Usuario usuario, ActuacionDocumento repartidoDe) {
+        String tipoPaseStr = switch (tipoPase) {
+            case TRAMITE -> "PASE DE TRÁMITE";
+            case INFORME -> "PASE PARA INFORME";
+            case CONOCIMIENTO -> "PASE PARA CONOCIMIENTO";
+        };
+        for (Integer depId : destinos) {
+            Dependencia destino = dependenciaRepository.findById(depId)
+                    .orElseThrow(() -> new RuntimeException("Dependencia no encontrada: " + depId));
+            actuacionDocumentoRepository.save(ActuacionDocumento.builder()
+                    .documento(doc)
+                    .dependenciaEmisora(emisora)
+                    .dependenciaReceptoraPase(destino)
+                    .tipoActuacion("PASE_INTERNO")
+                    .numeroActuacion("S/N")
+                    .descripcionResumen(tipoPaseStr + " ➔ " + destino.getNombreVisible() + ": " + observacion)
+                    .ubicacionBibliorato(doc.getUbicacionBibliorato())
+                    .fechaHoraActuacion(LocalDateTime.now())
+                    .paseConfirmado(false)
+                    .requiereInforme(tipoPase == TipoPase.INFORME)
+                    .tipoPase(tipoPase)
+                    .usuario(usuario)
+                    .actuacionPadre(repartidoDe)
+                    .build());
+        }
+    }
+
+    // =====================================================================
+    // 🔀 REPARTO: quien recibió una copia o un pedido de informe, sin tener el original, lo baja a sus áreas
+    // =====================================================================
+
+    public record OpcionesReparto(Long paseId, String recibidoDe, String dependencia, TipoPase tipoPase, boolean permiteInforme,
+                                  List<DestinoPase> destinos) {}
+
+    public OpcionesReparto obtenerOpcionesReparto(Long paseId, Usuario usuario) {
+        ActuacionDocumento recibido = actuacionDocumentoRepository.findById(paseId)
+                .orElseThrow(() -> new IllegalArgumentException("Pase no encontrado: " + paseId));
+        Documento doc = recibido.getDocumento();
+        exigirPuedeRepartir(recibido, doc, usuario);
+        Organigrama organigrama = canalService.organigrama();
+        Dependencia receptora = recibido.getDependenciaReceptoraPase();
+        return new OpcionesReparto(paseId, recibido.getDependenciaEmisora().getNombreVisible(), receptora.getNombreVisible(),
+                recibido.getTipoPase(), permiteRepartirInforme(recibido, doc),
+                destinosPase(receptora.getId(), bajadas(receptora, organigrama), organigrama, usuario));
+    }
+
+    @Transactional
+    public Documento repartirPase(Long paseId, List<Integer> dependenciasDestinoIds, String observacion, TipoPase tipoPase, Usuario usuario) {
+        if (dependenciasDestinoIds == null || dependenciasDestinoIds.isEmpty()) {
+            throw new IllegalArgumentException("Debe seleccionar al menos una dependencia para repartir.");
+        }
+        if (observacion == null || observacion.trim().length() < 5) {
+            throw new IllegalArgumentException("Debe ingresar una instrucción válida (mínimo 5 caracteres) para repartir.");
+        }
+        if (tipoPase != TipoPase.INFORME && tipoPase != TipoPase.CONOCIMIENTO) {
+            throw new IllegalArgumentException("Sin el original solo se reparte una copia para conocimiento o un pedido de informe.");
+        }
+        ActuacionDocumento recibido = bloquearActuacion(paseId);
+        Documento doc = recibido.getDocumento();
+        exigirPuedeRepartir(recibido, doc, usuario);
+        if (tipoPase == TipoPase.INFORME && !permiteRepartirInforme(recibido, doc)) {
+            throw new IllegalArgumentException("Solo se pide un informe a sus áreas si a usted se lo pidieron y sigue sin responder. Una copia se reparte como copia.");
+        }
+
+        List<Integer> destinos = new ArrayList<>(new java.util.LinkedHashSet<>(dependenciasDestinoIds));
+        destinos.remove(null);
+        Dependencia receptora = recibido.getDependenciaReceptoraPase();
+        Organigrama organigrama = canalService.organigrama();
+        java.util.Set<Integer> permitidos = bajadas(receptora, organigrama).stream().map(d -> d.nodo().id())
+                .collect(java.util.stream.Collectors.toSet());
+        if (destinos.isEmpty() || !permitidos.containsAll(destinos)) {
+            throw new AccessDeniedException("Se reparte solo al nivel inmediato inferior de " + receptora.getNombreVisible() + ".");
+        }
+        exigirQuienReciba(destinos, usuario, organigrama);
+        exigirSinPasePendiente(doc.getId(), destinos);
+
+        registrarPases(doc, receptora, destinos, tipoPase, observacion.trim(), usuario, recibido);
+        auditoriaService.registrarEvento(doc, "REPARTO_PASE", doc.getEstadoActual(), doc.getEstadoActual(),
+                "Reparto de " + tipoPase.name().toLowerCase() + " desde " + receptora.getNombreVisible() + " a " + destinos.size()
+                        + (destinos.size() == 1 ? " dependencia" : " dependencias") + ", sin mover el original: " + observacion.trim(),
+                usuario, null);
+        return doc;
+    }
+
+    private void exigirPuedeRepartir(ActuacionDocumento recibido, Documento doc, Usuario usuario) {
+        verificarAccesoDocumento(usuario, doc.getId());
+        politicaAcceso.exigir(usuario, Accion.DERIVAR, "No está habilitado para repartir a otras dependencias.");
+        validarNoFinalizado(doc, "repartir");
+        exigirSalidaNoRegistrada(doc, "repartir el expediente");
+        boolean copiaOInforme = recibido.getTipoPase() == TipoPase.INFORME || recibido.getTipoPase() == TipoPase.CONOCIMIENTO;
+        if (!"PASE_CONFIRMADO".equals(recibido.getTipoActuacion()) || Boolean.TRUE.equals(recibido.getAnulada()) || !copiaOInforme
+                || recibido.getDependenciaReceptoraPase() == null) {
+            throw new IllegalStateException("Solo se reparte una copia o un pedido de informe ya recibido.");
+        }
+        if (!canalService.puedeActuarPor(usuario, recibido.getDependenciaReceptoraPase())) {
+            throw new AccessDeniedException("Solo la dependencia que recibió el pase puede repartirlo.");
+        }
+    }
+
+    private boolean permiteRepartirInforme(ActuacionDocumento recibido, Documento doc) {
+        boolean informativo = doc.getEstadoActual() == EstadoDocumento.ARCHIVADO
+                || (doc.getTipoDocumento() != null && doc.getTipoDocumento().isInformativo());
+        return !informativo && recibido.getTipoPase() == TipoPase.INFORME
+                && pedidosAbiertos(actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(doc.getId())).stream()
+                        .anyMatch(p -> p.getId().equals(recibido.getId()));
+    }
+
+    private static List<Organigrama.Destino> bajadas(Dependencia dependencia, Organigrama organigrama) {
+        return organigrama.destinos(dependencia.getId()).stream()
+                .filter(d -> d.movimiento() == Organigrama.Movimiento.BAJAR).toList();
+    }
+
+    private static boolean repartidoDesde(ActuacionDocumento actuacion, ActuacionDocumento origen) {
+        for (ActuacionDocumento p = actuacion.getActuacionPadre(); p != null; p = p.getActuacionPadre()) {
+            if (p.getId() != null && p.getId().equals(origen.getId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Los pedidos que salieron de este por reparto y siguen abiertos, en cualquier nivel
+    private static List<ActuacionDocumento> pedidosInternosAbiertos(ActuacionDocumento pedido, List<ActuacionDocumento> actuaciones) {
+        return pedidosAbiertos(actuaciones).stream().filter(p -> repartidoDesde(p, pedido)).toList();
+    }
+
+    // Lo que se le avisa a quien responde: responder cierra lo que repartió y sigue sin respuesta
+    public long contarPedidosInternosAbiertos(ActuacionDocumento pedido) {
+        return pedidosInternosAbiertos(pedido, actuacionDocumentoRepository
+                .findByDocumentoIdOrderByFechaHoraActuacionAsc(pedido.getDocumento().getId())).size();
+    }
+
+    // Quien repartió responde por su dependencia: con su respuesta dejan de esperarse los pedidos internos.
+    // Los que siguen sin recibir se anulan; los recibidos quedan como antecedente, sin pedir respuesta.
+    private void cerrarPedidosInternos(ActuacionDocumento pedido, Documento doc, Usuario usuario) {
+        List<ActuacionDocumento> abiertos = pedidosInternosAbiertos(pedido,
+                actuacionDocumentoRepository.findByDocumentoIdOrderByFechaHoraActuacionAsc(doc.getId()));
+        if (abiertos.isEmpty()) {
+            return;
+        }
+        LocalDateTime ahora = LocalDateTime.now();
+        for (ActuacionDocumento interno : abiertos) {
+            interno.setRequiereInforme(false);
+            if (esPasePendiente(interno)) {
+                interno.setAnulada(true);
+                interno.setTipoAnulacion(ANULACION_RETIRADO);
+                interno.setMotivoAnulacion("Quien lo repartió respondió el pedido antes de que se recibiera este pase.");
+                interno.setFechaHoraAnulacion(ahora);
+                interno.setUsuarioAnulacion(usuario);
+            }
+            actuacionDocumentoRepository.save(interno);
+        }
+        auditoriaService.registrarEvento(doc, "CIERRE_PEDIDOS_INTERNOS", doc.getEstadoActual(), doc.getEstadoActual(),
+                "Se respondió el pedido sin esperar a: " + abiertos.stream()
+                        .map(a -> a.getDependenciaReceptoraPase().getNombreVisible()).distinct()
+                        .collect(java.util.stream.Collectors.joining(", ")),
+                usuario, null);
     }
 
     @Transactional
@@ -1553,9 +1701,13 @@ public class DocumentoService {
             "Nueva actuación cargada: " + tipoActuacion + " N° " + nroLimpio + " por " + depEmisora.getNombreVisible()
                     + (pedido != null ? ", en respuesta al pedido de informe de " + pedido.getDependenciaEmisora().getNombreVisible()
                             + " (" + pedido.getFechaHoraActuacion().toLocalDate() + ")" : ""),
-            usuarioSesion, 
+            usuarioSesion,
             null
         );
+
+        if (pedido != null) {
+            cerrarPedidosInternos(pedido, doc, usuarioSesion);
+        }
 
         // 🔄 EVALUACIÓN AUTOMÁTICA DE ESTADO GLOBAL
         verificarYActualizarEstadoGlobal(documentoId);

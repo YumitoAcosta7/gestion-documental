@@ -442,6 +442,7 @@
                                                     <ul class="dropdown-menu dropdown-menu-end">
                                                         <li th:if="${s.puedeAgregar() and s.tipoNombre != 'RESPONDER' and s.tipoNombre != 'RECIBIR'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalAgregarActuacion" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-file-earmark-plus me-2"></i>Agregar actuación</button></li>
                                                         <li th:if="${s.puedeDerivar() and s.tipoNombre != 'EN_PODER'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalDerivar" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-send me-2"></i>Derivar / Elevar</button></li>
+                                                        <li th:if="${s.paseRepartir() != null}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalRepartir" th:data-pase-id="${s.paseRepartir()}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-diagram-3 me-2"></i>Repartir a mis áreas</button></li>
                                                         <li th:if="${s.puedeDevolver()}"><button type="button" class="dropdown-item" data-accion="preparar-devolucion" th:data-id="${doc.id}"><i class="bi bi-arrow-return-left me-2"></i>Devolver a quien lo envió</button></li>
                                                         <li th:if="${s.puedeSalida() and s.tipoNombre != 'LISTO_SALIDA'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalSalida" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-box-arrow-right me-2"></i>Registrar salida</button></li>
                                                         <li th:if="${s.puedeAcuse() and s.tipoNombre != 'ESPERA_ACUSE'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalConfirmarAcuse" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-file-earmark-check me-2"></i>Confirmar acuse</button></li>
@@ -1077,6 +1078,49 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-send me-1"></i> Confirmar Derivación</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REPARTIR: baja una copia o un pedido recibido, sin mover el original -->
+    <div class="modal fade" id="modalRepartir" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-diagram-3 me-2 text-warning"></i>Repartir a mis áreas <span id="labelCutiRepartir" class="text-warning"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <form th:action="@{/documentos/repartir}" method="post" id="formRepartir">
+                    <input type="hidden" id="repartirPaseId" name="paseId" />
+                    <div class="modal-body">
+                        <div class="small text-muted mb-2" id="repartirDesde"></div>
+                        <div class="alert alert-warning small py-2 d-none" id="repartirAviso"></div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small" for="selectTipoReparto">Qué reparte</label>
+                            <select class="form-select form-select-sm" name="tipoPase" id="selectTipoReparto" required>
+                                <option value="INFORME">Pedido de informe: se espera respuesta de cada una</option>
+                                <option value="CONOCIMIENTO">Copia para conocimiento</option>
+                            </select>
+                            <div class="form-text" id="ayudaReparto"></div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="form-label fw-bold small mb-0">Nivel inmediato inferior</span>
+                                <span class="small text-muted" id="contadorReparto"></span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mb-2 d-none" id="marcarReparto">Marcar todas</button>
+                            <div class="card d-block p-2 bg-light" style="max-height: 220px; overflow-y: auto;" id="listaReparto"></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small" for="observacionReparto">Instrucciones <span class="text-danger">*</span></label>
+                            <textarea class="form-control form-control-sm" name="observacion" id="observacionReparto" rows="3" required minlength="5" placeholder="Ej: Para que informe sobre lo que le corresponde a su área..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-send me-1"></i> Repartir</button>
                     </div>
                 </form>
             </div>

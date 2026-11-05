@@ -162,6 +162,67 @@
             }
         }
 
+        // Reparto: baja una copia o un pedido recibido al nivel inmediato inferior, sin mover el original
+        function actualizarContadorReparto() {
+            const marcadas = document.querySelectorAll('#listaReparto .check-reparto:checked').length;
+            document.getElementById('contadorReparto').textContent = marcadas > 0 ? `${marcadas} seleccionada${marcadas === 1 ? '' : 's'}` : '';
+            const disponibles = [...document.querySelectorAll('#listaReparto .check-reparto:not(:disabled)')];
+            document.getElementById('marcarReparto').textContent = disponibles.length > 0 && disponibles.every(c => c.checked) ? 'Desmarcar todas' : 'Marcar todas';
+        }
+
+        function ajustarAyudaReparto(tipo) {
+            document.getElementById('ayudaReparto').textContent = tipo === 'INFORME'
+                ? 'Su dependencia sigue debiendo la respuesta. Si responde antes que sus áreas, sus pedidos dejan de esperarse.'
+                : 'Sus áreas reciben una copia, y no se espera respuesta.';
+        }
+
+        async function cargarReparto(paseId) {
+            const desde = document.getElementById('repartirDesde');
+            const aviso = document.getElementById('repartirAviso');
+            const lista = document.getElementById('listaReparto');
+            const marcar = document.getElementById('marcarReparto');
+            const enviar = document.querySelector('#formRepartir [type=submit]');
+            const tipo = document.getElementById('selectTipoReparto');
+            desde.textContent = 'Cargando áreas...';
+            aviso.classList.add('d-none');
+            marcar.classList.add('d-none');
+            lista.innerHTML = '';
+            document.getElementById('contadorReparto').textContent = '';
+            enviar.disabled = true;
+            try {
+                const res = await fetch(`/api/pases/${paseId}/reparto`);
+                const datos = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(datos.error || 'No se pudo cargar a quién repartir.');
+                const queRecibio = datos.tipoPase === 'INFORME' ? 'un pedido de informe' : 'una copia';
+                desde.innerHTML = `<strong>${esc(datos.dependencia)}</strong> recibió ${queRecibio} de ${esc(datos.recibidoDe)}. El original no se mueve.`;
+                tipo.querySelector('option[value="INFORME"]').disabled = !datos.permiteInforme;
+                tipo.value = datos.permiteInforme ? 'INFORME' : 'CONOCIMIENTO';
+                ajustarAyudaReparto(tipo.value);
+
+                const grupos = GRUPOS_DESTINO.map(([clase, titulo]) => ({ titulo, destinos: datos.destinos.filter(d => d.clase === clase) })).filter(g => g.destinos.length > 0);
+                lista.innerHTML = grupos.map(g => (grupos.length > 1 ? `<div class="small fw-bold text-muted mt-1">${esc(g.titulo)}</div>` : '')
+                    + g.destinos.map(d => `
+                    <div class="form-check">
+                        <input class="form-check-input check-reparto" type="checkbox" name="dependenciaDestinoId" value="${d.id}" id="reparto_${d.id}" ${destinoHabilitado(d) ? '' : 'disabled'}>
+                        <label class="form-check-label small ${destinoHabilitado(d) ? '' : 'text-muted'}" for="reparto_${d.id}">${nombreDestino(d)}<span class="text-muted">${marcaDestino(d)}</span></label>
+                    </div>`).join('')).join('');
+
+                const disponibles = datos.destinos.filter(destinoHabilitado).length;
+                marcar.classList.toggle('d-none', disponibles < 2);
+                actualizarContadorReparto();
+                if (disponibles === 0) {
+                    aviso.textContent = 'Ninguna de sus áreas tiene quien pueda recibirlo.';
+                    aviso.classList.remove('d-none');
+                    return;
+                }
+                enviar.disabled = false;
+            } catch (e) {
+                desde.textContent = '';
+                aviso.textContent = e.message;
+                aviso.classList.remove('d-none');
+            }
+        }
+
         // Alternar visualización y comportamiento según modalidad en Modal de Salida
         function alternarTipoRemision(modo) {
             const bloqueCheckboxes = document.getElementById('bloqueCheckboxesInformes');
@@ -347,6 +408,7 @@
                 : '';
             // Unidad de expediente: respuesta cosida a su pedido de informe y pertenencia al legajo de la salida
             const vinculos = (nodo.respondeA ? `<span class="badge bg-info-subtle text-info-emphasis border me-1"><i class="bi bi-reply me-1"></i>Responde al pedido de ${esc(nodo.respondeADependencia)}</span>` : '')
+                + (nodo.repartidoDe ? `<span class="badge bg-info-subtle text-info-emphasis border me-1"><i class="bi bi-diagram-3 me-1"></i>Reparto de lo recibido de ${esc(nodo.repartidoDe)}</span>` : '')
                 + (nodo.enLegajo ? `<span class="badge bg-success-subtle text-success-emphasis border"><i class="bi bi-paperclip me-1"></i>Integra el legajo de la ${esc(nodo.enLegajo)}</span>` : '');
 
             let html = `
@@ -481,7 +543,8 @@
                         pedidos.forEach(p => {
                             const opcion = document.createElement('option');
                             opcion.value = p.id;
-                            opcion.textContent = `Pedido de ${p.de} a ${p.para}, ${p.fecha}`;
+                            const internos = p.internosAbiertos > 0 ? ` (cierra ${p.internosAbiertos} ${p.internosAbiertos === 1 ? 'pedido interno' : 'pedidos internos'} sin responder)` : '';
+                            opcion.textContent = `Pedido de ${p.de} a ${p.para}, ${p.fecha}${internos}`;
                             select.appendChild(opcion);
                         });
                         fila.classList.remove('d-none');
@@ -495,6 +558,35 @@
                         fila.classList.remove('d-none');
                         select.innerHTML = '<option value="">No se pudieron cargar los pedidos</option>';
                     });
+            }
+
+            // Modal Reparto
+            const modalRepartir = document.getElementById('modalRepartir');
+            if (modalRepartir) {
+                modalRepartir.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (button) {
+                        document.getElementById('repartirPaseId').value = button.getAttribute('data-pase-id');
+                        document.getElementById('labelCutiRepartir').textContent = button.getAttribute('data-doc-cuti') ? `(${button.getAttribute('data-doc-cuti')})` : '';
+                        document.getElementById('observacionReparto').value = '';
+                        cargarReparto(button.getAttribute('data-pase-id'));
+                    }
+                });
+                document.getElementById('marcarReparto').addEventListener('click', () => {
+                    const disponibles = [...document.querySelectorAll('#listaReparto .check-reparto:not(:disabled)')];
+                    const marcar = !disponibles.every(c => c.checked);
+                    disponibles.forEach(c => { c.checked = marcar; });
+                    actualizarContadorReparto();
+                });
+                document.getElementById('formRepartir').addEventListener('submit', function (e) {
+                    if (!this.querySelector('.check-reparto:checked')) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        const aviso = document.getElementById('repartirAviso');
+                        aviso.textContent = 'Seleccione al menos un área.';
+                        aviso.classList.remove('d-none');
+                    }
+                });
             }
 
             // Modal Derivación
@@ -878,6 +970,10 @@
                 alternarTipoPase(t.value);
             } else if (t.name === 'alcanceEnvio') {
                 pintarDestinosDerivacion(t.value);
+            } else if (t.id === 'selectTipoReparto') {
+                ajustarAyudaReparto(t.value);
+            } else if (t.classList && t.classList.contains('check-reparto')) {
+                actualizarContadorReparto();
             } else if (t.classList && t.classList.contains('check-dependencia')) {
                 actualizarContadorDestinos();
             } else if (t.id === 'selectTipoRemision') {

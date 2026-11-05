@@ -17,7 +17,8 @@ import java.util.function.Predicate;
 public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, Long paseRetirar, boolean puedeRechazar,
                                   boolean puedeAgregar, boolean puedeDerivar, boolean puedeDevolver,
                                   boolean puedeSalida, boolean puedeAcuse, boolean puedeCierre,
-                                  boolean puedeCorregirSalida, boolean puedeCorregirIngreso, boolean puedeAnular) {
+                                  boolean puedeCorregirSalida, boolean puedeCorregirIngreso, boolean puedeAnular,
+                                  Long paseRepartir) {
 
     public enum Tipo {
         RECIBIR,        // le enviaron un pase: confirmar la recepción
@@ -40,7 +41,8 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
     public boolean isConMenu() {
         return (puedeAgregar && tipo != Tipo.RESPONDER && tipo != Tipo.RECIBIR) || puedeDevolver || (puedeDerivar && tipo != Tipo.EN_PODER)
                 || (puedeSalida && tipo != Tipo.LISTO_SALIDA) || (puedeAcuse && tipo != Tipo.ESPERA_ACUSE)
-                || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre || puedeCorregirSalida || puedeCorregirIngreso || puedeAnular;
+                || (paseRetirar != null && tipo != Tipo.EN_CAMINO) || puedeCierre || puedeCorregirSalida || puedeCorregirIngreso || puedeAnular
+                || paseRepartir != null;
     }
 
     public static SituacionExpediente de(Documento doc, Dependencia custodia, List<ActuacionDocumento> actuaciones,
@@ -51,6 +53,13 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
     // usuarioId: quien mira. Un pase que envió esa misma persona no es algo que le toque recibir
     public static SituacionExpediente de(Documento doc, Dependencia custodia, List<ActuacionDocumento> actuaciones,
                                          Predicate<Dependencia> actuaPor, Dependencia propia, Permisos permisos, Integer usuarioId) {
+        return de(doc, custodia, actuaciones, actuaPor, propia, permisos, usuarioId, d -> false);
+    }
+
+    // tieneAreas: si la dependencia tiene un nivel inferior al que repartir una copia o un pedido recibido
+    public static SituacionExpediente de(Documento doc, Dependencia custodia, List<ActuacionDocumento> actuaciones,
+                                         Predicate<Dependencia> actuaPor, Dependencia propia, Permisos permisos, Integer usuarioId,
+                                         Predicate<Dependencia> tieneAreas) {
         EstadoDocumento estado = doc.getEstadoActual();
         boolean abierto = estado != EstadoDocumento.FINALIZADO && estado != EstadoDocumento.ARCHIVADO && estado != EstadoDocumento.ANULADO;
         boolean tieneOriginal = custodia != null && actuaPor.test(custodia);
@@ -124,9 +133,20 @@ public record SituacionExpediente(Tipo tipo, String detalle, Long paseRecibir, L
                     ? "En camino a " + nombre(tramiteEnCamino.getDependenciaReceptoraPase())
                     : "Está en " + nombre(custodia);
         }
+        // Sin el original, lo recibido de otra dependencia se reparte hacia abajo. Lo que su propio ámbito ya bajó no se ofrece de nuevo
+        ActuacionDocumento repartir = !permisos.derivar() || !abierto || tieneOriginal || salidaRegistrada ? null
+                : actuaciones.stream()
+                        .filter(a -> "PASE_CONFIRMADO".equals(a.getTipoActuacion()) && !Boolean.TRUE.equals(a.getAnulada()))
+                        .filter(a -> a.getTipoPase() == TipoPase.INFORME || a.getTipoPase() == TipoPase.CONOCIMIENTO)
+                        .filter(a -> a.getDependenciaReceptoraPase() != null && actuaPor.test(a.getDependenciaReceptoraPase()))
+                        .filter(a -> a.getDependenciaEmisora() == null || !actuaPor.test(a.getDependenciaEmisora()))
+                        .filter(a -> tieneAreas.test(a.getDependenciaReceptoraPase()))
+                        .max(Comparator.comparing(ActuacionDocumento::getFechaHoraActuacion))
+                        .orElse(null);
         return new SituacionExpediente(tipo, detalle, recibir != null ? recibir.getId() : null,
                 retirar != null ? retirar.getId() : null, puedeRechazar, puedeAgregar, puedeDerivar, puedeDevolver,
-                puedeSalida, puedeAcuse, puedeCierre, puedeCorregirSalida, puedeCorregirIngreso, puedeAnular);
+                puedeSalida, puedeAcuse, puedeCierre, puedeCorregirSalida, puedeCorregirIngreso, puedeAnular,
+                repartir != null ? repartir.getId() : null);
     }
 
     private static boolean esPasePendiente(ActuacionDocumento a) {

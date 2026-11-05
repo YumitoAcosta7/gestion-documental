@@ -87,6 +87,7 @@ class MatrizAutorizacionTest {
             new Puerta(HttpMethod.POST, "/documentos/forzar-cierre", EnumSet.of(Accion.FORZAR_CIERRE)),
             new Puerta(HttpMethod.GET, "/api/documentos/1/auditoria", EnumSet.of(Accion.VER_AUDITORIA)),
             new Puerta(HttpMethod.POST, "/documentos/derivar", EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION)),
+            new Puerta(HttpMethod.POST, "/documentos/repartir", EnumSet.of(Accion.DERIVAR)),
             new Puerta(HttpMethod.POST, "/documentos/propio", EnumSet.of(Accion.REGISTRAR_ACTUACION)),
             new Puerta(HttpMethod.POST, "/documentos/devolver", EnumSet.of(Accion.REGISTRAR_ACTUACION)),
             new Puerta(HttpMethod.POST, "/documentos/actuaciones/guardar", EnumSet.of(Accion.REGISTRAR_ACTUACION)),

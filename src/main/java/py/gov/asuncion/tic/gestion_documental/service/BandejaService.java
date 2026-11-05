@@ -38,7 +38,7 @@ public class BandejaService {
         INFORMES_PENDIENTES("Informes pendientes", """
             d.estado_actual = 'EN_ESPERA_INFORME'
             AND EXISTS (SELECT 1 FROM actuaciones_documento a
-                         WHERE a.documento_id = d.id AND a.tipo_pase = 'INFORME' AND NOT a.anulada
+                         WHERE a.documento_id = d.id AND a.tipo_pase = 'INFORME' AND a.requiere_informe AND NOT a.anulada
                            AND a.dependencia_receptora_pase_id IN (SELECT id FROM deps)
                            AND NOT EXISTS (SELECT 1 FROM actuaciones_documento c
                                             WHERE c.documento_id = d.id AND c.tipo_actuacion = 'CIERRE_EXCEPCIONAL'

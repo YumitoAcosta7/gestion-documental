@@ -292,6 +292,24 @@ public class HomeController {
     }
 
     /**
+     * 🔀 REPARTIR HACIA ABAJO UNA COPIA O UN PEDIDO DE INFORME RECIBIDO, SIN TENER EL ORIGINAL
+     */
+    @PostMapping("/documentos/repartir")
+    public String repartirPase(@RequestParam("paseId") Long paseId,
+                               @RequestParam("dependenciaDestinoId") List<Integer> dependenciasDestinoIds,
+                               @RequestParam("observacion") String observacion,
+                               @RequestParam("tipoPase") TipoPase tipoPase,
+                               RedirectAttributes redirectAttributes) {
+        try {
+            documentoService.repartirPase(paseId, dependenciasDestinoIds, observacion, tipoPase, getUsuarioAutenticadoObligatorio());
+            redirectAttributes.addFlashAttribute("mensajeExito", "Repartido correctamente. El original sigue donde estaba.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Error al repartir: " + mensajeError(e));
+        }
+        return "redirect:/";
+    }
+
+    /**
      * 📤 REGISTRAR SALIDA EXTERIOR
      */
     @PostMapping("/documentos/salida")
@@ -791,8 +809,12 @@ public class HomeController {
             map.put("id", act.getId());
             map.put("documentoId", id);
             // Unidad de expediente: a qué pedido de informe responde y si integra el legajo de la salida
-            map.put("respondeA", act.getActuacionPadre() != null ? act.getActuacionPadre().getId() : null);
-            map.put("respondeADependencia", act.getActuacionPadre() != null && act.getActuacionPadre().getDependenciaEmisora() != null
+            // En un pase, el vínculo no es una respuesta: es el pase recibido del que se repartió
+            boolean esReparto = act.getActuacionPadre() != null && act.getTipoActuacion() != null && act.getTipoActuacion().startsWith("PASE_");
+            map.put("repartidoDe", esReparto && act.getActuacionPadre().getDependenciaEmisora() != null
+                    ? act.getActuacionPadre().getDependenciaEmisora().getNombreVisible() : null);
+            map.put("respondeA", act.getActuacionPadre() != null && !esReparto ? act.getActuacionPadre().getId() : null);
+            map.put("respondeADependencia", act.getActuacionPadre() != null && !esReparto && act.getActuacionPadre().getDependenciaEmisora() != null
                     ? act.getActuacionPadre().getDependenciaEmisora().getNombreVisible() : null);
             map.put("enLegajo", legajo.get(act.getId()));
             map.put("tipoActuacion", act.getTipoActuacion() != null ? act.getTipoActuacion() : "PASE_INTERNO");
@@ -845,6 +867,21 @@ public class HomeController {
     }
 
     /**
+     * 🔀 API JSON: A QUIÉN SE PUEDE REPARTIR UNA COPIA O UN PEDIDO RECIBIDO
+     */
+    @GetMapping("/api/pases/{id}/reparto")
+    @ResponseBody
+    public ResponseEntity<?> obtenerRepartoJson(@PathVariable("id") Long id) {
+        try {
+            return ResponseEntity.ok(documentoService.obtenerOpcionesReparto(id, getUsuarioAutenticadoObligatorio()));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * 📝 API JSON: PEDIDOS DE INFORME QUE EL USUARIO PUEDE RESPONDER EN ESTE EXPEDIENTE
      */
     @GetMapping("/api/documentos/{id}/pedidos-abiertos")
@@ -858,6 +895,7 @@ public class HomeController {
                 map.put("de", pedido.getDependenciaEmisora().getNombreVisible());
                 map.put("para", pedido.getDependenciaReceptoraPase().getNombreVisible());
                 map.put("fecha", pedido.getFechaHoraActuacion().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+                map.put("internosAbiertos", documentoService.contarPedidosInternosAbiertos(pedido));
                 listaJson.add(map);
             }
             return ResponseEntity.ok(listaJson);
