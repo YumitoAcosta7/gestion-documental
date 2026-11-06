@@ -25,14 +25,14 @@
 | Tabla | Qué se hace |
 |---|---|
 | `niveles_jerarquicos`, `dependencias`, `tipos_documentos`, `reglas_derivacion` | Se copian |
-| `flyway_schema_history` | Se copia, para que la aplicación sepa que está en V28 |
+| `flyway_schema_history` | Se copia, para que la aplicación sepa en qué versión está |
 | `organigrama_version` | Se copia |
 | `feriados` | Se copia, con `creado_por` vacío, porque esos usuarios no existirán |
 | `usuarios`, `asignaciones` | Vacías; se cargan en el paso 6 |
 | `documentos`, `actuaciones_documento`, `adjuntos_documento`, `legajos_salida`, `series_cuti` | Vacías |
 | `auditorias_documento`, `auditoria_sistema`, `bitacora_cadena` | Vacías; las cadenas empiezan de nuevo |
 | `solicitudes_reapertura`, `solicitudes_contrasena`, `solicitudes_traslado_custodia` | Vacías |
-| `biblioratos` | Vacía, salvo que se decida otra cosa |
+| `biblioratos`, `ubicaciones_documento` | Vacías, salvo que se decida otra cosa |
 
 Esta lista salió de leer el código. En el ensayo se compara con todas las tablas reales de la base, por si alguna anterior a Flyway no figura aquí.
 

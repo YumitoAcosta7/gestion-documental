@@ -81,6 +81,7 @@ Están cubiertos por pruebas automáticas, salvo el marcado de todas las depende
 - **Protección en la base:** quedan pendientes M5 y M8. Afectan a quien tenga acceso directo a la base.
 - **Interfaz:** a 1280 píxeles la tabla corta el botón "Más", algunos encabezados de ventanas no siguen el tema, y aparecen códigos crudos como `PASE_CONFIRMADO`.
 - **Documentos informativos archivados:** la opción de repartir no aparece en la pestaña de Archivo físico.
+- **Quitar una ubicación:** se puede cambiar, pero no eliminar. Si una dependencia ya no tiene el papel, hoy no hay forma de dejarlo registrado.
 - **Una sola persona en una mesa:** no puede enviar a una subordinada sin usuarios, porque nadie más podría recibirlo.
 
 ## Propuesta de alcance del piloto

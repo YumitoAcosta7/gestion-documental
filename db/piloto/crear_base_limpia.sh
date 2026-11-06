@@ -25,7 +25,7 @@ DESTINO="$1"
 ROL_APP="$2"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 CATALOGOS=(niveles_jerarquicos dependencias tipos_documentos reglas_derivacion flyway_schema_history organigrama_version feriados)
-VACIAS_PREVISTAS=" usuarios asignaciones documentos actuaciones_documento adjuntos_documento legajos_salida series_cuti auditorias_documento auditoria_sistema solicitudes_reapertura solicitudes_contrasena solicitudes_traslado_custodia biblioratos "
+VACIAS_PREVISTAS=" usuarios asignaciones documentos actuaciones_documento adjuntos_documento legajos_salida series_cuti auditorias_documento auditoria_sistema solicitudes_reapertura solicitudes_contrasena solicitudes_traslado_custodia biblioratos ubicaciones_documento "
 
 if [ "$(id -un)" != "postgres" ]; then
     echo "Ejecútelo como postgres:  sudo -u postgres bash $0 $*" >&2

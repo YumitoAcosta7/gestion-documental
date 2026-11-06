@@ -22,6 +22,8 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -56,7 +58,7 @@ class MatrizAutorizacionTest {
     private static final Map<String, Set<Accion>> PERFILES = Map.of(
             "consulta", EnumSet.noneOf(Accion.class),
             "operador", EnumSet.of(Accion.REGISTRAR_ACTUACION),
-            "responsable", EnumSet.of(Accion.REGISTRAR_ACTUACION, Accion.DERIVAR, Accion.VER_AUDITORIA),
+            "responsable", EnumSet.of(Accion.REGISTRAR_ACTUACION, Accion.DERIVAR, Accion.VER_AUDITORIA, Accion.GESTIONAR_ARCHIVO),
             "mesa", EnumSet.complementOf(EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             "admin", EnumSet.of(Accion.ADMINISTRAR_SISTEMA));
 
@@ -82,7 +84,7 @@ class MatrizAutorizacionTest {
             new Puerta(HttpMethod.POST, "/documentos/reapertura/aprobar", EnumSet.of(Accion.FORZAR_CIERRE)),
             new Puerta(HttpMethod.POST, "/documentos/reapertura/rechazar", EnumSet.of(Accion.FORZAR_CIERRE)),
             new Puerta(HttpMethod.POST, "/documentos/reemplazar-acuse", EnumSet.of(Accion.REGISTRAR_SALIDA)),
-            new Puerta(HttpMethod.POST, "/documentos/ubicacion", EnumSet.of(Accion.GESTIONAR_ARCHIVO)),
+            new Puerta(HttpMethod.POST, "/documentos/ubicacion", EnumSet.of(Accion.REGISTRAR_ACTUACION)),
             new Puerta(HttpMethod.POST, "/biblioratos/guardar", EnumSet.of(Accion.GESTIONAR_ARCHIVO)),
             new Puerta(HttpMethod.POST, "/documentos/forzar-cierre", EnumSet.of(Accion.FORZAR_CIERRE)),
             new Puerta(HttpMethod.GET, "/api/documentos/1/auditoria", EnumSet.of(Accion.VER_AUDITORIA)),
@@ -107,6 +109,22 @@ class MatrizAutorizacionTest {
             return PERFILES.getOrDefault(u.getUsername(), Set.of()).stream()
                     .map(a -> new SimpleGrantedAuthority(a.autoridad())).toList();
         });
+        // Aquí se prueba la puerta de cada perfil; el acceso a un expediente concreto, en su propia prueba
+        when(documentoService.puedeAccederDocumento(any(), any())).thenReturn(true);
+    }
+
+    @Test
+    void laAuditoriaDeUnExpedienteExigeAccesoAEseExpediente() throws Exception {
+        when(documentoService.puedeAccederDocumento(any(), eq(2L))).thenReturn(false);
+        when(auditoriaService.obtenerHistorialAuditoria(any())).thenReturn(List.of());
+
+        assertEquals(403, mvc.perform(request(HttpMethod.GET, "/api/documentos/2/auditoria").with(user("responsable")))
+                .andReturn().getResponse().getStatus(), "con el permiso, pero sin acceso a ese expediente");
+        verify(auditoriaService, never()).obtenerHistorialAuditoria(2L);
+
+        assertEquals(200, mvc.perform(request(HttpMethod.GET, "/api/documentos/1/auditoria").with(user("responsable")))
+                .andReturn().getResponse().getStatus(), "con el permiso y con acceso");
+        verify(auditoriaService).obtenerHistorialAuditoria(1L);
     }
 
     private MockHttpServletRequestBuilder pedido(Puerta p, String perfil) {

@@ -43,6 +43,7 @@ class GobernanzaExpedienteTest {
     @Mock AuditoriaDocumentoRepository auditoriaDocumentoRepository;
     @Mock AdjuntoDocumentoRepository adjuntoRepository;
     @Mock SolicitudReaperturaRepository solicitudRepository;
+    @Mock BiblioratoService biblioratoService;
     @InjectMocks DocumentoService servicio;
 
     // Dirección de TIC (10) > Departamento Operativo (40); Dirección de Hacienda (20) pidió el informe
@@ -192,13 +193,12 @@ class GobernanzaExpedienteTest {
     @Test
     void sinMovimientosSeAnulaYSuNumeroQuedaLibre() {
         conIngresoParaCorregir();
-        expediente.setFojaDesde(3);
-        expediente.setFojaHasta(4);
+        when(biblioratoService.liberarUbicaciones(500L)).thenReturn("BIB-001 — Tomo 1 · Fojas 3–4");
         servicio.anularExpediente(500L, "Se registró dos veces", usuario);
         assertEquals(EstadoDocumento.ANULADO, expediente.getEstadoActual());
-        assertNull(expediente.getFojaDesde(), "libera las fojas");
+        verify(biblioratoService).liberarUbicaciones(500L);
         verify(auditoriaService).registrarEvento(eq(expediente), eq("EXPEDIENTE_ANULADO"), eq(EstadoDocumento.INGRESADO), eq(EstadoDocumento.ANULADO),
-                argThat(d -> d.contains("120/2026") && d.contains("dos veces")), eq(usuario), isNull());
+                argThat(d -> d.contains("120/2026") && d.contains("dos veces") && d.contains("BIB-001")), eq(usuario), isNull());
 
         when(documentoRepository.findByDependenciaOrigenIdAndNumeroDocumentoOrigen(20, "120/2026")).thenReturn(List.of(expediente));
         Documento correcto = new Documento();

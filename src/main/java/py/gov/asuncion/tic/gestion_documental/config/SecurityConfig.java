@@ -98,7 +98,9 @@ public class SecurityConfig {
                 .requestMatchers("/documentos/guardar").hasAuthority(Accion.REGISTRAR_INGRESO.autoridad())
                 .requestMatchers("/documentos/salida", "/documentos/confirmar-acuse", "/documentos/reemplazar-acuse", "/documentos/corregir-salida")
                     .hasAuthority(Accion.REGISTRAR_SALIDA.autoridad())
-                .requestMatchers("/documentos/ubicacion", "/biblioratos/**").hasAuthority(Accion.GESTIONAR_ARCHIVO.autoridad())
+                .requestMatchers("/biblioratos/**").hasAuthority(Accion.GESTIONAR_ARCHIVO.autoridad())
+                // Archiva quien registra actuaciones, en las carpetas de las dependencias por las que actúa
+                .requestMatchers("/documentos/ubicacion").hasAuthority(Accion.REGISTRAR_ACTUACION.autoridad())
                 .requestMatchers("/documentos/forzar-cierre", "/documentos/reapertura/**").hasAuthority(Accion.FORZAR_CIERRE.autoridad())
                 .requestMatchers("/api/documentos/*/auditoria").hasAuthority(Accion.VER_AUDITORIA.autoridad())
                 // Derivar: con DERIVAR a cualquier destino del canal; con solo REGISTRAR_ACTUACION, elevar al superior

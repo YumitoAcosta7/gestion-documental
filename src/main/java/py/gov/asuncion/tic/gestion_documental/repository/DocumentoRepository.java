@@ -186,7 +186,7 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
     // Solo devuelve expedientes que el usuario puede ver: el ámbito se filtra en la misma consulta (auditoría B2),
     // expediente por expediente sobre los que coinciden, en orden de fecha, hasta juntar el máximo
     @Query(value = CTE_AMBITO + """
-        SELECT d.* FROM documentos d LEFT JOIN biblioratos b ON b.id = d.bibliorato_id
+        SELECT d.* FROM documentos d
          WHERE (CAST(:texto AS text) IS NULL
                 -- En una subconsulta sobre documentos, para que use los índices de trigramas de V22
                 OR d.id IN (SELECT t.id FROM documentos t
@@ -195,13 +195,14 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
                                 OR t.numero_documento_origen ILIKE '%' || CAST(:texto AS text) || '%'
                                 OR t.nro_nota_salida ILIKE '%' || CAST(:texto AS text) || '%'
                                 OR t.ubicacion_bibliorato ILIKE '%' || CAST(:texto AS text) || '%')
-                OR d.bibliorato_id IN (SELECT bt.id FROM biblioratos bt
-                                        WHERE bt.codigo ILIKE '%' || CAST(:texto AS text) || '%'
-                                           OR bt.descripcion ILIKE '%' || CAST(:texto AS text) || '%'))
+                OR d.id IN (SELECT ut.documento_id FROM ubicaciones_documento ut JOIN biblioratos bt ON bt.id = ut.bibliorato_id
+                              WHERE bt.codigo ILIKE '%' || CAST(:texto AS text) || '%'
+                                 OR bt.descripcion ILIKE '%' || CAST(:texto AS text) || '%'))
            AND (CAST(:dependenciaId AS integer) IS NULL OR d.dependencia_origen_id = CAST(:dependenciaId AS integer))
            AND (CAST(:tipoDocId AS integer) IS NULL OR d.tipo_documento_id = CAST(:tipoDocId AS integer))
            AND (CAST(:estado AS text) IS NULL OR d.estado_actual = CAST(:estado AS text))
-           AND (CAST(:biblioratoId AS integer) IS NULL OR b.id = CAST(:biblioratoId AS integer))
+           AND (CAST(:biblioratoId AS integer) IS NULL
+                OR d.id IN (SELECT ub.documento_id FROM ubicaciones_documento ub WHERE ub.bibliorato_id = CAST(:biblioratoId AS integer)))
            AND (CAST(:fechaDesde AS timestamp) IS NULL OR d.fecha_hora_ingreso >= CAST(:fechaDesde AS timestamp))
            AND (CAST(:fechaHasta AS timestamp) IS NULL OR d.fecha_hora_ingreso <= CAST(:fechaHasta AS timestamp))
            AND\s""" + DOCUMENTO_ACCESIBLE + """
@@ -219,24 +220,12 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
             @Param("fechaHasta") LocalDateTime fechaHasta
     );
 
-    // 📚 Archivo físico: documentos con bibliorato asignado o archivados, ordenados por ubicación
-    @Query("""
-        SELECT d FROM Documento d LEFT JOIN d.bibliorato b
-        WHERE (b IS NOT NULL OR d.estadoActual = 'ARCHIVADO')
-          AND (:biblioratoId IS NULL OR b.id = :biblioratoId)
-        ORDER BY b.codigo, d.fojaDesde, d.fechaHoraIngreso DESC
-    """)
-    List<Documento> findDocumentosArchivo(@Param("biblioratoId") Integer biblioratoId);
-
-    // Documentos del bibliorato cuyas fojas se superponen con el rango indicado
+    // 📚 Documentos archivados que nadie ubicó todavía
     @Query("""
         SELECT d FROM Documento d
-        WHERE d.bibliorato.id = :biblioratoId AND d.fojaDesde IS NOT NULL
-          AND d.fojaDesde <= :hasta AND d.fojaHasta >= :desde
-          AND (:excluirId IS NULL OR d.id <> :excluirId)
+        WHERE d.estadoActual = 'ARCHIVADO'
+          AND NOT EXISTS (SELECT 1 FROM UbicacionDocumento u WHERE u.documento = d)
+        ORDER BY d.fechaHoraIngreso DESC
     """)
-    List<Documento> findFojasSuperpuestas(@Param("biblioratoId") Integer biblioratoId,
-                                         @Param("desde") Integer desde,
-                                         @Param("hasta") Integer hasta,
-                                         @Param("excluirId") Long excluirId);
+    List<Documento> findArchivadosSinUbicacion();
 }

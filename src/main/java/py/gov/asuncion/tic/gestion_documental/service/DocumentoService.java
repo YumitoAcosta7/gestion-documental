@@ -488,8 +488,9 @@ public class DocumentoService {
         documento.setAsunto(dto.getAsunto().trim());
 
         // 📚 Ubicación física: obligatoria para los tipos que la requieren (ej. circulares)
+        Bibliorato bibliorato = null;
         if (dto.getBiblioratoId() != null) {
-            biblioratoService.asignarUbicacion(documento, dto.getBiblioratoId(), dto.getFojaDesde(), dto.getFojaHasta());
+            bibliorato = biblioratoService.biblioratoParaGuardar(dto.getBiblioratoId(), usuarioSesion);
         } else if (Boolean.TRUE.equals(tipo.getRequiereBibliorato())) {
             throw new IllegalArgumentException("Para '" + tipo.getNombre() + "' es obligatorio indicar el bibliorato donde se archiva.");
         } else if (dto.getFojaDesde() != null || dto.getFojaHasta() != null) {
@@ -497,6 +498,8 @@ public class DocumentoService {
         }
 
         Documento guardado = guardarNuevoDocumento(documento, usuarioSesion);
+        String ubicacionTexto = bibliorato == null ? null
+                : biblioratoService.guardarUbicacion(guardado, bibliorato, dto.getFojaDesde(), dto.getFojaHasta(), usuarioSesion).getTexto();
 
         // 🗄️ Los informativos no se tramitan: quedan archivados en el mismo acto
         if (tipo.isInformativo()) {
@@ -505,47 +508,66 @@ public class DocumentoService {
             guardado.setFechaHoraArchivado(LocalDateTime.now());
             documentoRepository.save(guardado);
             auditoriaService.registrarEvento(guardado, "ARCHIVO_INFORMATIVO", EstadoDocumento.INGRESADO, EstadoDocumento.ARCHIVADO,
-                    "Documento informativo archivado en " + guardado.getUbicacionTexto(), usuarioSesion, null);
+                    "Documento informativo archivado en " + ubicacionTexto, usuarioSesion, null);
         }
         return guardado;
     }
 
-    // 📚 Asigna o cambia la ubicación física (bibliorato + fojas) de un documento. Requiere GESTIONAR_ARCHIVO.
+    // 📚 Registra o cambia dónde guarda el documento la dependencia dueña de la carpeta. Lo hace quien registra
+    // actuaciones y actúa por esa dependencia, aunque el original esté en otra: cada una ubica su propio papel.
     @Transactional
-    public Documento cambiarUbicacion(Long documentoId, Integer biblioratoId, Integer fojaDesde, Integer fojaHasta,
-                                      String motivo, Usuario usuario) {
-        politicaAcceso.exigir(usuario, Accion.GESTIONAR_ARCHIVO, "No está habilitado para registrar la ubicación física de los documentos.");
+    public UbicacionDocumento cambiarUbicacion(Long documentoId, Integer biblioratoId, Integer fojaDesde, Integer fojaHasta,
+                                               String motivo, Usuario usuario) {
+        politicaAcceso.exigir(usuario, Accion.REGISTRAR_ACTUACION, "No está habilitado para registrar la ubicación física de los documentos.");
         if (biblioratoId == null) {
             throw new IllegalArgumentException("Debe seleccionar el bibliorato.");
         }
-        Documento doc = exigirCustodia(documentoId, usuario, "registrar la ubicación física de");
-        exigirSinTramitePendiente(doc, "registrar la ubicación física");
-
-        String anterior = doc.getUbicacionTexto();
+        verificarAccesoDocumento(usuario, documentoId);
+        Documento doc = documentoRepository.findByIdParaActualizar(documentoId)
+                .orElseThrow(() -> new IllegalArgumentException("Documento no encontrado: " + documentoId));
+        if (doc.getEstadoActual() == EstadoDocumento.ANULADO) {
+            throw new IllegalStateException("Un expediente anulado no se guarda en un bibliorato.");
+        }
+        Bibliorato bibliorato = biblioratoService.biblioratoParaGuardar(biblioratoId, usuario);
+        String anterior = biblioratoService.ubicacionActual(documentoId, bibliorato).map(UbicacionDocumento::getTexto).orElse(null);
         if (anterior != null) {
             validarMotivo(motivo, 10, "el motivo del cambio de ubicación");
         }
-        biblioratoService.asignarUbicacion(doc, biblioratoId, fojaDesde, fojaHasta);
+        UbicacionDocumento ubicacion = biblioratoService.guardarUbicacion(doc, bibliorato, fojaDesde, fojaHasta, usuario);
 
-        // Un expediente concluido que se guarda en un bibliorato queda archivado físicamente
+        // Un expediente concluido queda archivado cuando se guarda su original
         if ((doc.getEstadoActual() == EstadoDocumento.FINALIZADO || doc.getEstadoActual() == EstadoDocumento.ARCHIVADO)
-                && doc.getFechaHoraArchivado() == null) {
+                && doc.getFechaHoraArchivado() == null && canalService.puedeActuarPor(usuario, custodiaDe(doc))) {
             doc.setArchivado(true);
             doc.setFechaHoraArchivado(LocalDateTime.now());
+            documentoRepository.save(doc);
         }
-        documentoRepository.save(doc);
 
         auditoriaService.registrarEvento(doc, "CAMBIO_UBICACION", doc.getEstadoActual(), doc.getEstadoActual(),
-                (anterior == null ? "Ubicación física registrada: " : "Ubicación física cambiada de [" + anterior + "] a: ")
-                        + doc.getUbicacionTexto() + (motivo != null && !motivo.isBlank() ? ". Motivo: " + motivo.trim() : ""),
+                (anterior == null ? "Ubicación física registrada por " : "Ubicación física cambiada por ") + bibliorato.getDependencia().getNombreVisible()
+                        + (anterior == null ? ": " : ", de [" + anterior + "] a: ") + ubicacion.getTexto()
+                        + (motivo != null && !motivo.isBlank() ? ". Motivo: " + motivo.trim() : ""),
                 usuario, null);
-        return doc;
+        return ubicacion;
     }
 
-    // 📚 Archivo físico visible para el usuario: solo lo de su ámbito
-    public List<Documento> obtenerDocumentosArchivoParaUsuario(Usuario usuario, Integer biblioratoId) {
-        List<Documento> docs = documentoRepository.findDocumentosArchivo(biblioratoId);
-        return filtrarAccesibles(usuario, docs);
+    // Una fila de la pestaña Archivo físico. Sin ubicación: un documento archivado que nadie ubicó
+    public record FilaArchivo(Documento doc, UbicacionDocumento ubicacion) {}
+
+    // 📚 Archivo físico: lo guardado en las carpetas del alcance del usuario, y lo archivado sin ubicar que puede ver
+    public List<FilaArchivo> obtenerArchivoParaUsuario(Usuario usuario) {
+        List<UbicacionDocumento> ubicaciones = biblioratoService.ubicacionesEn(
+                biblioratoService.listarTodos(usuario).stream().map(Bibliorato::getId).toList());
+        List<Documento> sinUbicar = documentoRepository.findArchivadosSinUbicacion();
+        List<Documento> todos = new ArrayList<>(sinUbicar);
+        ubicaciones.forEach(u -> todos.add(u.getDocumento()));
+        Set<Long> accesibles = filtrarAccesibles(usuario, todos).stream().map(Documento::getId).collect(java.util.stream.Collectors.toSet());
+
+        List<FilaArchivo> filas = new ArrayList<>();
+        ubicaciones.stream().filter(u -> accesibles.contains(u.getDocumento().getId()))
+                .forEach(u -> filas.add(new FilaArchivo(u.getDocumento(), u)));
+        sinUbicar.stream().filter(d -> accesibles.contains(d.getId())).forEach(d -> filas.add(new FilaArchivo(d, null)));
+        return filas;
     }
 
     // ¿El origen está dentro de la dirección (cabecera) donde registra el usuario?
@@ -666,7 +688,7 @@ public class DocumentoService {
         if (doc.getTipoDocumento() != null && tipo.isInformativo() != doc.getTipoDocumento().isInformativo()) {
             throw new IllegalArgumentException("No se puede cambiar entre un documento informativo y uno de trámite: anule el expediente y regístrelo de nuevo.");
         }
-        if (Boolean.TRUE.equals(tipo.getRequiereBibliorato()) && doc.getBibliorato() == null) {
+        if (Boolean.TRUE.equals(tipo.getRequiereBibliorato()) && !biblioratoService.tieneUbicacion(doc.getId())) {
             throw new IllegalArgumentException("'" + tipo.getNombre() + "' requiere un bibliorato: regístrelo primero.");
         }
         Dependencia origen = dependenciaRepository.findById(dependenciaOrigenId)
@@ -731,12 +753,9 @@ public class DocumentoService {
         }
 
         EstadoDocumento estadoAnterior = doc.getEstadoActual();
-        String ubicacion = doc.getUbicacionTexto();
         doc.setEstadoActual(EstadoDocumento.ANULADO);
         // Libera las fojas: el bibliorato no sigue reservando lugar para un registro por error
-        doc.setBibliorato(null);
-        doc.setFojaDesde(null);
-        doc.setFojaHasta(null);
+        String ubicacion = biblioratoService.liberarUbicaciones(doc.getId());
         documentoRepository.save(doc);
 
         auditoriaService.registrarEvento(doc, "EXPEDIENTE_ANULADO", estadoAnterior, EstadoDocumento.ANULADO,
