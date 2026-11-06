@@ -27,7 +27,7 @@ public class PoliticaAcceso {
             // La mesa de entrada hace todo el trámite, pero no administra el sistema
             RolAsignacion.MESA_ENTRADA, EnumSet.complementOf(EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             RolAsignacion.RESPONSABLE, EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION,
-                    Accion.FORZAR_CIERRE, Accion.VER_AUDITORIA, Accion.GESTIONAR_ARCHIVO),
+                    Accion.FORZAR_CIERRE, Accion.VER_AUDITORIA, Accion.VER_REPORTES, Accion.GESTIONAR_ARCHIVO),
             RolAsignacion.OPERADOR, EnumSet.of(Accion.REGISTRAR_ACTUACION),
             // Administra usuarios y catálogos; no ve expedientes por esta asignación
             RolAsignacion.ADMIN_SISTEMA, EnumSet.of(Accion.ADMINISTRAR_SISTEMA),

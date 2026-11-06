@@ -96,9 +96,11 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
         )
         """;
 
-    // Un expediente está en el ámbito si lo envió, lo registró, lo derivó o lo recibió una dependencia del ámbito
+    // Un expediente está en el ámbito si lo envió, lo registró, lo derivó o lo recibió una dependencia del ámbito,
+    // o si tiene el original: un traslado de custodia lo cambia sin crear una actuación
     String DOCUMENTO_EN_AMBITO = """
         (d.dependencia_origen_id IN (SELECT id FROM deps)
+         OR d.dependencia_custodia_id IN (SELECT id FROM deps)
          OR EXISTS (SELECT 1 FROM usuarios uc WHERE uc.id = d.usuario_carga_ingreso_id AND uc.dependencia_id IN (SELECT id FROM deps))
          OR EXISTS (SELECT 1 FROM actuaciones_documento a WHERE a.documento_id = d.id
                       AND (a.dependencia_emisora_id IN (SELECT id FROM deps)
@@ -106,9 +108,10 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
         """;
 
     // Lo mismo que DocumentoService.puedeAccederDocumento, en SQL: el ámbito, más lo originado en la propia
-    // dependencia del usuario o en lo que esta emitió o recibió una actuación
+    // dependencia del usuario, a cargo de ella, o en lo que esta emitió o recibió una actuación
     String DOCUMENTO_ACCESIBLE = "(" + DOCUMENTO_EN_AMBITO + """
          OR d.dependencia_origen_id IN (SELECT id FROM propia)
+         OR d.dependencia_custodia_id IN (SELECT id FROM propia)
          OR EXISTS (SELECT 1 FROM actuaciones_documento p WHERE p.documento_id = d.id
                       AND (p.dependencia_emisora_id IN (SELECT id FROM propia)
                            OR (p.dependencia_receptora_pase_id IN (SELECT id FROM propia) AND NOT p.anulada))))
@@ -126,6 +129,8 @@ public interface DocumentoRepository extends JpaRepository<Documento, Long> {
             SELECT id FROM deps UNION SELECT id FROM propia
         ), acc AS (
             SELECT d.id FROM documentos d WHERE d.dependencia_origen_id IN (SELECT id FROM vistas)
+            UNION
+            SELECT d.id FROM documentos d WHERE d.dependencia_custodia_id IN (SELECT id FROM vistas)
             UNION
             SELECT d.id FROM documentos d JOIN usuarios uc ON uc.id = d.usuario_carga_ingreso_id
              WHERE uc.dependencia_id IN (SELECT id FROM deps)

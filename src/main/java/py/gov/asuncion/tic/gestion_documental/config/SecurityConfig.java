@@ -103,6 +103,7 @@ public class SecurityConfig {
                 .requestMatchers("/documentos/ubicacion").hasAuthority(Accion.REGISTRAR_ACTUACION.autoridad())
                 .requestMatchers("/documentos/forzar-cierre", "/documentos/reapertura/**").hasAuthority(Accion.FORZAR_CIERRE.autoridad())
                 .requestMatchers("/api/documentos/*/auditoria").hasAuthority(Accion.VER_AUDITORIA.autoridad())
+                .requestMatchers("/reportes", "/reportes/**").hasAuthority(Accion.VER_REPORTES.autoridad())
                 // Derivar: con DERIVAR a cualquier destino del canal; con solo REGISTRAR_ACTUACION, elevar al superior
                 // (el servicio limita ese caso a un pase de trámite hacia arriba)
                 .requestMatchers("/documentos/derivar").hasAnyAuthority(Accion.DERIVAR.autoridad(), Accion.REGISTRAR_ACTUACION.autoridad())
