@@ -184,7 +184,7 @@ public class DocumentoService {
     }
 
     // Cada usuario accede a los expedientes de su ámbito (asignaciones vigentes, por organigrama)
-    // y a los originados en su dependencia o en los que su dependencia emitió/recibió una actuación.
+    // y a los originados en su dependencia, a cargo de ella, o en los que esta emitió/recibió una actuación.
     public boolean puedeAccederDocumento(Usuario usuario, Long documentoId) {
         if (usuario == null || documentoId == null) {
             return false;
@@ -205,6 +205,10 @@ public class DocumentoService {
             return false;
         }
         if (doc.getDependenciaOrigen() != null && depId.equals(doc.getDependenciaOrigen().getId())) {
+            return true;
+        }
+        // Tiene el original: un traslado de custodia lo cambia sin crear una actuación
+        if (doc.getDependenciaCustodia() != null && depId.equals(doc.getDependenciaCustodia().getId())) {
             return true;
         }
         return actuacionDocumentoRepository.existeParticipacionDependencia(documentoId, depId);

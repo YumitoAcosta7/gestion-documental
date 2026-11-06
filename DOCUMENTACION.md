@@ -180,7 +180,7 @@ Las acciones las decide un único componente, `PoliticaAcceso`, a partir de las 
 | Rol de la asignación | Acciones |
 |---|---|
 | `MESA_ENTRADA` | Todas las del trámite (no administra el sistema): ingreso, salida y acuse final (`REGISTRAR_SALIDA`), derivar, actuaciones, archivo físico y biblioratos, cierre forzado, auditoría, supervisar los pases de otras dependencias del ámbito |
-| `RESPONSABLE` | Derivar, actuaciones, cierre forzado, auditoría, biblioratos de su ámbito |
+| `RESPONSABLE` | Derivar, actuaciones, cierre forzado, auditoría, reportes y biblioratos de su ámbito |
 | `OPERADOR` | Actuaciones: informes, memos, devoluciones, confirmar pases recibidos, guardar en los biblioratos de su dependencia |
 | `ADMIN_SISTEMA` | Administrar el sistema (`ADMINISTRAR_SISTEMA`): usuarios, asignaciones, suplencias y feriados. **No** da acceso a expedientes: esa asignación no cuenta para el ámbito de visibilidad |
 | `CONSULTA` | Solo lectura |
@@ -202,7 +202,7 @@ Un usuario con varias asignaciones suma sus acciones. `usuarios.rol` ya no se us
   - No se puede quitar la última asignación de administrador.
 - **Auditoría del sistema** (`auditoria_sistema`): cada alta, modificación, baja, reseteo, cambio de contraseña y asignación queda registrado con quién y cuándo. Un trigger impide modificarla o borrarla.
 
-**Acceso por ámbito** (`DocumentoService.puedeAccederDocumento`): cada usuario accede a los expedientes de su ámbito, es decir, de las dependencias que abarcan sus asignaciones vigentes hoy (con sus subordinadas, por la `ruta` del organigrama). Un expediente está en el ámbito si una de esas dependencias lo envió, lo registró, lo derivó o lo recibió. Sin asignaciones vigentes, el ámbito es solo la propia dependencia. Además, como antes, se accede a los expedientes en los que la propia dependencia emitió o recibió una actuación. Se aplica a bandejas, árbol, informes, PDF, acuses (HTTP 403), buscador, archivo físico, registrar actuación y derivar. Las asignaciones iniciales (V8): Director → `RESPONSABLE` de la Dirección de TIC; Secretaría → `MESA_ENTRADA` de la Dirección de TIC; jefes → `RESPONSABLE` de su dependencia.
+**Acceso por ámbito** (`DocumentoService.puedeAccederDocumento`): cada usuario accede a los expedientes de su ámbito, es decir, de las dependencias que abarcan sus asignaciones vigentes hoy (con sus subordinadas, por la `ruta` del organigrama). Un expediente está en el ámbito si una de esas dependencias lo envió, lo registró, lo derivó, lo recibió o tiene el original. Sin asignaciones vigentes, el ámbito es solo la propia dependencia. Además, como antes, se accede a los expedientes en los que la propia dependencia emitió o recibió una actuación. Se aplica a bandejas, árbol, informes, PDF, acuses (HTTP 403), buscador, archivo físico, registrar actuación y derivar. Las asignaciones iniciales (V8): Director → `RESPONSABLE` de la Dirección de TIC; Secretaría → `MESA_ENTRADA` de la Dirección de TIC; jefes → `RESPONSABLE` de su dependencia.
 
 Reglas adicionales:
 - Solo se deriva a las dependencias que cuelgan directamente de los ámbitos de gestión del usuario (`MESA_ENTRADA` o `RESPONSABLE`); sin ellos, a las hijas de su propia dependencia. No hay IDs de dependencia escritos en el código.
@@ -285,7 +285,9 @@ Reglas adicionales:
 | `GET /documentos/descargar-acuse/{documentoId}` | Último adjunto (acuse) del documento | Con acceso al expediente |
 | `GET /api/documentos/{id}/actuaciones` | JSON para el árbol de trazabilidad | Con acceso al expediente |
 | `GET /api/documentos/{id}/informes-disponibles` | JSON de informes/memos/providencias | Con acceso al expediente |
-| `GET /api/documentos/{id}/auditoria` | JSON de la bitácora | `VER_AUDITORIA` |
+| `GET /api/documentos/{id}/auditoria` | JSON de la bitácora | `VER_AUDITORIA` y acceso al expediente |
+| `GET /reportes` | Pantalla de reportes, limitada a las dependencias por las que actúa | `VER_REPORTES` |
+| `GET /reportes/exportar/{reporte}` | CSV de un reporte, para Excel: `dependencias`, `sin-finalizar`, `demorados`, `pases`, `pedidos`, `flujo`, `tiempos` o `archivo` | `VER_REPORTES` |
 
 | `POST /documentos/actuaciones/anular-pase` | Retirar (emisor) o rechazar (receptor) un pase pendiente, con motivo | Dependencia emisora/receptora |
 | `POST /documentos/forzar-cierre` | Cierre excepcional de informes → `PENDIENTE_SALIDA`, con justificación | `FORZAR_CIERRE` |
@@ -361,7 +363,7 @@ Requieren aplicar antes `db/migraciones/V2__mejoras_operativas.sql` (ver §2).
   - un finalizado se reabre con motivo y la aprobación de otra persona con `FORZAR_CIERRE` (`solicitudes_reapertura`, V26); vuelve a esperar el acuse;
   - restablecer la contraseña de una cuenta sensible requiere la aprobación de otro administrador (`solicitudes_contrasena`, V27), que recibe la temporal;
   - una cuenta de administración entra directo a Administración, sin bandeja de expedientes, y busca en toda la auditoría de administración por fecha, cuenta y acción (`/admin/auditoria`); la bitácora de los expedientes no forma parte de esa pantalla;
-  - el original de una dependencia de baja o sin nadie que actúe por ella se traslada con motivo, acto administrativo y la aprobación de otro administrador (`solicitudes_traslado_custodia`, V28); una dependencia que funciona lo mueve con un pase;
+  - el original de una dependencia de baja o sin nadie que actúe por ella se traslada con motivo, acto administrativo y la aprobación de otro administrador (`solicitudes_traslado_custodia`, V28); una dependencia que funciona lo mueve con un pase. Quien tiene el original tiene acceso al expediente, aunque no haya registrado actuaciones;
   - una cuenta con `ADMIN_SISTEMA` solo administra, aunque tenga otras asignaciones: no tramita ni ve expedientes, y no puede sumar otro rol. Si una persona hace las dos cosas, usa dos cuentas;
   - quien envió un pase no lo confirma ni lo rechaza, aunque su rol abarque a la receptora: lo hace otra persona, o lo retira quien lo envió. Si nadie más podría recibirlo, el destino figura como "solo usted podría recibirlo" y el servidor no acepta el pase. Con el original en camino, el expediente figura en "En seguimiento" y no en "En mi poder";
   - "Respuestas recibidas" muestra a la dependencia de origen o de destino lo que otra finalizó en los últimos 30 días;

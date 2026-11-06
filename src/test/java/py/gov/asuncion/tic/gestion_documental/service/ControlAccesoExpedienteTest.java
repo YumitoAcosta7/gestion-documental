@@ -60,6 +60,48 @@ class ControlAccesoExpedienteTest {
         return new MockMultipartFile("a", "a.pdf", "application/pdf", "%PDF-1.4\n%%EOF".getBytes());
     }
 
+    // Un traslado de custodia cambia el original sin crear una actuación: quien lo recibe igual tiene que poder abrirlo
+    @Test
+    void quienTieneElOriginalAccedeAunqueNoHayaActuado() {
+        Dependencia operativo = Dependencia.builder().id(40).nombre("Departamento Operativo").esMesaEntrada(false).build();
+        Dependencia soporte = Dependencia.builder().id(76).nombre("Soporte").esMesaEntrada(false).build();
+        expediente.setDependenciaCustodia(operativo);
+        when(documentoRepository.existeEnAmbito(any(), eq(100L))).thenReturn(false);
+        when(actuacionRepository.existeParticipacionDependencia(eq(100L), any())).thenReturn(false);
+        when(politicaAcceso.trabajaEnExpedientes(any())).thenReturn(true);
+
+        Usuario delOperativo = new Usuario();
+        delOperativo.setId(8);
+        delOperativo.setDependencia(operativo);
+        assertTrue(servicio.puedeAccederDocumento(delOperativo, 100L));
+
+        Usuario deOtraDependencia = new Usuario();
+        deOtraDependencia.setId(9);
+        deOtraDependencia.setDependencia(soporte);
+        assertFalse(servicio.puedeAccederDocumento(deOtraDependencia, 100L), "no gana acceso nadie más");
+    }
+
+    @Test
+    void laCustodiaNoAlcanzaAQuienNoPuedeTrabajarConDocumentos() {
+        Dependencia operativo = Dependencia.builder().id(40).nombre("Departamento Operativo").esMesaEntrada(false).build();
+        expediente.setDependenciaCustodia(operativo);
+        when(documentoRepository.existeEnAmbito(any(), eq(100L))).thenReturn(false);
+        when(politicaAcceso.trabajaEnExpedientes(any())).thenReturn(false);
+
+        Usuario sinAsignacion = new Usuario();
+        sinAsignacion.setId(8);
+        sinAsignacion.setDependencia(operativo);
+        assertFalse(servicio.puedeAccederDocumento(sinAsignacion, 100L));
+    }
+
+    // Las tres reglas tienen que decir lo mismo que puedeAccederDocumento: la bandeja, el buscador y cada acceso directo
+    @Test
+    void lasReglasEnSqlTambienMiranLaCustodia() {
+        assertTrue(DocumentoRepository.DOCUMENTO_EN_AMBITO.contains("d.dependencia_custodia_id IN (SELECT id FROM deps)"));
+        assertTrue(DocumentoRepository.DOCUMENTO_ACCESIBLE.contains("d.dependencia_custodia_id IN (SELECT id FROM propia)"));
+        assertTrue(DocumentoRepository.CTE_CONJUNTOS.contains("d.dependencia_custodia_id IN (SELECT id FROM vistas)"));
+    }
+
     @Test
     void laMesaDeOtraDireccionNoFinalizaUnExpedienteAjenoPorId() {
         fueraDelAmbito();

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<body>
+
+<!-- Título, explicación y exportación de cada reporte -->
+<div th:fragment="encabezado(reporte, titulo, detalle)" class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+    <div>
+        <h2 class="h5 fw-bold mb-1" th:text="${titulo}">Título</h2>
+        <p class="text-muted mb-0" th:text="${detalle}">Detalle</p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm text-nowrap"
+       th:href="@{/reportes/exportar/{r}(r=${reporte},dependenciaId=${filtro.dependenciaId},tipoId=${filtro.tipoId},desde=${filtro.desde},hasta=${filtro.hasta})}">
+        <i class="bi bi-download me-1" aria-hidden="true"></i>Exportar para Excel
+    </a>
+</div>
+
+</body>
+</html>

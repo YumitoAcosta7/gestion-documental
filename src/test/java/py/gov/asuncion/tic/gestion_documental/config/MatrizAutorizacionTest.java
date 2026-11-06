@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import py.gov.asuncion.tic.gestion_documental.controller.AdministracionController;
 import py.gov.asuncion.tic.gestion_documental.controller.HomeController;
+import py.gov.asuncion.tic.gestion_documental.controller.ReporteController;
 import py.gov.asuncion.tic.gestion_documental.domain.Accion;
 import py.gov.asuncion.tic.gestion_documental.domain.Usuario;
 import py.gov.asuncion.tic.gestion_documental.repository.*;
@@ -34,7 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 // el perfil no tiene la acción, y deja pasar cuando la tiene. Los servicios están simulados: lo que se prueba
 // es la puerta de entrada. El acceso a cada expediente (propio o ajeno) lo cubren las pruebas de servicio
 // (ControlAccesoExpedienteTest, UnidadDeExpedienteTest).
-@WebMvcTest(controllers = {HomeController.class, AdministracionController.class})
+@WebMvcTest(controllers = {HomeController.class, AdministracionController.class, ReporteController.class})
 @Import(SecurityConfig.class)
 class MatrizAutorizacionTest {
 
@@ -51,6 +52,7 @@ class MatrizAutorizacionTest {
     @MockitoBean AdministracionService administracionService;
     @MockitoBean FeriadoService feriadoService;
     @MockitoBean py.gov.asuncion.tic.gestion_documental.service.TrasladoCustodiaService trasladoCustodiaService;
+    @MockitoBean ReporteService reporteService;
     @MockitoBean DocumentoRepository documentoRepository;
     @MockitoBean AdjuntoDocumentoRepository adjuntoDocumentoRepository;
 
@@ -58,7 +60,7 @@ class MatrizAutorizacionTest {
     private static final Map<String, Set<Accion>> PERFILES = Map.of(
             "consulta", EnumSet.noneOf(Accion.class),
             "operador", EnumSet.of(Accion.REGISTRAR_ACTUACION),
-            "responsable", EnumSet.of(Accion.REGISTRAR_ACTUACION, Accion.DERIVAR, Accion.VER_AUDITORIA, Accion.GESTIONAR_ARCHIVO),
+            "responsable", EnumSet.of(Accion.REGISTRAR_ACTUACION, Accion.DERIVAR, Accion.VER_AUDITORIA, Accion.VER_REPORTES, Accion.GESTIONAR_ARCHIVO),
             "mesa", EnumSet.complementOf(EnumSet.of(Accion.ADMINISTRAR_SISTEMA)),
             "admin", EnumSet.of(Accion.ADMINISTRAR_SISTEMA));
 
@@ -88,6 +90,8 @@ class MatrizAutorizacionTest {
             new Puerta(HttpMethod.POST, "/biblioratos/guardar", EnumSet.of(Accion.GESTIONAR_ARCHIVO)),
             new Puerta(HttpMethod.POST, "/documentos/forzar-cierre", EnumSet.of(Accion.FORZAR_CIERRE)),
             new Puerta(HttpMethod.GET, "/api/documentos/1/auditoria", EnumSet.of(Accion.VER_AUDITORIA)),
+            new Puerta(HttpMethod.GET, "/reportes", EnumSet.of(Accion.VER_REPORTES)),
+            new Puerta(HttpMethod.GET, "/reportes/exportar/demorados", EnumSet.of(Accion.VER_REPORTES)),
             new Puerta(HttpMethod.POST, "/documentos/derivar", EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION)),
             new Puerta(HttpMethod.POST, "/documentos/repartir", EnumSet.of(Accion.DERIVAR)),
             new Puerta(HttpMethod.POST, "/documentos/propio", EnumSet.of(Accion.REGISTRAR_ACTUACION)),

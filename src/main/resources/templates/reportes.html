@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security" lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reportes - Gestión Documental</title>
+    <link rel="stylesheet" th:href="@{/vendor/bootstrap/bootstrap.min.css}">
+    <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.css}">
+    <link rel="stylesheet" th:href="@{/css/institucional.css}">
+</head>
+<body class="con-lateral">
+<aside class="lateral" aria-label="Menú principal">
+    <div th:replace="~{fragments/marca :: titulo}"></div>
+    <nav class="lateral-nav">
+        <a th:href="@{/}" class="lateral-item"><i class="bi bi-inbox" aria-hidden="true"></i>Bandeja</a>
+        <a th:href="@{/reportes}" class="lateral-item activo"><i class="bi bi-bar-chart" aria-hidden="true"></i>Reportes</a>
+    </nav>
+    <div class="lateral-pie">
+        <a th:href="@{/cuenta/contrasena}" class="lateral-item"><i class="bi bi-key" aria-hidden="true"></i>Mi contraseña</a>
+        <form th:action="@{/logout}" method="post" class="m-0">
+            <button type="submit" class="lateral-item"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Salir</button>
+        </form>
+    </div>
+</aside>
+
+<div class="container-fluid py-3 px-4">
+    <div class="cabecera">
+        <div>
+            <h1 class="cabecera-titulo">Reportes</h1>
+            <div class="cabecera-detalle">Solo incluye lo que está a cargo de las dependencias por las que usted actúa.</div>
+        </div>
+        <span class="small fw-semibold" th:text="${usuario.username}">usuario</span>
+    </div>
+
+    <form id="filtroReportes" th:action="@{/reportes}" method="get" class="row g-2 align-items-end bg-white border rounded-3 shadow-sm p-2 m-0 mb-3 small">
+        <div class="col-md-4">
+            <label class="form-label mb-0" for="dependenciaId">Dependencia (con sus áreas)</label>
+            <select id="dependenciaId" name="dependenciaId" class="form-select form-select-sm">
+                <option value="">Todo mi alcance</option>
+                <option th:each="d : ${dependencias}" th:value="${d.id}" th:text="${d.nombreVisible}" th:selected="${filtro.dependenciaId == d.id}">Dependencia</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label mb-0" for="tipoId">Tipo</label>
+            <select id="tipoId" name="tipoId" class="form-select form-select-sm">
+                <option value="">Todos</option>
+                <option th:each="t : ${tipos}" th:value="${t.id}" th:text="${t.nombre}" th:selected="${filtro.tipoId == t.id}">Tipo</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-0" for="desde">Desde</label>
+            <input type="date" id="desde" name="desde" class="form-control form-control-sm" th:value="${filtro.desde}">
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-0" for="hasta">Hasta</label>
+            <input type="date" id="hasta" name="hasta" class="form-control form-control-sm" th:value="${filtro.hasta}">
+        </div>
+        <div class="col-md-2 d-flex gap-1">
+            <button class="btn btn-primary btn-sm flex-grow-1"><i class="bi bi-funnel me-1" aria-hidden="true"></i>Filtrar</button>
+            <a th:href="@{/reportes}" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+        </div>
+        <div class="col-12 text-muted">Las fechas se aplican a "Ingresos y finalizados" y a "Tiempo de resolución". Los demás reportes muestran la situación de hoy.</div>
+    </form>
+
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-lg-2"><div class="card kpi-card shadow-sm h-100"><div class="card-body py-2"><div class="small text-muted">Activos</div><div class="fs-4 fw-bold" th:text="${datos.resumen.activos}">0</div></div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card shadow-sm h-100"><div class="card-body py-2"><div class="small text-muted">Con demora</div><div class="fs-4 fw-bold" th:text="${datos.resumen.conDemora}">0</div></div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card shadow-sm h-100" th:classappend="${datos.resumen.criticos > 0 ? 'bg-danger' : ''}"><div class="card-body py-2"><div class="small text-muted">Críticos</div><div class="fs-4 fw-bold" th:text="${datos.resumen.criticos}">0</div></div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card shadow-sm h-100"><div class="card-body py-2"><div class="small text-muted">Pases sin recibir</div><div class="fs-4 fw-bold" th:text="${datos.resumen.pasesSinRecibir}">0</div></div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card shadow-sm h-100" th:classappend="${datos.resumen.pedidosVencidos > 0 ? 'bg-danger' : ''}"><div class="card-body py-2"><div class="small text-muted">Informes fuera de plazo</div><div class="fs-4 fw-bold" th:text="${datos.resumen.pedidosVencidos}">0</div></div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card shadow-sm h-100"><div class="card-body py-2"><div class="small text-muted">Finalizados en el período</div><div class="fs-4 fw-bold" th:text="${datos.resumen.finalizadosPeriodo}">0</div></div></div></div>
+    </div>
+
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#dependencias" type="button" role="tab">Por dependencia</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#sin-finalizar" type="button" role="tab">Sin finalizar</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#demorados" type="button" role="tab">Demorados</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#pases" type="button" role="tab">Pases sin recibir</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#pedidos" type="button" role="tab">Pedidos de informe</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#flujo" type="button" role="tab">Ingresos y finalizados</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tiempos" type="button" role="tab">Tiempo de resolución</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#archivo" type="button" role="tab">Archivo físico</button></li>
+    </ul>
+
+    <div class="tab-content bg-white border border-top-0 rounded-bottom shadow-sm p-3 small">
+
+        <!-- 1. Por dependencia -->
+        <section class="tab-pane fade show active" id="dependencias" role="tabpanel">
+            <div th:replace="~{fragments/reporte :: encabezado('dependencias', 'Documentos por dependencia', 'Dónde está hoy cada original. Las direcciones y los departamentos suman a sus áreas; toque un nombre para ver solo esa parte.')}"></div>
+            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">Dependencia</th><th scope="col" class="text-end">Activos aquí</th><th scope="col" class="text-end">Activos con sus áreas</th><th scope="col" class="text-end">Con demora</th><th scope="col" class="text-end">Críticos</th><th scope="col" class="text-end">Terminados</th></tr></thead>
+                <tbody>
+                <tr th:each="f : ${datos.dependencias}">
+                    <td th:style="${'padding-left:' + (f.nivel * 1.25 + 0.5) + 'rem'}"><a th:href="@{/reportes(dependenciaId=${f.id},tipoId=${filtro.tipoId},desde=${filtro.desde},hasta=${filtro.hasta})}" th:text="${f.nombre}">Dependencia</a></td>
+                    <td class="text-end" th:text="${f.activosAqui}">0</td>
+                    <td class="text-end fw-semibold" th:text="${f.activos}">0</td>
+                    <td class="text-end" th:text="${f.conDemora}">0</td>
+                    <td class="text-end" th:text="${f.criticos}">0</td>
+                    <td class="text-end" th:text="${f.terminados}">0</td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(datos.dependencias)}"><td colspan="6" class="text-center text-muted py-3">No hay documentos para mostrar.</td></tr>
+                </tbody>
+            </table></div>
+        </section>
+
+        <!-- 2. Sin finalizar -->
+        <section class="tab-pane fade" id="sin-finalizar" role="tabpanel">
+            <div th:replace="~{fragments/reporte :: encabezado('sin-finalizar', 'Documentos sin finalizar', 'Por estado y por antigüedad desde que ingresaron, en días hábiles.')}"></div>
+            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">Estado</th><th scope="col" class="text-end">Hasta 5 días</th><th scope="col" class="text-end">6 a 10 días</th><th scope="col" class="text-end">11 a 30 días</th><th scope="col" class="text-end">Más de 30 días</th><th scope="col" class="text-end">Total</th></tr></thead>
+                <tbody>
+                <tr th:each="f : ${datos.antiguedad}">
+                    <td th:text="${f.estado}">Estado</td>
+                    <td class="text-end" th:text="${f.hasta5}">0</td><td class="text-end" th:text="${f.de6a10}">0</td>
+                    <td class="text-end" th:text="${f.de11a30}">0</td><td class="text-end" th:text="${f.mas30}">0</td>
+                    <td class="text-end fw-semibold" th:text="${f.total}">0</td>
+                </tr>
+                </tbody>
+            </table></div>
+        </section>
+
+        <!-- 3. Demorados -->
+        <section class="tab-pane fade" id="demorados" role="tabpanel">
+            <div th:replace="~{fragments/reporte :: encabezado('demorados', 'Documentos demorados', 'Sin movimiento desde hace varios días hábiles.')}"></div>
+            <p class="text-muted" th:text="${'Advertencia desde ' + datos.diasAdvertencia + ' días y crítico desde ' + datos.diasCritico + ' (urgentes: ' + datos.urgenteDiasAdvertencia + ' y ' + datos.urgenteDiasCritico + '). «En la dependencia» se cuenta desde el envío del pase que recibió, o desde el ingreso.'}">Límites</p>
+            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">CUTI</th><th scope="col">Asunto</th><th scope="col">Dependencia</th><th scope="col">Estado</th><th scope="col" class="text-end">Sin movimiento</th><th scope="col" class="text-end">En la dependencia</th><th scope="col">Nivel</th></tr></thead>
+                <tbody>
+                <tr th:each="f, i : ${datos.demorados}" th:if="${i.index < 200}">
+                    <td class="text-nowrap"><a th:href="@{/documentos/buscar(texto=${f.cuti})}" th:text="${f.cuti}">CUTI</a></td>
+                    <td><span th:text="${f.asunto}">Asunto</span> <span th:if="${f.urgente}" class="badge text-bg-warning"><i class="bi bi-lightning-charge" aria-hidden="true"></i> Urgente</span></td>
+                    <td th:text="${f.dependencia}">Dependencia</td>
+                    <td th:text="${f.estado}">Estado</td>
+                    <td class="text-end" th:text="${f.diasSinMovimiento}">0</td>
+                    <td class="text-end" th:text="${f.diasEnDependencia}">0</td>
+                    <td><span th:if="${f.critico()}" class="badge text-bg-danger"><i class="bi bi-exclamation-octagon" aria-hidden="true"></i> Crítico</span>
+                        <span th:unless="${f.critico()}" class="badge text-bg-warning"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Advertencia</span></td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(datos.demorados)}"><td colspan="7" class="text-center text-muted py-3">No hay documentos demorados.</td></tr>
+                </tbody>
+            </table></div>
+            <p th:if="${#lists.size(datos.demorados) > 200}" class="text-muted mt-2 mb-0" th:text="${'Se muestran los 200 más demorados de ' + #lists.size(datos.demorados) + '. El archivo exportado los incluye todos.'}">Tope</p>
+        </section>
+
+        <!-- 4. Pases sin recibir -->
+        <section class="tab-pane fade" id="pases" role="tabpanel">
+            <div th:replace="~{fragments/reporte :: encabezado('pases', 'Pases sin recibir', 'Se enviaron y nadie confirmó la recepción, de o hacia sus dependencias. Mientras tanto, el original sigue a cargo de quien lo envió.')}"></div>
+            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">CUTI</th><th scope="col">Asunto</th><th scope="col">Tipo</th><th scope="col">De</th><th scope="col">Para</th><th scope="col">Enviado</th><th scope="col" class="text-end">Días hábiles</th></tr></thead>
+                <tbody>
+                <tr th:each="f, i : ${datos.pases}" th:if="${i.index < 200}">
+                    <td class="text-nowrap"><a th:href="@{/documentos/buscar(texto=${f.cuti})}" th:text="${f.cuti}">CUTI</a></td>
+                    <td th:text="${f.asunto}">Asunto</td><td th:text="${f.tipo}">Tipo</td><td th:text="${f.de}">De</td><td th:text="${f.para}">Para</td>
+                    <td class="text-nowrap" th:text="${f.fecha}">Fecha</td><td class="text-end" th:text="${f.dias}">0</td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(datos.pases)}"><td colspan="7" class="text-center text-muted py-3">No hay pases sin recibir.</td></tr>
+                </tbody>
+            </table></div>
+            <p th:if="${#lists.size(datos.pases) > 200}" class="text-muted mt-2 mb-0" th:text="${'Se muestran los 200 más antiguos de ' + #lists.size(datos.pases) + '. El archivo exportado los incluye todos.'}">Tope</p>
+        </section>
+
+        <!-- 5. Pedidos de informe -->
+        <section class="tab-pane fade" id="pedidos" role="tabpanel">
+            <div th:replace="~{fragments/reporte :: encabezado('pedidos', 'Pedidos de informe abiertos', 'Pedidos dirigidos a sus dependencias que todavía esperan respuesta.')}"></div>
+            <p class="text-muted" th:text="${'Fuera de plazo: más de ' + datos.diasInforme + ' días hábiles (RI 2653/12).'}">Plazo</p>
+            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">CUTI</th><th scope="col">Asunto</th><th scope="col">Pidió</th><th scope="col">Debe responder</th><th scope="col">Fecha</th><th scope="col" class="text-end">Días hábiles</th><th scope="col">Plazo</th></tr></thead>
+                <tbody>
+                <tr th:each="f, i : ${datos.pedidos}" th:if="${i.index < 200}">
+                    <td class="text-nowrap"><a th:href="@{/documentos/buscar(texto=${f.cuti})}" th:text="${f.cuti}">CUTI</a></td>
+                    <td th:text="${f.asunto}">Asunto</td><td th:text="${f.de}">Pidió</td><td th:text="${f.para}">Debe responder</td>
+                    <td class="text-nowrap" th:text="${f.fecha}">Fecha</td><td class="text-end" th:text="${f.dias}">0</td>
+                    <td><span th:if="${f.vencido}" class="badge text-bg-danger"><i class="bi bi-exclamation-octagon" aria-hidden="true"></i> Fuera de plazo</span><span th:unless="${f.vencido}" class="text-muted">En plazo</span></td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(datos.pedidos)}"><td colspan="7" class="text-center text-muted py-3">No hay pedidos abiertos.</td></tr>
+                </tbody>
+            </table></div>
+            <p th:if="${#lists.size(datos.pedidos) > 200}" class="text-muted mt-2 mb-0" th:text="${'Se muestran los 200 más antiguos de ' + #lists.size(datos.pedidos) + '. El archivo exportado los incluye todos.'}">Tope</p>
+        </section>
+
+        <!-- 6. Ingresos y finalizados -->
+        <section class="tab-pane fade" id="flujo" role="tabpanel">
+            <div th:replace="~{fragments/reporte :: encabezado('flujo', 'Ingresos y finalizados por mes', 'Un saldo positivo significa que ese mes entró más de lo que se terminó.')}"></div>
+            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">Mes</th><th scope="col" class="text-end">Ingresos</th><th scope="col" class="text-end">Finalizados</th><th scope="col" class="text-end">Saldo</th></tr></thead>
+                <tbody>
+                <tr th:each="f : ${datos.flujo}">
+                    <td th:text="${f.mes}">Mes</td><td class="text-end" th:text="${f.ingresos}">0</td><td class="text-end" th:text="${f.finalizados}">0</td>
+                    <td class="text-end fw-semibold" th:text="${f.saldo() > 0 ? '+' + f.saldo() : f.saldo()}">0</td>
+                </tr>
+                </tbody>
+            </table></div>
+        </section>
+
+        <!-- 7. Tiempo de resolución -->
+        <section class="tab-pane fade" id="tiempos" role="tabpanel">
+            <div th:replace="~{fragments/reporte :: encabezado('tiempos', 'Tiempo de resolución', 'Días corridos entre el ingreso y la salida de lo finalizado en el período. La mediana es el valor del medio: un caso raro no la distorsiona.')}"></div>
+            <div class="row g-3">
+                <div class="col-lg-6" th:each="g : ${ {'Por dependencia', 'Por tipo'} }" th:with="filas=${g == 'Por dependencia' ? datos.tiemposPorDependencia : datos.tiemposPorTipo}">
+                    <h3 class="h6 fw-bold" th:text="${g}">Grupo</h3>
+                    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                        <thead class="table-light"><tr><th scope="col">Nombre</th><th scope="col" class="text-end">Finalizados</th><th scope="col" class="text-end">Mediana</th><th scope="col" class="text-end">Máximo</th></tr></thead>
+                        <tbody>
+                        <tr th:each="f : ${filas}">
+                            <td th:text="${f.nombre}">Nombre</td><td class="text-end" th:text="${f.cantidad}">0</td>
+                            <td class="text-end fw-semibold" th:text="${#numbers.formatDecimal(f.mediana, 1, 1, 'COMMA')}">0</td>
+                            <td class="text-end" th:text="${#numbers.formatDecimal(f.maximo, 1, 1, 'COMMA')}">0</td>
+                        </tr>
+                        <tr th:if="${#lists.isEmpty(filas)}"><td colspan="4" class="text-center text-muted py-3">Nada finalizado en el período.</td></tr>
+                        </tbody>
+                    </table></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Archivo físico -->
+        <section class="tab-pane fade" id="archivo" role="tabpanel">
+            <div th:replace="~{fragments/reporte :: encabezado('archivo', 'Finalizados sin guardar', 'Documentos finalizados cuyo original todavía no tiene carpeta en la dependencia que lo tiene.')}"></div>
+            <div class="table-responsive mb-4"><table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">CUTI</th><th scope="col">Asunto</th><th scope="col">Dependencia con el original</th><th scope="col">Salida</th></tr></thead>
+                <tbody>
+                <tr th:each="f, i : ${datos.sinGuardar}" th:if="${i.index < 200}">
+                    <td class="text-nowrap"><a th:href="@{/documentos/buscar(texto=${f.cuti})}" th:text="${f.cuti}">CUTI</a></td>
+                    <td th:text="${f.asunto}">Asunto</td><td th:text="${f.dependencia}">Dependencia</td><td class="text-nowrap" th:text="${f.salida}">Salida</td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(datos.sinGuardar)}"><td colspan="4" class="text-center text-muted py-3">Todo lo finalizado está guardado.</td></tr>
+                </tbody>
+            </table></div>
+            <h3 class="h6 fw-bold">Biblioratos</h3>
+            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">Código</th><th scope="col">Descripción</th><th scope="col">Dependencia</th><th scope="col">Estado</th><th scope="col" class="text-end">Documentos</th><th scope="col" class="w-25">Ocupación</th></tr></thead>
+                <tbody>
+                <tr th:each="c : ${datos.carpetas}">
+                    <td class="text-nowrap fw-semibold" th:text="${c.codigo}">BIB</td><td th:text="${c.descripcion}">Descripción</td><td th:text="${c.dependencia}">Dependencia</td>
+                    <td th:text="${c.abierta ? 'Abierto' : 'Cerrado'}">Abierto</td><td class="text-end" th:text="${c.documentos}">0</td>
+                    <td>
+                        <div th:if="${c.porcentaje() != null}" class="d-flex align-items-center gap-2">
+                            <div class="progress flex-grow-1" role="progressbar" th:attr="aria-valuenow=${c.porcentaje()},aria-label=${'Ocupación de ' + c.codigo}" aria-valuemin="0" aria-valuemax="100">
+                                <div class="progress-bar" th:style="${'width:' + c.porcentaje() + '%;background-color:var(--gd-primario)'}"></div>
+                            </div>
+                            <span class="text-nowrap" th:text="${c.ultimaFoja + ' de ' + c.capacidad + ' fojas'}">0 de 0</span>
+                        </div>
+                        <span th:if="${c.porcentaje() == null}" th:text="${'Foja ' + c.ultimaFoja + ', sin capacidad definida'}">Sin capacidad</span>
+                    </td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(datos.carpetas)}"><td colspan="6" class="text-center text-muted py-3">Todavía no hay biblioratos.</td></tr>
+                </tbody>
+            </table></div>
+        </section>
+    </div>
+</div>
+
+
+<script th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/reportes.js}"></script>
+</body>
+</html>

@@ -10,6 +10,7 @@ public enum Accion {
     GESTIONAR_ARCHIVO,     // biblioratos y ubicación física
     FORZAR_CIERRE,
     VER_AUDITORIA,
+    VER_REPORTES,          // reportes de las dependencias por las que actúa
     SUPERVISAR_PASES,      // retirar o reemplazar PDF de pases de otras dependencias del ámbito (confirmar es solo de la receptora)
     ADMINISTRAR_SISTEMA;   // usuarios, asignaciones, suplencias y feriados (solo ADMIN_SISTEMA)
 

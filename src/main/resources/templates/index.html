@@ -45,6 +45,7 @@
             <button sec:authorize="hasAuthority('PERMISO_REGISTRAR_ACTUACION')" type="button" class="lateral-item" data-bs-toggle="modal" data-bs-target="#modalDocumentoPropio">
                 <i class="bi bi-pencil-square" aria-hidden="true"></i>Documento propio
             </button>
+            <a sec:authorize="hasAuthority('PERMISO_VER_REPORTES')" th:href="@{/reportes}" class="lateral-item"><i class="bi bi-bar-chart" aria-hidden="true"></i>Reportes</a>
             <button sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')" type="button" class="lateral-item" data-bs-toggle="modal" data-bs-target="#modalBiblioratos">
                 <i class="bi bi-archive" aria-hidden="true"></i>Biblioratos
             </button>
