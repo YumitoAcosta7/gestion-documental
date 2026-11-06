@@ -313,3 +313,11 @@ Después, arrancar la versión anterior de la aplicación.
 - **Copia a otro equipo:** los tres archivos de las 13:51 y de las 14:09 están en `192.168.129.71`, según informó el usuario.
 - **En pantalla, según informó el usuario:** `juan.acosta` ve su bandeja vacía, como antes.
 - **Sin comprobar:** los caminos nuevos vistos en pantalla en producción, con una cuenta que tenga expedientes, y la copia automática de las 22:00.
+
+**06/11/2026, 07:09.** Instalación del PR #61 (copia incremental de los PDF): solo se reemplazó `respaldar.sh`, sin reiniciar la aplicación. Sigue en V28.
+- **Ejecución por el servicio:** terminó bien (`inactive`), con `base_20261106_0709.dump` y `huellas_20261106_0709.txt`, y copió a `192.168.129.71`.
+- **PDF:** 27 en `.73` y 27 en `.71`. Traídos a una carpeta temporal y comparados con `diff`: idénticos.
+- **Discos:** `.73` al 8 %, y `.71` al 6 %.
+- **Control de PDF:** 0 faltantes y 0 alterados, más lo ya conocido: 1 versión anterior sin archivo y 24 sobrantes.
+- **Restauración de la base:** `base_20261106_0709.dump` restaurado en una base temporal, sin errores: 7 documentos y 13 actuaciones, igual que producción. La base temporal se borró.
+- **Sin comprobar:** la primera ejecución del temporizador con este script.

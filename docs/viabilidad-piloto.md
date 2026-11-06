@@ -14,7 +14,7 @@ Todos los expedientes de producción son de prueba, según informó el usuario e
 |---|---|---|
 | 1 | Servidor de aplicación | ✅ Servicio en 192.168.129.73 |
 | 2 | HTTPS | 🟡 Funciona con certificado interno. **Falta instalarlo en los equipos del piloto,** o reemplazarlo por uno institucional |
-| 3 | Respaldos | 🟡 El automático local de las 22:00 funcionó el 04/11/2026. La copia a `192.168.129.71` funcionó a mano el 05/11/2026, con huellas coincidentes. **Falta confirmar la copia automática con el esquema incremental, definir el cifrado en `.71`, y probar una restauración completa con los PDF** |
+| 3 | Respaldos | 🟡 El 06/11/2026, el servicio copió la base y los PDF a `192.168.129.71`, los PDF traídos de vuelta resultaron idénticos, y la base se restauró en una base temporal con los mismos conteos. **Falta confirmar la ejecución del temporizador con este esquema y definir el cifrado en `.71`** |
 | 4 | Cuentas nominales | 🟡 Administrar y tramitar están separados (`juan.admin` y `zlobo.admin`). **Faltan las cuentas por persona:** la base limpia no copia las 6 genéricas ni a ningún usuario |
 | 5 | Autenticación de la base | ✅ Contraseña cambiada, SCRAM y sin `trust` |
 | 6 | Datos de prueba | 🟡 El corte a la base limpia los deja fuera, y se conservan en la base anterior y en el respaldo. Está ensayado de punta a punta. **Falta hacerlo:** es el último paso |
@@ -26,7 +26,8 @@ Todos los expedientes de producción son de prueba, según informó el usuario e
 - [x] Instalar en producción los PR #56 (derivación interna y externa) y #57 (reparto): instalados el 05/11/2026, servicio activo desde las 14:09:40. Falta verlos en pantalla en producción.
 - [ ] Confirmar la copia automática de las 22:00 en `.71`.
 - [ ] Definir el cifrado de las copias en `.71`.
-- [ ] Probar una restauración completa, incluidos los PDF.
+- [x] Pasar los PDF a copia incremental y traerlos de vuelta desde `.71`: idénticos el 06/11/2026.
+- [x] Probar la restauración de la base con el respaldo actual: mismos conteos el 06/11/2026.
 - [ ] Instalar el certificado en los equipos del piloto.
 - [ ] Cargar los feriados trasladables y los asuetos de 2026.
 - [ ] Separar los roles de PostgreSQL antes del corte.
