@@ -84,11 +84,11 @@ echo 'RESPALDO_DESTINO=respaldo@192.168.129.71:/srv/respaldos/gestion_documental
 systemctl start gestion-documental-respaldo.service; systemctl is-failed gestion-documental-respaldo.service; ssh respaldo@192.168.129.71 "ls -lh /srv/respaldos/gestion_documental | tail -n 3"
 ```
 
-Tiene que decir `inactive` y mostrar los tres archivos con la hora actual.
+Tiene que decir `inactive` y mostrar la base y las huellas con la hora actual, más la carpeta `pdf`.
 
 **A tener en cuenta:**
 - Los respaldos tienen datos reales: el acceso a esa carpeta queda restringido.
-- `respaldar.sh` borra lo viejo solo en el servidor de origen, así que en `.71` se acumulan. Hay que definir su limpieza y vigilar el espacio.
+- `respaldar.sh` conserva en `.71` la base y las huellas 90 días, y los PDF sin borrarlos nunca. Falta definir si se cifran.
 - Falta confirmar que `.71` no comparta disco ni equipo físico con `.73`. Si comparten, esta copia no protege de un fallo de hardware.
 
 ### 2. Decisiones
@@ -121,7 +121,7 @@ Lo ejecuta un administrador en el servidor. Los usuarios ya avisados.
 2. Hacer el respaldo final y confirmar que llegó a `.71`.
 3. Crear la base nueva con el script, con un nombre temporal.
 4. Renombrar la base actual a `gestion_documental_prueba_<fecha>`, y la nueva a `gestion_documental`.
-5. Mover `/var/lib/gestion-documental/pdf` a `pdf_prueba_<fecha>`, y crear la carpeta vacía con su dueño `gestion_documental`.
+5. Mover `/var/lib/gestion-documental/pdf` a `pdf_prueba_<fecha>`, y crear la carpeta vacía con su dueño `gestion_documental`. Mover también en `.71` la carpeta `pdf` a `pdf_prueba_<fecha>`, para que los PDF de prueba no se mezclen con los reales.
 6. Instalar `proteger_bitacoras.sh` y `reforzar_bitacoras.sh`, y comprobar con `--verificar`.
 7. Crear el primer administrador con `db/piloto/crear_primer_admin.sh`, con el acto real. Esa persona cambia la contraseña temporal al entrar.
 8. Arrancar la aplicación y confirmar `Started GestionDocumentalApplication`.

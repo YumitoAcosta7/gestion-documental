@@ -156,6 +156,17 @@ Los archivos sobrantes son solo un aviso: no hace falta borrarlos y el control n
 echo 'RESPALDO_DESTINO=usuario@equipo:/carpeta/de/respaldos' > /etc/gestion-documental/respaldo
 ```
 
+**Qué se guarda y cuánto tiempo:**
+
+| Qué | En el servidor | En el otro equipo |
+|---|---|---|
+| Base y huellas | Una por día, 30 días | Una por día, 90 días |
+| PDF | La carpeta original | Una sola copia en `pdf/`, a la que se suman los nuevos |
+
+- **Los PDF no se reemplazan ni se borran en el destino.** En el sistema nunca se sobrescriben, así que un archivo que se dañe o se borre en el servidor sigue sano en el otro equipo.
+- **Sin `RESPALDO_DESTINO`,** los PDF se guardan en un `.tar.gz` local durante 7 días, y `respaldar.sh` lo avisa.
+- **El servicio queda en error** si falla algo, si faltan PDF en el destino, o si un disco pasa del 80 %. No envía correos: hay que revisarlo con `systemctl is-failed gestion-documental-respaldo.service` y `journalctl`.
+
 **Restauración de prueba (obligatoria para el piloto).** Restaurar el último respaldo en una base temporal y comprobar que tiene los datos:
 ```bash
 sudo -u postgres createdb prueba_restauracion
@@ -170,7 +181,18 @@ sudo -u postgres psql -d prueba_restauracion -c "SELECT count(*) FROM documentos
 sudo -u postgres dropdb prueba_restauracion
 ```
 
-Comprobar también que `pdf_<fecha>.tar.gz` se pueda abrir y tenga los PDF.
+Traer también los PDF desde el otro equipo a una carpeta temporal y compararlos con los del servidor. `diff` no debe informar diferencias, salvo los PDF que todavía no se copiaron:
+```bash
+rsync -a usuario@equipo:/carpeta/de/respaldos/pdf/ /tmp/pdf_restaurado/
+```
+```bash
+diff -rq /var/lib/gestion-documental/pdf /tmp/pdf_restaurado
+```
+```bash
+rm -rf /tmp/pdf_restaurado
+```
+
+Para restaurar los PDF de verdad, se traen de la misma forma a `/var/lib/gestion-documental/pdf`, y luego se corre `revisar_pdf.sh`.
 
 ## Actualizar a una versión nueva
 
