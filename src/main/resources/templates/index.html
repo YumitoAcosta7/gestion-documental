@@ -127,7 +127,7 @@
                             <label class="form-label small fw-bold">Bibliorato (ubicación física)</label>
                             <select class="form-select form-select-sm" name="biblioratoId">
                                 <option value="">Todos los biblioratos...</option>
-                                <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion}" th:selected="${paramBiblioratoId == b.id}"></option>
+                                <option th:each="b : ${biblioratosTodos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion + (b.activo ? '' : ' (cerrado)')}" th:selected="${paramBiblioratoId == b.id}"></option>
                             </select>
                         </div>
                         <div class="col-md-8 text-end align-self-end">
@@ -437,7 +437,7 @@
                                                 </button>
 
                                                 <!-- Lo demás que se puede hacer en esta situación -->
-                                                <div th:if="${s.conMenu}" class="dropdown d-inline-block">
+                                                <div th:if="${s.conMenu or (puedeArchivar and s.tipoNombre != 'RECIBIR')}" class="dropdown d-inline-block">
                                                     <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false">Más</button>
                                                     <ul class="dropdown-menu dropdown-menu-end">
                                                         <li th:if="${s.puedeAgregar() and s.tipoNombre != 'RESPONDER' and s.tipoNombre != 'RECIBIR'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalAgregarActuacion" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-file-earmark-plus me-2"></i>Agregar actuación</button></li>
@@ -447,6 +447,7 @@
                                                         <li th:if="${s.puedeSalida() and s.tipoNombre != 'LISTO_SALIDA'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalSalida" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-box-arrow-right me-2"></i>Registrar salida</button></li>
                                                         <li th:if="${s.puedeAcuse() and s.tipoNombre != 'ESPERA_ACUSE'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalConfirmarAcuse" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-file-earmark-check me-2"></i>Confirmar acuse</button></li>
                                                         <li th:if="${s.paseRetirar() != null and s.tipoNombre != 'EN_CAMINO'}"><button type="button" class="dropdown-item" data-accion="anular-pase" data-tipo="RETIRAR" th:data-id="${s.paseRetirar()}"><i class="bi bi-x-circle me-2"></i>Retirar pase enviado</button></li>
+                                                        <li th:if="${puedeArchivar and s.tipoNombre != 'RECIBIR'}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalUbicacion" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-archive me-2"></i>Guardar en bibliorato</button></li>
                                                         <li th:if="${s.puedeCorregirSalida()}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalCorregirSalida" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-pencil-square me-2"></i>Corregir salida</button></li>
                                                         <li th:if="${s.puedeCorregirIngreso()}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalCorregirIngreso" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" th:data-tipo-id="${doc.tipoDocumento?.id}" th:data-numero="${doc.numeroDocumentoOrigen}" th:data-origen-id="${doc.dependenciaOrigen?.id}" th:data-asunto="${doc.asunto}" th:data-prioridad="${doc.prioridad}"><i class="bi bi-pencil me-2"></i>Corregir datos del ingreso</button></li>
                                                         <li th:if="${s.puedeAnular()}"><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalAnularExpediente" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"><i class="bi bi-x-octagon me-2"></i>Anular expediente</button></li>
@@ -559,9 +560,14 @@
                                         <td th:text="${doc.dependenciaOrigen.nombreVisible}">Origen</td>
                                         <td th:text="${doc.asunto}">Asunto del documento</td>
                                         <td>
-                                            <span th:if="${doc.ubicacionTexto != null}" class="small" th:text="${doc.ubicacionTexto}">BIB-2026</span>
-                                            <span th:if="${doc.bibliorato != null}" class="d-block small text-muted"><i class="bi bi-geo-alt"></i> <span th:text="${doc.bibliorato.ubicacionFisica}">Armario</span></span>
-                                            <span th:if="${doc.ubicacionTexto == null}" class="badge bg-light text-muted border">Sin ubicación</span>
+                                            <th:block th:with="us=${ubicaciones != null ? ubicaciones[doc.id] : null}">
+                                                <div th:each="u : ${us}" class="mb-1">
+                                                    <span class="small" th:text="${u.texto}">BIB-2026</span>
+                                                    <span class="d-block small text-muted"><i class="bi bi-geo-alt"></i> <span th:text="${u.dependencia.nombreVisible + ' · ' + u.bibliorato.ubicacionFisica}">Armario</span></span>
+                                                </div>
+                                                <span th:if="${#lists.isEmpty(us) and !#strings.isEmpty(doc.ubicacionBibliorato)}" class="small" th:text="${doc.ubicacionBibliorato}">Texto histórico</span>
+                                                <span th:if="${#lists.isEmpty(us) and #strings.isEmpty(doc.ubicacionBibliorato)}" class="badge bg-light text-muted border">Sin ubicación</span>
+                                            </th:block>
                                         </td>
                                         <td th:text="${doc.fechaHoraSalida != null ? #temporals.format(doc.fechaHoraSalida, 'dd/MM/yyyy HH:mm') : '-'}">03/08/2026 15:00</td>
                                         <td class="text-center">
@@ -578,6 +584,11 @@
                                             <a th:href="@{/documentos/descargar-acuse/{id}(id=${doc.id})}" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
                                                 <i class="bi bi-file-pdf me-1"></i> Acuse Final
                                             </a>
+                                            <button th:if="${puedeArchivar}" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 ms-1"
+                                                    data-bs-toggle="modal" data-bs-target="#modalUbicacion" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"
+                                                    title="Registrar en qué carpeta guarda este documento su dependencia">
+                                                <i class="bi bi-archive"></i> Guardar
+                                            </button>
                                             <button th:if="${reabribles != null and reabribles.contains(doc.id)}" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 ms-1"
                                                     data-bs-toggle="modal" data-bs-target="#modalSolicitarReapertura" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}"
                                                     title="Pedir que se reabra: la debe aprobar otra persona">
@@ -600,7 +611,7 @@
                         <select id="filtroBibliorato" class="form-select form-select-sm w-auto">
                             <option value="">Todos los biblioratos</option>
                             <option value="sin">Sin ubicación física</option>
-                            <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion}"></option>
+                            <option th:each="b : ${biblioratosTodos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion + (b.activo ? '' : ' (cerrado)')}"></option>
                         </select>
                     </div>
                     <div class="card-body p-0">
@@ -619,7 +630,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr th:each="doc : ${documentosArchivo}" th:attr="data-bibliorato=${doc.bibliorato != null ? doc.bibliorato.id : 'sin'}">
+                                    <tr th:each="f : ${filasArchivo}" th:with="doc=${f.doc()}, u=${f.ubicacion()}" th:attr="data-bibliorato=${u != null ? u.bibliorato.id : 'sin'}">
                                         <td class="fw-bold text-primary" th:text="${doc.codigoCuti}">TIC-2026-000001</td>
                                         <td>
                                             <span class="badge bg-secondary" th:text="${doc.tipoDocumento?.nombre}">Circular</span>
@@ -627,22 +638,23 @@
                                         </td>
                                         <td th:text="${doc.asunto}">Asunto</td>
                                         <td>
-                                            <span th:if="${doc.bibliorato != null}">
-                                                <strong th:text="${doc.bibliorato.codigo}">BIB</strong>
-                                                <span class="d-block small text-muted" th:text="${doc.bibliorato.descripcion}">Descripción</span>
+                                            <span th:if="${u != null}">
+                                                <strong th:text="${u.bibliorato.codigo}">BIB</strong>
+                                                <span class="d-block small text-muted" th:text="${u.bibliorato.descripcion}">Descripción</span>
+                                                <span class="d-block small text-muted" th:text="${u.dependencia.nombreVisible}">Dependencia</span>
                                             </span>
-                                            <span th:if="${doc.bibliorato == null}" class="badge bg-warning text-dark">Sin ubicación</span>
+                                            <span th:if="${u == null}" class="badge bg-warning text-dark">Sin ubicación</span>
                                         </td>
-                                        <td class="small" th:text="${doc.bibliorato != null ? doc.bibliorato.ubicacionFisica : '-'}">Armario 2</td>
-                                        <td class="small" th:text="${doc.fojaDesde == null ? '-' : (doc.fojaDesde == doc.fojaHasta ? doc.fojaDesde : doc.fojaDesde + '–' + doc.fojaHasta)}">12–14</td>
+                                        <td class="small" th:text="${u != null ? u.bibliorato.ubicacionFisica : '-'}">Armario 2</td>
+                                        <td class="small" th:text="${u != null ? u.fojasTexto : '-'}">12–14</td>
                                         <td><span class="badge bg-secondary" th:text="${doc.estadoActual}">ARCHIVADO</span></td>
                                         <td class="text-center text-nowrap">
                                             <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 me-1 btn-ver-historial" th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" title="Historial">
                                                 <i class="bi bi-clock-history"></i>
                                             </button>
-                                            <button sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1"
+                                            <button th:if="${puedeArchivar}" type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 me-1"
                                                     data-bs-toggle="modal" data-bs-target="#modalUbicacion"
-                                                    th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" th:data-tiene-ubicacion="${doc.ubicacionTexto != null}"
+                                                    th:data-doc-id="${doc.id}" th:data-doc-cuti="${doc.codigoCuti}" th:data-bibliorato-id="${u != null ? u.bibliorato.id : ''}"
                                                     title="Registrar o cambiar ubicación física">
                                                 <i class="bi bi-geo-alt"></i>
                                             </button>
@@ -656,7 +668,7 @@
                                             </button>
                                         </td>
                                     </tr>
-                                    <tr th:if="${#lists.isEmpty(documentosArchivo)}">
+                                    <tr th:if="${#lists.isEmpty(filasArchivo)}">
                                         <td colspan="8" class="text-center py-4 text-muted">
                                             <i class="bi bi-archive fs-2 d-block mb-2"></i> Todavía no hay documentos guardados en biblioratos.
                                         </td>
@@ -671,32 +683,33 @@
         </div>
     </div>
 
-    <!-- MODAL UBICACIÓN FÍSICA (Dirección / Secretaría) -->
+    <!-- MODAL UBICACIÓN FÍSICA: dónde guarda su papel cada dependencia -->
     <div class="modal fade" id="modalUbicacion" tabindex="-1">
         <div class="modal-dialog">
             <form th:action="@{/documentos/ubicacion}" method="post">
                 <input type="hidden" name="documentoId" id="ubicacionDocId" />
                 <div class="modal-content">
                     <div class="modal-header bg-secondary text-white">
-                        <h5 class="modal-title fw-bold"><i class="bi bi-geo-alt me-2"></i>Ubicación física <span id="labelCutiUbicacion" class="text-warning"></span></h5>
+                        <h5 class="modal-title fw-bold"><i class="bi bi-geo-alt me-2"></i>Guardar en bibliorato <span id="labelCutiUbicacion" class="text-warning"></span></h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <div class="mb-3">
                             <label class="form-label small fw-bold">Bibliorato <span class="text-danger">*</span></label>
-                            <select name="biblioratoId" class="form-select form-select-sm" required>
+                            <select name="biblioratoId" id="ubicacionBibliorato" class="form-select form-select-sm" required>
                                 <option value="" disabled selected>Seleccione...</option>
-                                <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion + ' (' + b.ubicacionFisica + ')'}"></option>
+                                <option th:each="b : ${biblioratos}" th:value="${b.id}" th:text="${b.codigo + ' — ' + b.descripcion + ' · ' + b.dependencia.nombreVisible + ' (' + b.ubicacionFisica + ')'}"></option>
                             </select>
+                            <div class="form-text">Se muestran las carpetas de las dependencias por las que usted actúa.</div>
                         </div>
                         <div class="row g-2 mb-3">
                             <div class="col"><label class="form-label small fw-bold">Foja desde</label><input type="number" min="1" name="fojaDesde" class="form-control form-control-sm"></div>
                             <div class="col"><label class="form-label small fw-bold">Foja hasta</label><input type="number" min="1" name="fojaHasta" class="form-control form-control-sm"></div>
                         </div>
                         <div id="bloqueMotivoUbicacion">
-                            <label class="form-label small fw-bold">Motivo del traslado <span class="text-danger">*</span></label>
-                            <input type="text" name="motivo" class="form-control form-control-sm" minlength="10" placeholder="Ej: Se reorganizó el archivo 2026">
-                            <div class="form-text">Obligatorio cuando el documento ya tenía ubicación: queda en la auditoría.</div>
+                            <label class="form-label small fw-bold" for="ubicacionMotivo">Motivo del cambio</label>
+                            <input type="text" name="motivo" id="ubicacionMotivo" class="form-control form-control-sm" minlength="10" placeholder="Ej: Se reorganizó el archivo 2026">
+                            <div class="form-text">Obligatorio si esa dependencia ya lo tenía ubicado: queda en la bitácora.</div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -708,7 +721,7 @@
         </div>
     </div>
 
-    <!-- MODAL CATÁLOGO DE BIBLIORATOS (Dirección / Secretaría) -->
+    <!-- MODAL CATÁLOGO DE BIBLIORATOS: las carpetas de las dependencias por las que actúa el usuario -->
     <div class="modal fade" id="modalBiblioratos" tabindex="-1" sec:authorize="hasAuthority('PERMISO_GESTIONAR_ARCHIVO')">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
@@ -753,8 +766,8 @@
                             <div class="col-md-2"><input type="number" name="capacidadFojas" class="form-control form-control-sm" min="1" placeholder="Capacidad (fojas)"></div>
                             <div class="col-md-5">
                                 <select name="dependenciaId" class="form-select form-select-sm" required>
-                                    <option value="" disabled selected>Dependencia responsable...</option>
-                                    <optgroup th:each="g : ${dependenciasAgrupadas}" th:label="${g.etiqueta}"><option th:each="op : ${g.opciones}" th:value="${op.id}" th:text="${op.texto}"></option></optgroup>
+                                    <option value="" disabled selected>Dependencia dueña de la carpeta...</option>
+                                    <option th:each="d : ${dependenciasBibliorato}" th:value="${d.id}" th:text="${d.nombreVisible}"></option>
                                 </select>
                             </div>
                             <div class="col-md-5"><input type="text" name="ubicacionFisica" class="form-control form-control-sm" required maxlength="150" placeholder="Ubicación física (Archivo DTIC · Armario 2 · Estante 3)"></div>

@@ -100,13 +100,14 @@ Hay dos límites de tamaño:
 
 El primero debe ser mayor que el segundo; si no, el filtro CSRF hace que Tomcat responda 413 sin mensaje.
 
-**Documentos informativos y archivo físico (V5):**
+**Documentos informativos y archivo físico (V5, V29):**
 - **Tipos informativos** (hoy: Circular): se registran directamente como `ARCHIVADO`, con bibliorato obligatorio. No se derivan para informe; solo se difunden para conocimiento, sin cambiar su estado. Quedan fuera de las bandejas de trabajo, de las alertas de demora y de los indicadores.
-- **Biblioratos:** catálogo administrado por Dirección/Secretaría (botón *Biblioratos*), con código único, ubicación física (armario/estante) y capacidad. Un bibliorato cerrado no recibe documentos nuevos.
-- **Ubicación:** cada documento puede tener bibliorato y fojas. Se valida el rango, la capacidad y la superposición con otros documentos del mismo bibliorato.
-  - El traslado exige motivo y queda auditado como `CAMBIO_UBICACION`.
-  - El texto libre `ubicacion_bibliorato` se conserva solo como dato histórico.
-- **Consulta:** pestaña *Archivo físico* (con filtro por bibliorato), filtro en el buscador, búsqueda por código o descripción y ubicación visible en Finalizados.
+- **Biblioratos:** cada uno pertenece a una dependencia. Tienen código único, ubicación física (armario/estante) y capacidad. La mesa y el responsable (`GESTIONAR_ARCHIVO`) los crean y cierran desde el botón *Biblioratos*, solo para las dependencias por las que actúan. Un bibliorato cerrado no recibe documentos nuevos.
+- **Ubicación:** una por documento y dependencia (`ubicaciones_documento`), porque cada una guarda su propio papel. Se registra al ingresar el documento o después, con *Guardar en bibliorato*, desde la bandeja, Finalizados o el Archivo físico. Lo hace quien registra actuaciones y actúa por la dependencia dueña de la carpeta, tenga o no el original. Se valida el rango, la capacidad y la superposición con otros documentos del mismo bibliorato.
+  - Cambiar la ubicación de una dependencia exige motivo. Todo queda en la bitácora como `CAMBIO_UBICACION`.
+  - Un expediente concluido queda archivado cuando se guarda su original. Anular un expediente libera sus ubicaciones.
+  - El texto libre `ubicacion_bibliorato` y las columnas `bibliorato_id`, `foja_desde` y `foja_hasta` de `documentos` se conservan solo como dato histórico.
+- **Consulta:** pestaña *Archivo físico*, con las carpetas de las dependencias por las que actúa el usuario y filtro por bibliorato. También filtro en el buscador, búsqueda por código o descripción y ubicaciones visibles en Finalizados.
 
 Ejecutar:
 
@@ -179,8 +180,8 @@ Las acciones las decide un único componente, `PoliticaAcceso`, a partir de las 
 | Rol de la asignación | Acciones |
 |---|---|
 | `MESA_ENTRADA` | Todas las del trámite (no administra el sistema): ingreso, salida y acuse final (`REGISTRAR_SALIDA`), derivar, actuaciones, archivo físico y biblioratos, cierre forzado, auditoría, supervisar los pases de otras dependencias del ámbito |
-| `RESPONSABLE` | Derivar, actuaciones, cierre forzado, auditoría |
-| `OPERADOR` | Actuaciones: informes, memos, devoluciones, confirmar pases recibidos |
+| `RESPONSABLE` | Derivar, actuaciones, cierre forzado, auditoría, biblioratos de su ámbito |
+| `OPERADOR` | Actuaciones: informes, memos, devoluciones, confirmar pases recibidos, guardar en los biblioratos de su dependencia |
 | `ADMIN_SISTEMA` | Administrar el sistema (`ADMINISTRAR_SISTEMA`): usuarios, asignaciones, suplencias y feriados. **No** da acceso a expedientes: esa asignación no cuenta para el ámbito de visibilidad |
 | `CONSULTA` | Solo lectura |
 | (sin asignaciones vigentes) | Como `OPERADOR` de su propia dependencia |

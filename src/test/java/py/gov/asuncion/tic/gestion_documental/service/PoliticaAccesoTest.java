@@ -49,7 +49,7 @@ class PoliticaAccesoTest {
     @Test
     void variasAsignacionesSumanAcciones() {
         Usuario u = usuarioCon(RolAsignacion.RESPONSABLE, RolAsignacion.OPERADOR);
-        assertEquals(EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION, Accion.FORZAR_CIERRE, Accion.VER_AUDITORIA),
+        assertEquals(EnumSet.of(Accion.DERIVAR, Accion.REGISTRAR_ACTUACION, Accion.FORZAR_CIERRE, Accion.VER_AUDITORIA, Accion.GESTIONAR_ARCHIVO),
                 politica.acciones(u));
     }
 

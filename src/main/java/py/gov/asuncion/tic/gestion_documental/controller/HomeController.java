@@ -187,6 +187,7 @@ public class HomeController {
         c.medir("archivo", () -> agregarDatosArchivo(model, usuario));
         List<Documento> finalizados = c.medir("finalizados", () -> documentoService.obtenerDocumentosFinalizadosParaUsuario(usuario));
         model.addAttribute("documentosFinalizados", finalizados);
+        model.addAttribute("ubicaciones", biblioratoService.ubicacionesDe(finalizados.stream().map(Documento::getId).toList()));
         model.addAttribute("reabribles", documentoService.reabribles(usuario, finalizados));
         model.addAttribute("respuestasRecibidas", c.medir("respuestas", () -> documentoService.respuestasRecibidas(usuario)));
         model.addAttribute("reaperturasPendientes", documentoService.reaperturasPendientes(usuario));
@@ -628,9 +629,9 @@ public class HomeController {
                                    @RequestParam(value = "motivo", required = false) String motivo,
                                    RedirectAttributes redirectAttributes) {
         try {
-            Documento doc = documentoService.cambiarUbicacion(documentoId, biblioratoId, fojaDesde, fojaHasta, motivo,
+            var ubicacion = documentoService.cambiarUbicacion(documentoId, biblioratoId, fojaDesde, fojaHasta, motivo,
                     getUsuarioAutenticadoObligatorio());
-            redirectAttributes.addFlashAttribute("mensajeExito", doc.getCodigoCuti() + " guardado en " + doc.getUbicacionTexto() + ".");
+            redirectAttributes.addFlashAttribute("mensajeExito", "Guardado en " + ubicacion.getTexto() + ".");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "No se pudo registrar la ubicación: " + mensajeError(e));
         }
@@ -676,11 +677,16 @@ public class HomeController {
 
     // 📚 Datos de la pestaña "Archivo físico" y del catálogo de biblioratos
     private void agregarDatosArchivo(Model model, Usuario usuario) {
-        model.addAttribute("biblioratos", biblioratoService.listarActivos());
-        model.addAttribute("documentosArchivo", documentoService.obtenerDocumentosArchivoParaUsuario(usuario, null));
+        var biblioratos = biblioratoService.listarActivos(usuario);
+        model.addAttribute("biblioratos", biblioratos);
+        // Para buscar también sirven las carpetas cerradas: ahí queda el papel viejo
+        var biblioratosTodos = biblioratoService.listarTodos(usuario);
+        model.addAttribute("biblioratosTodos", biblioratosTodos);
+        model.addAttribute("puedeArchivar", !biblioratos.isEmpty() && politicaAcceso.puede(usuario, Accion.REGISTRAR_ACTUACION));
+        model.addAttribute("filasArchivo", documentoService.obtenerArchivoParaUsuario(usuario));
         if (politicaAcceso.puede(usuario, Accion.GESTIONAR_ARCHIVO)) {
-            model.addAttribute("biblioratosTodos", biblioratoService.listarTodos());
             model.addAttribute("usoBiblioratos", biblioratoService.obtenerUso());
+            model.addAttribute("dependenciasBibliorato", biblioratoService.dependenciasDelAlcance(usuario));
         }
     }
 
@@ -931,7 +937,11 @@ public class HomeController {
      */
     @GetMapping("/api/documentos/{id}/auditoria")
     @ResponseBody
-    public List<Map<String, Object>> obtenerAuditoriaJson(@PathVariable("id") Long id) {
+    public ResponseEntity<List<Map<String, Object>>> obtenerAuditoriaJson(@PathVariable("id") Long id) {
+        // El permiso de ver auditoría no alcanza: también hace falta acceso a este expediente
+        if (!documentoService.puedeAccederDocumento(getUsuarioAutenticado(), id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         List<Map<String, Object>> listaJson = new ArrayList<>();
         List<AuditoriaDocumento> auditorias = auditoriaService.obtenerHistorialAuditoria(id);
 
@@ -950,7 +960,7 @@ public class HomeController {
             map.put("fechaHora", aud.getFechaHora().format(fmt));
             listaJson.add(map);
         }
-        return listaJson;
+        return ResponseEntity.ok(listaJson);
     }
 
     /**

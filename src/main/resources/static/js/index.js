@@ -638,11 +638,19 @@
                     if (!button) return;
                     modalUbicacion.querySelector('#ubicacionDocId').value = button.getAttribute('data-doc-id');
                     modalUbicacion.querySelector('#labelCutiUbicacion').textContent = `(${button.getAttribute('data-doc-cuti')})`;
-                    const traslado = button.getAttribute('data-tiene-ubicacion') === 'true';
-                    const motivo = modalUbicacion.querySelector('[name=motivo]');
+                    // Desde el Archivo físico viene la carpeta actual: al volver a elegirla, cambiarla exige motivo
+                    const actual = button.getAttribute('data-bibliorato-id') || '';
+                    const select = document.getElementById('ubicacionBibliorato');
+                    const motivo = document.getElementById('ubicacionMotivo');
+                    select.value = [...select.options].some(o => o.value === actual) ? actual : '';
+                    select.dataset.actual = actual;
                     motivo.value = '';
-                    motivo.required = traslado;
-                    document.getElementById('bloqueMotivoUbicacion').classList.toggle('d-none', !traslado);
+                    motivo.required = actual !== '' && select.value === actual;
+                    modalUbicacion.querySelector('[name=fojaDesde]').value = '';
+                    modalUbicacion.querySelector('[name=fojaHasta]').value = '';
+                });
+                document.getElementById('ubicacionBibliorato').addEventListener('change', function () {
+                    document.getElementById('ubicacionMotivo').required = this.dataset.actual !== '' && this.value === this.dataset.actual;
                 });
             }
 
@@ -890,8 +898,17 @@
                     modalAuditoriaBs.show();
 
                     fetch(`/api/documentos/${docId}/auditoria`)
-                        .then(res => res.json())
+                        .then(res => {
+                            if (res.status === 403) {
+                                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-3 text-danger">Su dependencia no tiene acceso a este expediente.</td></tr>';
+                                return null;
+                            }
+                            return res.json();
+                        })
                         .then(data => {
+                            if (data === null) {
+                                return;
+                            }
                             if (!data || data.length === 0) {
                                 tbody.innerHTML = '<tr><td colspan="8" class="text-center py-3 text-muted">No hay registros de auditoría aún.</td></tr>';
                                 return;
