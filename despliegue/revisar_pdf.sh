@@ -24,6 +24,11 @@ set -uo pipefail
 
 BASE="gestion_documental"
 CARPETA_PDF="${CARPETA_PDF:-/var/lib/gestion-documental/pdf}"
+# Con la base en Docker, /etc/gestion-documental/respaldo define COMO_POSTGRES (ver respaldar.sh)
+if [ -z "${COMO_POSTGRES:-}" ] && [ -f /etc/gestion-documental/respaldo ]; then
+    COMO_POSTGRES="$(. /etc/gestion-documental/respaldo; printf '%s' "${COMO_POSTGRES:-}")"
+fi
+COMO_POSTGRES="${COMO_POSTGRES:-sudo -u postgres}"
 NOMBRAR_SOBRANTES=0
 [ "${1:-}" = "--sobrantes" ] && NOMBRAR_SOBRANTES=1
 
@@ -45,7 +50,7 @@ SELECT d.codigo_cuti,
  ORDER BY 1, 3"
 
 # Se lee primero: si la consulta falla, no se confunde con "la base no pide nada"
-if ! FILAS=$(cd / && sudo -u postgres psql -X -tA -F $'\t' -v ON_ERROR_STOP=1 -d "$BASE" -c "$CONSULTA"); then
+if ! FILAS=$(cd / && $COMO_POSTGRES psql -X -tA -F $'\t' -v ON_ERROR_STOP=1 -d "$BASE" -c "$CONSULTA"); then
     echo "No se pudo consultar la base $BASE." >&2
     exit 2
 fi

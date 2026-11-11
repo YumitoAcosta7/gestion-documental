@@ -1,0 +1,11 @@
+{
+  "log-driver": "journald",
+  "live-restore": true,
+  "userland-proxy": false,
+  "no-new-privileges": true,
+  "selinux-enabled": true,
+  "ip": "127.0.0.1",
+  "ipv6": false,
+  "icc": false,
+  "data-root": "/var/lib/docker"
+}

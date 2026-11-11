@@ -1,0 +1,99 @@
+# =====================================================================
+# Gestión Documental - Servicios comunes a desarrollo y producción
+#
+# No se usa solo: siempre con el archivo del ambiente encima.
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# (infra/rocky/desplegar.sh lo hace por usted.)
+#
+# Los datos viven en carpetas del servidor, cada una en su propio volumen lógico
+# (ver docs/infra-docker-rocky.md): borrar o recrear un contenedor no los toca.
+# =====================================================================
+name: gestion-documental
+
+services:
+  db:
+    image: ${IMAGEN_POSTGRES:-postgres:17-bookworm}
+    container_name: gd-db
+    restart: unless-stopped
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secretos/postgres_password
+      POSTGRES_DB: postgres
+      # Sumas de verificación: PostgreSQL detecta una página dañada en disco en lugar de leerla en silencio
+      POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:---data-checksums --encoding=UTF8}
+      BASE_APLICACION: ${BASE:-gestion_documental}
+      ROL_APLICACION: ${ROL_APLICACION:-gestion_documental}
+      TZ: America/Asuncion
+      PGTZ: America/Asuncion
+    volumes:
+      - ${CARPETA_DATOS:-/var/lib/gestion-documental}/postgres:/var/lib/postgresql/data:Z
+      - ./infra/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro,Z
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro,Z
+      - ./db:/opt/scripts-db:ro,Z
+      - ${CARPETA_SECRETOS:-/etc/gestion-documental/secretos}/postgres_password:/run/secretos/postgres_password:ro,z
+      - ${CARPETA_SECRETOS:-/etc/gestion-documental/secretos}/db/DB_PASSWORD:/run/secretos/app_password:ro,z
+    shm_size: 256m
+    # Tiempo para un apagado ordenado: sin esto, Docker lo corta a los 10 s y PostgreSQL arranca en recuperación
+    stop_grace_period: 90s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d \"$${BASE_APLICACION}\" -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks: [datos]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: journald
+      options: { tag: gd-db }
+
+  app:
+    image: ${IMAGEN_APP:-gestion-documental:local}
+    container_name: gd-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${BASE:-gestion_documental}
+      SPRING_DATASOURCE_USERNAME: ${ROL_APLICACION:-gestion_documental}
+      # La contraseña no va en variables (se ven con docker inspect): se lee del archivo DB_PASSWORD
+      SPRING_CONFIG_IMPORT: optional:configtree:/run/secretos/db/
+      APP_UPLOAD_DIR: /var/lib/gestion-documental/pdf
+      SERVER_PORT: "8080"
+      # nginx del servidor termina el HTTPS y reemplaza X-Forwarded-For: la bitácora registra la IP real
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+      APP_COOKIE_SEGURA: "true"
+      TZ: America/Asuncion
+    volumes:
+      - ${CARPETA_DATOS:-/var/lib/gestion-documental}/pdf:/var/lib/gestion-documental/pdf:Z
+      - ${CARPETA_SECRETOS:-/etc/gestion-documental/secretos}/db:/run/secretos/db:ro,z
+    # Solo para nginx del mismo servidor: nunca 0.0.0.0
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: ${MEMORIA_APP:-1536m}
+    stop_grace_period: 45s
+    healthcheck:
+      # Sin depender de curl en la imagen: bash consulta /login, que responde 200 sin sesión
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /login HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && read -r linea <&3 && [[ $$linea == *' 200 '* ]]"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    networks: [datos, publica]
+    logging:
+      driver: journald
+      options: { tag: gd-app }
+
+networks:
+  # Interna: sin salida ni entrada desde fuera de Docker. Solo la aplicación llega a la base
+  datos:
+    internal: true
+  # La de la aplicación, para publicar su puerto en 127.0.0.1
+  publica: {}

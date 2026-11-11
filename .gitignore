@@ -40,3 +40,6 @@ uploads/
 
 ### Configuración local de Claude Code ###
 .claude/
+
+### Docker: configuración de cada servidor (sin contraseñas, pero propia de cada uno) ###
+.env

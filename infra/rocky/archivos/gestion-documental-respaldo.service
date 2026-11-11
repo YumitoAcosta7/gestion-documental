@@ -1,0 +1,8 @@
+[Unit]
+Description=Respaldo de Gestión Documental (base en Docker y PDF)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash /opt/gestion-documental/despliegue/respaldar.sh
