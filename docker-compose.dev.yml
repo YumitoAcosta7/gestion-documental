@@ -1,16 +1,10 @@
 # =====================================================================
-# Desarrollo: se construye la imagen en el servidor, desde el código de la rama.
+# Desarrollo (caliopedev): se construye la imagen en el servidor, desde el código de la rama.
 #     bash infra/rocky/desplegar.sh dev
 #
-# La base publica su puerto solo en 127.0.0.1 del servidor de desarrollo: desde la PC
-# se entra con un túnel SSH (ver docs/infra-docker-rocky.md). Nunca con datos reales.
+# La base es gestion_documental_pruebas en ateneadev (ver .env). Nunca con datos reales.
 # =====================================================================
 services:
-  db:
-    ports:
-      - "127.0.0.1:5432:5432"
-    networks: [datos, publica]
-
   app:
     build:
       context: .

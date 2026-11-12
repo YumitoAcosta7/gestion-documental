@@ -1,75 +1,39 @@
 # =====================================================================
-# Gestión Documental - Servicios comunes a desarrollo y producción
+# Gestión Documental - La aplicación, común a desarrollo y producción
 #
 # No se usa solo: siempre con el archivo del ambiente encima.
 #     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 # (infra/rocky/desplegar.sh lo hace por usted.)
 #
-# Los datos viven en carpetas del servidor, cada una en su propio volumen lógico
-# (ver docs/infra-docker-rocky.md): borrar o recrear un contenedor no los toca.
+# La base NO corre aquí: está en el servidor PostgreSQL de cada ambiente (atenea o
+# ateneadev), por la red y con SSL verificado. Los PDF viven en una carpeta del
+# servidor, en su propio volumen lógico: borrar o recrear el contenedor no los toca.
 # =====================================================================
 name: gestion-documental
 
 services:
-  db:
-    image: ${IMAGEN_POSTGRES:-postgres:17-bookworm}
-    container_name: gd-db
-    restart: unless-stopped
-    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD_FILE: /run/secretos/postgres_password
-      POSTGRES_DB: postgres
-      # Sumas de verificación: PostgreSQL detecta una página dañada en disco en lugar de leerla en silencio
-      POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:---data-checksums --encoding=UTF8}
-      BASE_APLICACION: ${BASE:-gestion_documental}
-      ROL_APLICACION: ${ROL_APLICACION:-gestion_documental}
-      TZ: America/Asuncion
-      PGTZ: America/Asuncion
-    volumes:
-      - ${CARPETA_DATOS:-/var/lib/gestion-documental}/postgres:/var/lib/postgresql/data:Z
-      - ./infra/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro,Z
-      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro,Z
-      - ./db:/opt/scripts-db:ro,Z
-      - ${CARPETA_SECRETOS:-/etc/gestion-documental/secretos}/postgres_password:/run/secretos/postgres_password:ro,z
-      - ${CARPETA_SECRETOS:-/etc/gestion-documental/secretos}/db/DB_PASSWORD:/run/secretos/app_password:ro,z
-    shm_size: 256m
-    # Tiempo para un apagado ordenado: sin esto, Docker lo corta a los 10 s y PostgreSQL arranca en recuperación
-    stop_grace_period: 90s
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d \"$${BASE_APLICACION}\" -h 127.0.0.1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 60s
-    networks: [datos]
-    security_opt: ["no-new-privileges:true"]
-    logging:
-      driver: journald
-      options: { tag: gd-db }
-
   app:
     image: ${IMAGEN_APP:-gestion-documental:local}
     container_name: gd-app
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-        restart: true
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${BASE:-gestion_documental}
+      # verify-full: cifra y además comprueba que el servidor sea el del certificado (no uno que se haga pasar)
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://${DB_HOST:?Defina DB_HOST en .env}:${DB_PUERTO:-5432}/${BASE:-gestion_documental}?sslmode=verify-full&sslrootcert=/run/pg/servidor.crt"
       SPRING_DATASOURCE_USERNAME: ${ROL_APLICACION:-gestion_documental}
       # La contraseña no va en variables (se ven con docker inspect): se lee del archivo DB_PASSWORD
       SPRING_CONFIG_IMPORT: optional:configtree:/run/secretos/db/
       APP_UPLOAD_DIR: /var/lib/gestion-documental/pdf
       SERVER_PORT: "8080"
-      # nginx del servidor termina el HTTPS y reemplaza X-Forwarded-For: la bitácora registra la IP real
+      # nginx del servidor recibe del proxy interno y pasa la IP real del usuario: la bitácora la registra
       SERVER_FORWARD_HEADERS_STRATEGY: native
       APP_COOKIE_SEGURA: "true"
+      # Vacío en producción. En desarrollo muestra la franja en todas las pantallas
+      APP_AMBIENTE: ${AMBIENTE_VISIBLE:-}
       TZ: America/Asuncion
     volumes:
       - ${CARPETA_DATOS:-/var/lib/gestion-documental}/pdf:/var/lib/gestion-documental/pdf:Z
-      - ${CARPETA_SECRETOS:-/etc/gestion-documental/secretos}/db:/run/secretos/db:ro,z
+      - ${CARPETA_SECRETOS:-/etc/gestion-documental/secretos}/db:/run/secretos/db:ro,Z
+      - /etc/gestion-documental/pg/servidor.crt:/run/pg/servidor.crt:ro,Z
     # Solo para nginx del mismo servidor: nunca 0.0.0.0
     ports:
       - "127.0.0.1:8080:8080"
@@ -86,14 +50,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 90s
-    networks: [datos, publica]
     logging:
       driver: journald
       options: { tag: gd-app }
-
-networks:
-  # Interna: sin salida ni entrada desde fuera de Docker. Solo la aplicación llega a la base
-  datos:
-    internal: true
-  # La de la aplicación, para publicar su puerto en 127.0.0.1
-  publica: {}

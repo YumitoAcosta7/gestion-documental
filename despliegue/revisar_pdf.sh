@@ -22,12 +22,13 @@
 # =====================================================================
 set -uo pipefail
 
-BASE="gestion_documental"
-CARPETA_PDF="${CARPETA_PDF:-/var/lib/gestion-documental/pdf}"
-# Con la base en Docker, /etc/gestion-documental/respaldo define COMO_POSTGRES (ver respaldar.sh)
+# Solo, fuera de respaldar.sh: la misma conexión que el respaldo (en los servidores Docker,
+# la base por la red; ver respaldar.sh)
 if [ -z "${COMO_POSTGRES:-}" ] && [ -f /etc/gestion-documental/respaldo ]; then
-    COMO_POSTGRES="$(. /etc/gestion-documental/respaldo; printf '%s' "${COMO_POSTGRES:-}")"
+    . /etc/gestion-documental/respaldo
 fi
+BASE="${BASE:-gestion_documental}"
+CARPETA_PDF="${CARPETA_PDF:-/var/lib/gestion-documental/pdf}"
 COMO_POSTGRES="${COMO_POSTGRES:-sudo -u postgres}"
 NOMBRAR_SOBRANTES=0
 [ "${1:-}" = "--sobrantes" ] && NOMBRAR_SOBRANTES=1

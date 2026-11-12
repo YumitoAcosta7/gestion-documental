@@ -1,7 +1,8 @@
 [Unit]
-Description=Respaldo de Gestión Documental (base en Docker y PDF)
-After=docker.service
-Requires=docker.service
+Description=Respaldo de Gestión Documental (base por la red y PDF)
+# La base está en el servidor PostgreSQL del ambiente: hace falta la red
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=oneshot

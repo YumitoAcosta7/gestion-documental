@@ -121,3 +121,14 @@
 }
 
 .list-group { --bs-list-group-active-bg: #0F4C4A; --bs-list-group-active-border-color: #0F4C4A; }
+
+/* Aviso de ambiente (fragments/marca :: franjaAmbiente): siempre a la vista y sin tapar clics */
+.franja-ambiente {
+    position: fixed; right: 1rem; bottom: 1rem; z-index: 2000; pointer-events: none;
+    padding: .35rem .8rem; border-radius: .4rem; font-size: .85rem; color: #2B2100;
+    background: repeating-linear-gradient(135deg, #FFC72C 0 14px, #FFD966 14px 28px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
+.franja-ambiente::before {
+    content: ""; position: fixed; inset: 0 0 auto 0; height: 5px; background: #FFC72C;
+}

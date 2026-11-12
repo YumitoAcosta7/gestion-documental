@@ -1,0 +1,74 @@
+# =====================================================================
+# Gestión Documental - Instalación desatendida de Rocky Linux 9 (kickstart)
+#
+# crear-vm.sh reemplaza los campos entre arrobas y lo inyecta en el instalador.
+# Discos virtio: vda (sistema) y vdb (datos). Arranque BIOS con GPT, como las
+# máquinas actuales del servidor (i440fx). Se borra todo lo que haya en vda y vdb.
+# =====================================================================
+text
+cdrom
+lang es_ES.UTF-8
+keyboard --xlayouts=latam
+# Hora de Asunción, como los demás servidores; el reloj de la máquina virtual va en UTC
+timezone America/Asuncion --utc
+network --device=link --bootproto=static --ip=@IP@ --netmask=@MASCARA@ --gateway=@PUERTA@ --nameserver=@DNS@ --hostname=@FQDN@ --noipv6 --onboot=yes --activate
+
+# root sin contraseña: se administra con @ADMIN@ y sudo; se entra con la clave SSH
+rootpw --lock
+user --name=@ADMIN@ --groups=wheel --iscrypted --password=@HASH@
+sshkey --username=@ADMIN@ "@CLAVE_SSH@"
+
+selinux --enforcing
+firewall --enabled --service=ssh
+firstboot --disable
+skipx
+services --enabled=sshd,chronyd
+
+# ---- Discos
+ignoredisk --only-use=vda,vdb
+zerombr
+clearpart --all --initlabel --disklabel=gpt --drives=vda,vdb
+bootloader --location=mbr --boot-drive=vda --append="console=tty0 console=ttyS0,115200n8"
+
+# Disco de sistema (vda): un registro o una imagen grande no llenan el resto
+part biosboot   --fstype=biosboot --size=1    --ondisk=vda
+part /boot      --fstype=xfs      --size=1024 --ondisk=vda --fsoptions="nodev,nosuid,noexec"
+part pv.sistema --size=1 --grow --ondisk=vda
+volgroup vg_sistema pv.sistema
+logvol /               --vgname=vg_sistema --name=lv_raiz      --size=12288 --fstype=xfs
+logvol /var            --vgname=vg_sistema --name=lv_var       --size=6144  --fstype=xfs --fsoptions="nodev"
+logvol /var/log        --vgname=vg_sistema --name=lv_log       --size=4096  --fstype=xfs --fsoptions="nodev,nosuid,noexec"
+logvol /var/log/audit  --vgname=vg_sistema --name=lv_auditoria --size=2048  --fstype=xfs --fsoptions="nodev,nosuid,noexec"
+logvol /var/tmp        --vgname=vg_sistema --name=lv_vartmp    --size=1024  --fstype=xfs --fsoptions="nodev,nosuid,noexec"
+logvol /tmp            --vgname=vg_sistema --name=lv_tmp       --size=2048  --fstype=xfs --fsoptions="nodev,nosuid,noexec"
+logvol /home           --vgname=vg_sistema --name=lv_home      --size=2048  --fstype=xfs --fsoptions="nodev,nosuid"
+logvol /opt            --vgname=vg_sistema --name=lv_opt       --size=4096  --fstype=xfs --fsoptions="nodev"
+logvol /var/lib/docker --vgname=vg_sistema --name=lv_docker    --size=12288 --fstype=xfs
+logvol swap            --vgname=vg_sistema --name=lv_swap      --size=4096
+# Lo que sobra en vg_sistema queda libre para ampliar
+
+# Disco de datos (vdb): se puede agrandar o mover sin tocar el sistema.
+# La base no va aquí: está en el servidor PostgreSQL de cada ambiente
+part pv.datos --size=1 --grow --ondisk=vdb
+volgroup vg_datos pv.datos
+logvol /var/lib/gestion-documental/pdf --vgname=vg_datos --name=lv_pdf       --size=@PDF_MB@       --fstype=xfs --fsoptions="noatime,nodev,nosuid,noexec"
+logvol /var/backups                    --vgname=vg_datos --name=lv_respaldos --size=@RESPALDOS_MB@ --fstype=xfs --fsoptions="noatime,nodev,nosuid,noexec"
+# Lo que sobra en vg_datos queda libre para ampliar
+
+# ---- Paquetes: lo mínimo; el resto lo instala 01-preparar-host.sh
+%packages --ignoremissing
+@^minimal-environment
+qemu-guest-agent
+chrony
+lvm2
+tar
+rsync
+policycoreutils-python-utils
+%end
+
+%post --log=/root/kickstart-post.log
+# Apagados limpios y snapshots consistentes desde el servidor de virtualización
+systemctl enable qemu-guest-agent || echo "AVISO: qemu-guest-agent no quedó instalado"
+%end
+
+reboot

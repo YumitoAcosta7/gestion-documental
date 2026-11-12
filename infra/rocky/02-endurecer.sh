@@ -2,11 +2,14 @@
 # =====================================================================
 # Gestión Documental - Paso 2: SSH, cortafuegos, SELinux y núcleo
 #
-#     bash 02-endurecer.sh <puerto SSH nuevo>               # abre el puerto nuevo, deja el 22
-#     bash 02-endurecer.sh <puerto SSH nuevo> --cerrar-22   # cierra el 22, una vez probado el nuevo
+#     sudo bash 02-endurecer.sh <puerto SSH nuevo>               # abre el puerto nuevo, deja el 22
+#     sudo bash 02-endurecer.sh <puerto SSH nuevo> --cerrar-22   # cierra el 22, una vez probado el nuevo
+#
+# Con WEB_DESDE="192.168.129.111 <red o equipo de la DTIC>", 80 y 443 aceptan solo esos orígenes:
+# los usuarios entran por el proxy interno y nadie lo saltea. Sin WEB_DESDE quedan abiertos a la red.
 #
 # En dos pasadas a propósito: si el puerto nuevo no funciona, el 22 sigue abierto y
-# nadie queda afuera. Entre una y otra, abra OTRA sesión con  ssh -p <puerto> root@<servidor>
+# nadie queda afuera. Entre una y otra, abra OTRA sesión con  ssh -p <puerto> <usuario>@<servidor>
 # y no cierre la actual hasta confirmar que entra.
 # =====================================================================
 set -euo pipefail
@@ -17,11 +20,14 @@ PUERTO="${1:-}"; CERRAR="${2:-}"
 [ "$(id -u)" = "0" ] || { echo "Ejecútelo como root." >&2; exit 1; }
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Sin una llave cargada, prohibir la contraseña dejaría el servidor sin acceso
-if [ ! -s /root/.ssh/authorized_keys ]; then
-    echo "root no tiene llaves en /root/.ssh/authorized_keys. Cárguela primero:  ssh-copy-id root@<servidor>" >&2
+# Sin una llave cargada, prohibir la contraseña dejaría el servidor sin acceso. Se administra con un
+# usuario con sudo (el de la instalación); root no entra por SSH
+ADMIN="${SUDO_USER:-root}"
+if [ ! -s "$(getent passwd "$ADMIN" | cut -d: -f6)/.ssh/authorized_keys" ]; then
+    echo "$ADMIN no tiene llaves en ~/.ssh/authorized_keys. Cárguela primero:  ssh-copy-id $ADMIN@<servidor>" >&2
     exit 1
 fi
+WEB_DESDE="${WEB_DESDE:-}"
 
 echo "== SELinux en Enforcing"
 if [ "$(getenforce)" = "Disabled" ]; then
@@ -37,12 +43,12 @@ setsebool -P httpd_can_network_connect 1
 # El puerto SSH nuevo, con su etiqueta: sin ella SELinux no deja que sshd lo use
 semanage port -a -t ssh_port_t -p tcp "$PUERTO" 2> /dev/null || semanage port -m -t ssh_port_t -p tcp "$PUERTO"
 
-echo "== SSH: solo con llave, root solo con llave, en el puerto $PUERTO"
+echo "== SSH: solo con llave, root sin entrada directa, en el puerto $PUERTO"
 cat > /etc/ssh/sshd_config.d/10-gestion-documental.conf <<EOF
 # Lo genera infra/rocky/02-endurecer.sh
 Port $PUERTO
 $( [ "$CERRAR" = "--cerrar-22" ] || echo "Port 22" )
-PermitRootLogin prohibit-password
+$( [ "$ADMIN" = root ] && echo "PermitRootLogin prohibit-password" || echo "PermitRootLogin no" )
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
@@ -57,11 +63,20 @@ EOF
 sshd -t
 systemctl reload sshd
 
-echo "== Cortafuegos: SSH, y 80/443 para nginx"
+echo "== Cortafuegos: SSH, y 80/443 para nginx${WEB_DESDE:+ solo desde $WEB_DESDE}"
 systemctl enable --now firewalld
 ZONA="$(firewall-cmd --get-default-zone)"
 firewall-cmd --permanent --zone="$ZONA" --add-port="$PUERTO/tcp"
-firewall-cmd --permanent --zone="$ZONA" --add-service=http --add-service=https
+if [ -z "$WEB_DESDE" ]; then
+    firewall-cmd --permanent --zone="$ZONA" --add-service=http --add-service=https
+else
+    firewall-cmd --permanent --zone="$ZONA" --remove-service=http --remove-service=https 2> /dev/null || true
+    for origen in $WEB_DESDE; do
+        for servicio in http https; do
+            firewall-cmd --permanent --zone="$ZONA" --add-rich-rule="rule family=ipv4 source address=$origen service name=$servicio accept"
+        done
+    done
+fi
 for servicio in cockpit dhcpv6-client; do
     firewall-cmd --permanent --zone="$ZONA" --remove-service="$servicio" 2> /dev/null || true
 done
@@ -93,7 +108,7 @@ echo
 if [ "$CERRAR" = "--cerrar-22" ]; then
     echo "Listo: SSH solo en el puerto $PUERTO."
 else
-    echo "SSH escucha en 22 y en $PUERTO. Pruebe en OTRA ventana:  ssh -p $PUERTO root@<servidor>"
+    echo "SSH escucha en 22 y en $PUERTO. Pruebe en OTRA ventana:  ssh -p $PUERTO $ADMIN@<servidor>"
     echo "Si entra, repita:  bash $0 $PUERTO --cerrar-22"
 fi
 echo "Puertos abiertos al exterior (no deben aparecer 5432 ni 8080 en 0.0.0.0):"

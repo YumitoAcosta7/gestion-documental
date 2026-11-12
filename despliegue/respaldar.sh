@@ -23,10 +23,11 @@
 # Termina con error si algo falla, o si un disco pasa del umbral, para que quede
 # en el estado del servicio.
 #
-# Con la base en Docker, /etc/gestion-documental/respaldo define además
-#     COMO_POSTGRES="docker exec -i -u postgres gd-db"
-# y las herramientas de PostgreSQL corren dentro del contenedor. Sin esa línea se
-# usan las del servidor, como hasta ahora.
+# En los servidores Docker (caliope, caliopedev) la base está en otro equipo:
+# /etc/gestion-documental/respaldo, que escribe infra/rocky/03-nginx-y-respaldos.sh, define
+#     COMO_POSTGRES="env"  y  export PGHOST=... PGUSER=<rol>_respaldo PGSSLMODE=verify-full ...
+# y pg_dump y psql se conectan por la red, con SSL y un rol de solo lectura.
+# Sin esas líneas se usan las del servidor como postgres, como en 192.168.129.73.
 # =====================================================================
 set -euo pipefail
 
@@ -44,6 +45,7 @@ PROBLEMAS=0
 [ -f "$CONFIG" ] && . "$CONFIG"
 # Cómo se llega a pg_dump y psql: en el servidor o dentro del contenedor (revisar_pdf.sh también lo usa)
 export COMO_POSTGRES="${COMO_POSTGRES:-sudo -u postgres}"
+export BASE
 
 # Avisa si el disco de la ruta pasó del umbral. No frena el respaldo
 revisar_disco() {
