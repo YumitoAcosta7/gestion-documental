@@ -13,10 +13,8 @@ keyboard --xlayouts=latam
 timezone America/Asuncion --utc
 network --device=link --bootproto=static --ip=@IP@ --netmask=@MASCARA@ --gateway=@PUERTA@ --nameserver=@DNS@ --hostname=@FQDN@ --noipv6 --onboot=yes --activate
 
-# root sin contraseña: se administra con @ADMIN@ y sudo; se entra con la clave SSH
-rootpw --lock
-user --name=@ADMIN@ --groups=wheel --iscrypted --password=@HASH@
-sshkey --username=@ADMIN@ "@CLAVE_SSH@"
+# Cuentas: las arma crear-vm.sh según maquinas.conf (root solo, o root bloqueado y un administrador con sudo)
+@CUENTAS@
 
 selinux --enforcing
 firewall --enabled --service=ssh

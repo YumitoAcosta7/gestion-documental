@@ -3,8 +3,8 @@
 # Gestión Documental - Paso 3: nginx, conexión del respaldo y respaldo diario
 #
 #     sudo bash 03-nginx-y-respaldos.sh <nombre público> <servidor PostgreSQL> [usuario@equipo:/carpeta]
-#     ej.: sudo bash 03-nginx-y-respaldos.sh mesa.asuncion.gov.py atenea.asuncion.gov.py respaldo@192.168.129.71:/srv/respaldos/gestion_documental
-#          sudo bash 03-nginx-y-respaldos.sh mesa-dev.asuncion.gov.py ateneadev.asuncion.gov.py respaldo@192.168.129.71:/srv/respaldos/gestion_documental_pruebas
+#     ej.: sudo bash 03-nginx-y-respaldos.sh mesa.asuncion.gov.py 192.168.129.72 respaldo@192.168.129.71:/srv/respaldos/gestion_documental
+#          sudo bash 03-nginx-y-respaldos.sh mesadev.asuncion.gov.py 192.168.129.73 respaldo@192.168.129.71:/srv/respaldos/gestion_documental_pruebas
 #
 # Desde /opt/gestion-documental, con .env ya completo (BASE y ROL_APLICACION).
 # nginx termina el HTTPS que le reenvía el proxy interno y pasa a la aplicación en

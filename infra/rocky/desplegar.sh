@@ -25,6 +25,9 @@ CONFIG=/etc/gestion-documental/respaldo
 [ -f "$CONFIG" ] || { echo "Falta $CONFIG: ejecute antes infra/rocky/03-nginx-y-respaldos.sh." >&2; exit 1; }
 [ -s /etc/gestion-documental/pg/servidor.crt ] \
     || { echo "Falta /etc/gestion-documental/pg/servidor.crt (el certificado del servidor PostgreSQL)." >&2; exit 1; }
+# Vacío, la aplicación arranca sin contraseña y falla en bucle ("no password was provided")
+[ -s /etc/gestion-documental/secretos/db/DB_PASSWORD ] \
+    || { echo "/etc/gestion-documental/secretos/db/DB_PASSWORD está vacío: cargue la contraseña del rol de la aplicación." >&2; exit 1; }
 COMPOSE=(docker compose -f docker-compose.yml -f "docker-compose.$AMBIENTE.yml")
 BASE="$(sed -n 's/^BASE=//p' .env)"; BASE="${BASE:-gestion_documental}"
 

@@ -1,6 +1,6 @@
 # Servidores de desarrollo y producción: aplicación en Docker, base en los servidores PostgreSQL
 
-**Estado:** propuesta del 12/11/2026. Ningún paso se ejecutó todavía. **No se probó en un servidor:** la imagen no se pudo construir en la PC (no tiene Docker), y los scripts solo se revisaron por sintaxis. Lo primero es ensayar todo en desarrollo.
+**Estado (13/11/2026):** desarrollo ensayado y funcionando en `https://mesadev.asuncion.gov.py` (caliopedev + ateneadev, detrás de persefone). Los problemas que aparecieron en el ensayo ya están corregidos en los scripts (ver "Ensayo en desarrollo"). Producción (caliope + atenea) todavía no se hizo.
 
 **No reemplaza a la producción actual (`192.168.129.73`)** hasta hacer el corte de la sección 8.
 
@@ -12,7 +12,7 @@
 | `caliopedev` (`caliopedev_rockylinux`) | 192.168.129.83 | Desarrollo | Igual, con la imagen construida desde la rama |
 | `atenea` | 192.168.129.72 | Base de producción | PostgreSQL 17.10 (PGDG), base `gestion_documental` |
 | `ateneadev` | 192.168.129.73 | Base de desarrollo | PostgreSQL 17.10, base `gestion_documental_pruebas` (y hoy, también la producción) |
-| Proxy interno | 192.168.129.111 | DNS interno y proxy (Apache) | `mesa.asuncion.gov.py` y `mesa-dev.asuncion.gov.py`, con el certificado `*.asuncion.gov.py` |
+| Proxy interno (persefone) | 192.168.129.111 | DNS interno y proxy (Apache) | `mesa.asuncion.gov.py` y `mesadev.asuncion.gov.py`, con el certificado `*.asuncion.gov.py` |
 | Virtualización | 192.168.129.13 | Ubuntu 22.04, qemu-kvm | Las máquinas virtuales |
 | `asclepio` | 192.168.129.71 | Respaldos | Todas las copias: base, huellas y PDF de los dos ambientes, como hoy los de `.73` |
 
@@ -38,6 +38,8 @@ usuario ──HTTPS *.asuncion.gov.py──► proxy .111 ──HTTPS verificado
 
 **La conexión a la base** usa `sslmode=verify-full`: cifra y además comprueba con el certificado del servidor PostgreSQL que del otro lado esté atenea y no otro equipo. La contraseña se lee de un archivo (`/etc/gestion-documental/secretos/db/DB_PASSWORD`), no de una variable, porque las variables se ven con `docker inspect`.
 
+**La base se nombra por su IP** (`192.168.129.72` y `.73`), no por su nombre: el 13/11/2026, `ateneadev.asuncion.gov.py` resolvía a `126.10.10.180`, otro equipo, y la conexión falló al verificar el certificado. El certificado de cada servidor PostgreSQL incluye su IP, así que la verificación funciona igual.
+
 **Franja "DESARROLLO":** con `AMBIENTE_VISIBLE=DESARROLLO` en `.env`, todas las pantallas muestran un aviso fijo abajo a la derecha y una línea amarilla arriba. En producción queda vacío y no aparece nada.
 
 ### Diferencias con el pedido original
@@ -55,8 +57,8 @@ usuario ──HTTPS *.asuncion.gov.py──► proxy .111 ──HTTPS verificado
 Se crean en el servidor de virtualización (192.168.129.13) con `crear-vm.sh`, igual que las actuales: i440fx, BIOS, discos qcow2 `virtio` (`vda`, `vdb`), red `virtio` por `br0`, SPICE solo local y consola serie. Además: agente de invitado, `discard` y `cache=none`. Instala Rocky Linux 9 sin intervención con `rocky9.ks.plantilla`.
 
 - **Rocky 9, no 10:** la CPU de las máquinas (Westmere) no tiene AVX2, que Rocky 10 exige.
-- **ISO:** la DVD de Rocky 9, en `/var/lib/libvirt/images` (AppArmor no deja a qemu leerla desde `/home`).
-- **Acceso:** root bloqueado; se entra con el usuario administrador y su clave SSH. Su contraseña (para `sudo`) la genera el administrador en el servidor de virtualización con `openssl passwd -6`; nunca va al repositorio.
+- **ISO:** `/home/virtual/iso/Rocky-9.5-x86_64-minimal.iso`, la carpeta que ya usan las máquinas actuales. La minimal alcanza; lo que falte lo instala el paso 1 desde internet, y `dnf upgrade` la lleva a la última 9.x.
+- **Acceso:** como los demás servidores, con root (`ADMIN="root"`). Su contraseña la genera el administrador en adonis con `openssl passwd -6` y queda cifrada en un archivo que nunca va al repositorio. Sin clave SSH en `CLAVE_SSH`, root entra al principio con esa contraseña; antes del paso 2 se carga la llave con `ssh-copy-id root@<máquina>`. Con otro nombre en `ADMIN`, root queda bloqueado y ese usuario administra con `sudo`.
 - **El script no pisa nada:** se detiene si la máquina o sus discos ya existen o si la IP responde.
 
 | | caliope | caliopedev |
@@ -110,7 +112,7 @@ Dos discos: reinstalar el sistema no toca los datos, y el de datos se agranda o 
 - **Hora:** `America/Asuncion`, con los mismos servidores NTP que atenea (`201.217.3.85`, `201.217.3.86` y los de Cloudflare). `makestep 1.0 3`: corrige de golpe solo al arrancar; después, sin saltos en las bitácoras.
 
 `02-endurecer.sh <puerto>` se corre dos veces para no quedar afuera: la primera abre el puerto SSH nuevo y deja el 22; se prueba en **otra** ventana; la segunda, con `--cerrar-22`, cierra el 22.
-- **SSH:** solo con llave, sin entrada directa de root (se usa el administrador con `sudo`), 3 intentos y 30 segundos, sin reenvíos.
+- **SSH:** solo con llave (se detiene si la cuenta con la que se ejecuta no tiene una cargada), root solo con llave (`prohibit-password`; si se administra con otro usuario y `sudo`, root no entra), 3 intentos y 30 segundos, sin reenvíos.
 - **firewalld:** el puerto SSH, 80 y 443, sin cockpit ni dhcpv6. Con `WEB_DESDE="192.168.129.111 <red de la DTIC>"`, 80 y 443 aceptan **solo** esos orígenes: nadie saltea el proxy.
 - **SELinux en `Enforcing`:** `:Z` en los montajes de la aplicación y `httpd_can_network_connect` para que nginx llegue a `127.0.0.1:8080`.
 - **Docker** (`archivos/daemon.json`): puertos en `127.0.0.1` por defecto, `live-restore`, `no-new-privileges`, sin IPv6, registros a journald.
@@ -140,10 +142,11 @@ Relevamiento del 12/11/2026 (`recolectar-postgres.sh`): atenea y ateneadev tiene
 ## 6. Proxy interno (`infra/proxy/gestion-documental.conf`)
 
 Apache en 192.168.129.111 (opción A, decidida el 12/11/2026): el proxy presenta el certificado `*.asuncion.gov.py` y reenvía por HTTPS a caliope o caliopedev, **verificando** su certificado (`SSLProxyVerify require`).
-- **Nombres solo en el DNS interno:** `mesa` y `mesa-dev` apuntan al proxy. No se publican afuera.
+- **Nombres solo en el DNS interno:** `mesa` y `mesadev` apuntan al proxy. No se publican afuera.
 - **`ProxyPreserveHost On`:** la aplicación ve `mesa.asuncion.gov.py`; sin eso fallan las redirecciones del inicio de sesión.
 - **IP real en las bitácoras:** Apache agrega la IP del usuario en `X-Forwarded-For`, y el nginx de caliope le cree **solo** a 192.168.129.111 (`set_real_ip_from`), tomando la última dirección, la que agregó el proxy. Quien entre directo queda registrado con su propia IP.
 - **SELinux del proxy:** si es la primera vez que reenvía a otro equipo, `setsebool -P httpd_can_network_connect 1`.
+- **Con el formato de persefone:** `VirtualHost` en `192.168.129.111:80` y `:443`, registros en `logs/mesadev.*`, `conf/seguridad.conf` en el de 80 y el comodín de `/home/2026_certi`. Reenvía por IP (`https://192.168.129.83/`); como conserva el nombre, el certificado de caliopedev tiene que incluir `mesadev.asuncion.gov.py`, y lo incluye porque `03-nginx-y-respaldos.sh` recibe ese nombre.
 
 ## 7. Respaldo diario
 
@@ -157,7 +160,11 @@ Apache en 192.168.129.111 (opción A, decidida el 12/11/2026): el proxy presenta
   ```bash
   sudo ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
   sudo ssh-copy-id -i /root/.ssh/id_ed25519.pub respaldo@192.168.129.71
-  sudo ssh -o BatchMode=yes respaldo@192.168.129.71 "mkdir -p /srv/respaldos/gestion_documental_pruebas"   # solo en caliopedev
+  sudo ssh -o BatchMode=yes respaldo@192.168.129.71 "test -w /srv/respaldos/<carpeta> && echo carpeta lista"
+  ```
+  `respaldo` no puede crear carpetas en `/srv/respaldos` (es de root). Las crea root en asclepio, con los mismos permisos que la de producción:
+  ```bash
+  install -d -o respaldo -g respaldo -m 700 /srv/respaldos/gestion_documental_pruebas /srv/respaldos/gestion_documental_ensayo
   ```
   `ssh-copy-id` pide una vez la contraseña de `respaldo`; quien la conoce la escribe. Después entra solo con la llave.
 - **Antes de cada despliegue de producción**, `desplegar.sh` hace un respaldo y se detiene si falla.
@@ -170,7 +177,7 @@ Primero **todo en desarrollo**; producción solo cuando desarrollo funcionó com
 ### Desarrollo (caliopedev + ateneadev)
 
 1. **Máquina:** `sudo bash ~/kvm/crear-vm.sh caliopedev` en 192.168.129.13.
-2. **En caliopedev**, con el usuario administrador: clonar el repositorio en `/opt/gestion-documental` y
+2. **En caliopedev**, como root (cargar antes la llave SSH con `ssh-copy-id root@caliopedev.asuncion.gov.py`): clonar el repositorio en `/opt/gestion-documental` y
    ```bash
    sudo bash infra/rocky/01-preparar-host.sh dev
    ```
@@ -178,7 +185,7 @@ Primero **todo en desarrollo**; producción solo cuando desarrollo funcionó com
 3. `sudo bash infra/rocky/02-endurecer.sh <puerto>`, probar en otra ventana, y repetir con `--cerrar-22`. Con `WEB_DESDE` si se quiere limitar 80/443 al proxy.
 4. Copiar `.env.ejemplo` a `.env`, dejar activo el bloque de desarrollo y:
    ```bash
-   sudo bash infra/rocky/03-nginx-y-respaldos.sh mesa-dev.asuncion.gov.py ateneadev.asuncion.gov.py respaldo@192.168.129.71:/srv/respaldos/gestion_documental_pruebas
+   sudo bash infra/rocky/03-nginx-y-respaldos.sh mesadev.asuncion.gov.py 192.168.129.73 respaldo@192.168.129.71:/srv/respaldos/gestion_documental_pruebas
    ```
 5. **En ateneadev**, como root, desde una copia del repositorio (con la IP de la PC en `ADMINS` para seguir usando el perfil `pruebas`):
    ```bash
@@ -186,10 +193,10 @@ Primero **todo en desarrollo**; producción solo cuando desarrollo funcionó com
    ```
    Pide la contraseña de `gestion_documental_pruebas_respaldo`: el último campo de `respaldo.pgpass` en caliopedev.
 6. Copiar el certificado de ateneadev a caliopedev, como indica el script, en `/etc/gestion-documental/pg/servidor.crt`.
-7. **En el proxy:** copiar `/etc/gestion-documental/tls/certificado.crt` de caliopedev a `/etc/httpd/gestion-documental/caliopedev.crt`, instalar `gestion-documental.conf`, `apachectl configtest` y `systemctl reload httpd`. En el DNS interno, `mesa-dev` → 192.168.129.111.
+7. **En el proxy:** copiar `/etc/gestion-documental/tls/certificado.crt` de caliopedev a `/etc/httpd/conf/gestion-documental/caliopedev.crt`, instalar `gestion-documental.conf`, `apachectl configtest` y `systemctl reload httpd`. En el DNS interno, `mesadev IN CNAME persefone.asuncion.gov.py.` (hecho el 13/11/2026).
 8. `sudo bash infra/rocky/desplegar.sh dev`: comprueba la conexión, construye y levanta.
 9. **Comprobar:**
-   - `https://mesa-dev.asuncion.gov.py` abre con el candado normal y muestra la franja DESARROLLO.
+   - `https://mesadev.asuncion.gov.py` abre con el candado normal y muestra la franja DESARROLLO.
    - Una acción nueva queda en la auditoría con la IP de la PC, no con la del proxy.
    - `ss -tlnp` no muestra 8080 fuera de `127.0.0.1`.
    - `sudo systemctl start gestion-documental-respaldo.service` termina sin error, y el respaldo se restaura en una base de ensayo.
@@ -197,7 +204,7 @@ Primero **todo en desarrollo**; producción solo cuando desarrollo funcionó com
 
 ### Producción (caliope + atenea)
 
-1. Crear caliope y repetir los pasos 2 a 4 con `prod`, `mesa.asuncion.gov.py`, `atenea.asuncion.gov.py` y, **hasta el corte**, `respaldo@192.168.129.71:/srv/respaldos/gestion_documental_ensayo`, más la llave SSH de la sección 7. Así los respaldos del ensayo no se mezclan con los de producción, que hasta el corte sigue mandando `.73`.
+1. Crear caliope y repetir los pasos 2 a 4 con `prod`, `mesa.asuncion.gov.py`, `192.168.129.72` (atenea) y, **hasta el corte**, `respaldo@192.168.129.71:/srv/respaldos/gestion_documental_ensayo`, más la llave SSH de la sección 7. Así los respaldos del ensayo no se mezclan con los de producción, que hasta el corte sigue mandando `.73`.
 2. En atenea: `dnf upgrade`, y
    ```bash
    sudo bash infra/postgres/preparar-servidor.sh gestion_documental gestion_documental 192.168.129.82
@@ -225,3 +232,21 @@ Primero **todo en desarrollo**; producción solo cuando desarrollo funcionó com
 - **Rutas del certificado comodín** en el proxy (`SSLCertificateFile` y `SSLCertificateKeyFile`).
 - **Imágenes base:** fijarlas por su digest (`@sha256:...`) antes del piloto.
 - **`.73` en esta versión:** `respaldar.sh` escribe el respaldo como root en lugar de pasarle el archivo a `postgres`, y el nginx nuevo confía en el proxy. Conviene correr el respaldo una vez a mano al instalarla.
+
+## Ensayo en desarrollo (12 y 13/11/2026)
+
+Lo que falló y cómo quedó corregido:
+
+| Problema | Corrección |
+|---|---|
+| `crear-vm.sh` se cortaba sin mensaje si faltaba `osinfo-query` | Sigue con la variante genérica; conviene `apt install libosinfo-bin` en adonis |
+| La ISO 9.5: el repositorio de PGDG ya no publica esa versión menor (404) y frenaba todo dnf | `01-preparar-host.sh` actualiza Rocky antes de agregar PGDG |
+| Con root entrando por contraseña, el instalador deja `01-permitrootlogin.conf`, que sshd lee antes y gana | `02-endurecer.sh` lo borra y escribe `00-gestion-documental.conf`; muestra lo que sshd aplica (`sshd -T`) |
+| `ateneadev.asuncion.gov.py` resuelve a `126.10.10.180` y `atenea` a `192.168.129.102`: otros equipos. `verify-full` cortó la conexión | Las bases se nombran por IP |
+| `DB_PASSWORD` quedó vacío y la aplicación arrancaba en bucle sin contraseña | `desplegar.sh` se detiene si está vacío |
+| El nombre del sitio cambió a `mesadev` y el certificado de caliopedev decía otro: el proxy rechazó la conexión | Rehacer el certificado (`rm` y repetir el paso 3) cuando cambia el nombre público |
+| Apache quedó detenido unos minutos: la configuración nombraba un certificado que todavía no estaba en persefone | Copiar el certificado **antes**, y siempre `apachectl configtest && systemctl reload httpd` |
+| `respaldo` no puede crear carpetas en `/srv/respaldos` de asclepio | Las crea root, con permisos `700` |
+| fail2ban podía bloquear al equipo de administración | `SSH_SIN_BLOQUEO` en el paso 2 |
+
+**Hallazgo:** asclepio (`.71`, respaldos) es una máquina virtual de adonis, en el mismo disco físico que todos los servidores. Antes del corte de producción hace falta una copia fuera de adonis.

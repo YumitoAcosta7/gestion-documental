@@ -7,6 +7,7 @@
 #
 # Con WEB_DESDE="192.168.129.111 <red o equipo de la DTIC>", 80 y 443 aceptan solo esos orígenes:
 # los usuarios entran por el proxy interno y nadie lo saltea. Sin WEB_DESDE quedan abiertos a la red.
+# Con SSH_SIN_BLOQUEO="126.10.10.251 ...", fail2ban nunca bloquea esos equipos de administración.
 #
 # En dos pasadas a propósito: si el puerto nuevo no funciona, el 22 sigue abierto y
 # nadie queda afuera. Entre una y otra, abra OTRA sesión con  ssh -p <puerto> <usuario>@<servidor>
@@ -44,7 +45,10 @@ setsebool -P httpd_can_network_connect 1
 semanage port -a -t ssh_port_t -p tcp "$PUERTO" 2> /dev/null || semanage port -m -t ssh_port_t -p tcp "$PUERTO"
 
 echo "== SSH: solo con llave, root sin entrada directa, en el puerto $PUERTO"
-cat > /etc/ssh/sshd_config.d/10-gestion-documental.conf <<EOF
+# sshd se queda con el primer valor que lee, y lee los archivos en orden alfabético: este va primero.
+# El instalador deja 01-permitrootlogin.conf (PermitRootLogin yes) si root entró con contraseña
+rm -f /etc/ssh/sshd_config.d/01-permitrootlogin.conf /etc/ssh/sshd_config.d/10-gestion-documental.conf
+cat > /etc/ssh/sshd_config.d/00-gestion-documental.conf <<EOF
 # Lo genera infra/rocky/02-endurecer.sh
 Port $PUERTO
 $( [ "$CERRAR" = "--cerrar-22" ] || echo "Port 22" )
@@ -62,6 +66,8 @@ ClientAliveCountMax 2
 EOF
 sshd -t
 systemctl reload sshd
+# Lo que sshd aplica de verdad, no lo que dicen los archivos
+sshd -T | grep -E "^(port|permitrootlogin|passwordauthentication) "
 
 echo "== Cortafuegos: SSH, y 80/443 para nginx${WEB_DESDE:+ solo desde $WEB_DESDE}"
 systemctl enable --now firewalld
@@ -91,6 +97,8 @@ cat > /etc/fail2ban/jail.d/sshd.local <<EOF
 [sshd]
 enabled = true
 port = $PUERTO
+# Los equipos de administración (SSH_SIN_BLOQUEO) nunca se bloquean: un error de llave no deja afuera a la DTIC
+ignoreip = 127.0.0.1/8 ::1 ${SSH_SIN_BLOQUEO:-}
 backend = systemd
 maxretry = 5
 bantime = 1h

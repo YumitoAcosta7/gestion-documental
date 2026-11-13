@@ -26,10 +26,12 @@ dnf -y install epel-release dnf-plugins-core
 # EPEL necesita CRB para algunas dependencias (fail2ban)
 dnf config-manager --set-enabled crb
 dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+# Primero a la última 9.x: PGDG publica solo las versiones menores vigentes, y desde una ISO
+# vieja (9.5) su repositorio da 404 y frena todo dnf. Por eso se excluye hasta actualizar
+dnf -y --disablerepo='pgdg*' upgrade
 # Cliente de PostgreSQL 17, el mismo origen (PGDG) y versión que los servidores de base
 rpm -q pgdg-redhat-repo > /dev/null 2>&1 \
     || dnf -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-dnf -y upgrade
 dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
                nginx chrony firewalld policycoreutils-python-utils container-selinux \
                rsync tar git curl jq lvm2 openssl audit dnf-automatic fail2ban \
