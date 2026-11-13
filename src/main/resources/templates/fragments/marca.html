@@ -3,6 +3,15 @@
 <body>
 
 <!-- Los logos se cambian solo aquí. Son recortes de la firma institucional, de baja resolución: reemplazar por los archivos oficiales -->
+<!-- Aviso de ambiente: solo aparece si app.ambiente tiene valor (en desarrollo, APP_AMBIENTE=DESARROLLO).
+     En producción queda vacío y no se muestra nada -->
+<th:block th:fragment="franjaAmbiente" th:with="ambiente=${@environment.getProperty('app.ambiente', '')}">
+    <div th:if="${!#strings.isEmpty(ambiente)}" class="franja-ambiente" role="note">
+        <i class="bi bi-cone-striped" aria-hidden="true"></i>
+        <strong th:text="${ambiente}">DESARROLLO</strong> · no cargue documentos reales
+    </div>
+</th:block>
+
 <img th:fragment="escudo" th:src="@{/images/escudo.png}" alt="Municipalidad de Asunción" class="escudo escudo-claro">
 
 <img th:fragment="logoDtic" th:src="@{/images/logo-dtic.png}" alt="" class="logo-dtic">

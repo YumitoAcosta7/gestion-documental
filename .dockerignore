@@ -1,0 +1,7 @@
+# Solo entra a la imagen lo que hace falta para compilar
+*
+!.mvn/
+!mvnw
+!pom.xml
+!src/
+src/main/resources/application-local.properties

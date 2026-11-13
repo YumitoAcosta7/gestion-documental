@@ -22,6 +22,12 @@
 #
 # Termina con error si algo falla, o si un disco pasa del umbral, para que quede
 # en el estado del servicio.
+#
+# En los servidores Docker (caliope, caliopedev) la base está en otro equipo:
+# /etc/gestion-documental/respaldo, que escribe infra/rocky/03-nginx-y-respaldos.sh, define
+#     COMO_POSTGRES="env"  y  export PGHOST=... PGUSER=<rol>_respaldo PGSSLMODE=verify-full ...
+# y pg_dump y psql se conectan por la red, con SSL y un rol de solo lectura.
+# Sin esas líneas se usan las del servidor como postgres, como en 192.168.129.73.
 # =====================================================================
 set -euo pipefail
 
@@ -37,6 +43,9 @@ FECHA=$(date +%Y%m%d_%H%M)
 PROBLEMAS=0
 
 [ -f "$CONFIG" ] && . "$CONFIG"
+# Cómo se llega a pg_dump y psql: en el servidor o dentro del contenedor (revisar_pdf.sh también lo usa)
+export COMO_POSTGRES="${COMO_POSTGRES:-sudo -u postgres}"
+export BASE
 
 # Avisa si el disco de la ruta pasó del umbral. No frena el respaldo
 revisar_disco() {
@@ -53,17 +62,22 @@ revisar_disco() {
 }
 
 mkdir -p "$CARPETA"
-chown postgres "$CARPETA"
 chmod 750 "$CARPETA"
 
+# Por la salida estándar: sirve igual con pg_dump del servidor o del contenedor.
+# El archivo lo escribe root, en esta carpeta; si pg_dump falla, pipefail detiene el respaldo
+# Se escribe con otro nombre y toma el definitivo solo si terminó: un respaldo cortado no queda como bueno
 DUMP="$CARPETA/base_$FECHA.dump"
-sudo -u postgres pg_dump -Fc -d "$BASE" -f "$DUMP"
+trap 'rm -f "$DUMP.parcial"' EXIT
+(cd / && $COMO_POSTGRES pg_dump -Fc -d "$BASE") > "$DUMP.parcial"
+chmod 640 "$DUMP.parcial"
+mv "$DUMP.parcial" "$DUMP"
 # Un respaldo que no se puede leer no es un respaldo
-sudo -u postgres pg_restore -l "$DUMP" > /dev/null
+(cd / && $COMO_POSTGRES pg_restore -l) < "$DUMP" > /dev/null
 
 # Última huella de las bitácoras: viaja con el respaldo como anclaje externo
 HUELLAS="$CARPETA/huellas_$FECHA.txt"
-sudo -u postgres psql -X -tA -d "$BASE" -c "SELECT tabla, huella FROM bitacora_cadena ORDER BY tabla" > "$HUELLAS"
+(cd / && $COMO_POSTGRES psql -X -tA -d "$BASE" -c "SELECT tabla, huella FROM bitacora_cadena ORDER BY tabla") > "$HUELLAS"
 
 find "$CARPETA" -type f \( -name 'base_*.dump' -o -name 'huellas_*.txt' \) -mtime +"$DIAS" -delete
 find "$CARPETA" -type f -name 'pdf_*.tar.gz' -mtime +"$DIAS_PDF_LOCAL" -delete

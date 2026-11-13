@@ -1,0 +1,14 @@
+# =====================================================================
+# Desarrollo (caliopedev): se construye la imagen en el servidor, desde el código de la rama.
+#     bash infra/rocky/desplegar.sh dev
+#
+# La base es gestion_documental_pruebas en ateneadev (ver .env). Nunca con datos reales.
+# =====================================================================
+services:
+  app:
+    build:
+      context: .
+      args:
+        UID_APP: ${UID_APP:-10001}
+    image: ${IMAGEN_APP:-gestion-documental:dev}
+    mem_limit: ${MEMORIA_APP:-1024m}

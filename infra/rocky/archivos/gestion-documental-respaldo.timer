@@ -1,0 +1,11 @@
+[Unit]
+Description=Respaldo diario de Gestión Documental
+
+[Timer]
+# Hora de Asunción, fuera del horario de uso
+OnCalendar=*-*-* 22:00:00 America/Asuncion
+# Si el servidor estaba apagado a esa hora, lo hace al encender
+Persistent=true
+
+[Install]
+WantedBy=timers.target

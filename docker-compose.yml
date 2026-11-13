@@ -1,0 +1,55 @@
+# =====================================================================
+# Gestión Documental - La aplicación, común a desarrollo y producción
+#
+# No se usa solo: siempre con el archivo del ambiente encima.
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# (infra/rocky/desplegar.sh lo hace por usted.)
+#
+# La base NO corre aquí: está en el servidor PostgreSQL de cada ambiente (atenea o
+# ateneadev), por la red y con SSL verificado. Los PDF viven en una carpeta del
+# servidor, en su propio volumen lógico: borrar o recrear el contenedor no los toca.
+# =====================================================================
+name: gestion-documental
+
+services:
+  app:
+    image: ${IMAGEN_APP:-gestion-documental:local}
+    container_name: gd-app
+    restart: unless-stopped
+    environment:
+      # verify-full: cifra y además comprueba que el servidor sea el del certificado (no uno que se haga pasar)
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://${DB_HOST:?Defina DB_HOST en .env}:${DB_PUERTO:-5432}/${BASE:-gestion_documental}?sslmode=verify-full&sslrootcert=/run/pg/servidor.crt"
+      SPRING_DATASOURCE_USERNAME: ${ROL_APLICACION:-gestion_documental}
+      # La contraseña no va en variables (se ven con docker inspect): se lee del archivo DB_PASSWORD
+      SPRING_CONFIG_IMPORT: optional:configtree:/run/secretos/db/
+      APP_UPLOAD_DIR: /var/lib/gestion-documental/pdf
+      SERVER_PORT: "8080"
+      # nginx del servidor recibe del proxy interno y pasa la IP real del usuario: la bitácora la registra
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+      APP_COOKIE_SEGURA: "true"
+      # Vacío en producción. En desarrollo muestra la franja en todas las pantallas
+      APP_AMBIENTE: ${AMBIENTE_VISIBLE:-}
+      TZ: America/Asuncion
+    volumes:
+      - ${CARPETA_DATOS:-/var/lib/gestion-documental}/pdf:/var/lib/gestion-documental/pdf:Z
+      - ${CARPETA_SECRETOS:-/etc/gestion-documental/secretos}/db:/run/secretos/db:ro,Z
+      - /etc/gestion-documental/pg/servidor.crt:/run/pg/servidor.crt:ro,Z
+    # Solo para nginx del mismo servidor: nunca 0.0.0.0
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: ${MEMORIA_APP:-1536m}
+    stop_grace_period: 45s
+    healthcheck:
+      # Sin depender de curl en la imagen: bash consulta /login, que responde 200 sin sesión
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /login HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && read -r linea <&3 && [[ $$linea == *' 200 '* ]]"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    logging:
+      driver: journald
+      options: { tag: gd-app }

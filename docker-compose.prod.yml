@@ -1,0 +1,11 @@
+# =====================================================================
+# Producción (caliope): no se construye aquí. Corre exactamente la imagen que se probó en
+# desarrollo, traída con infra/rocky/promover.sh y fijada en IMAGEN_APP (.env).
+#     bash infra/rocky/desplegar.sh prod
+#
+# La aplicación solo escucha en 127.0.0.1: a la red sale por nginx (443), detrás del proxy interno.
+# =====================================================================
+services:
+  app:
+    restart: always
+    pull_policy: never

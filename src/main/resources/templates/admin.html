@@ -9,6 +9,7 @@
     <link rel="stylesheet" th:href="@{/css/institucional.css}">
 </head>
 <body class="con-lateral">
+<th:block th:replace="~{fragments/marca :: franjaAmbiente}"></th:block>
 <aside th:replace="~{fragments/marca :: lateralAdmin('usuarios')}"></aside>
 <div class="container-fluid py-3 px-4">
 
