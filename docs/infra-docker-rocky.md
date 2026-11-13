@@ -226,10 +226,10 @@ Primero **todo en desarrollo**; producción solo cuando desarrollo funcionó com
 
 ## Lo que falta decidir o comprobar
 
-- **Prueba real:** nada de esto se ejecutó todavía.
+- **Prueba real:** desarrollo, hecho el 12 y 13/11/2026 (ver "Ensayo en desarrollo"). Producción, pendiente.
 - **Espacio en `.71`:** el 05/11 tenía 67 GB libres de 70. Con producción y desarrollo copiando allí, y si se suma el respaldo completo de atenea, revisar el disco antes del piloto.
 - **Salida a internet de caliope y caliopedev:** hace falta para Docker Hub, Maven Central y los repositorios de Rocky, EPEL, Docker y PGDG.
-- **Rutas del certificado comodín** en el proxy (`SSLCertificateFile` y `SSLCertificateKeyFile`).
+- **Certificado comodín:** está en `/home/2026_certi/STAR_asuncion_gov_py.{crt,key,ca-bundle}` de persefone y vence el 24/01/2027. Hay que renovarlo antes de esa fecha.
 - **Imágenes base:** fijarlas por su digest (`@sha256:...`) antes del piloto.
 - **`.73` en esta versión:** `respaldar.sh` escribe el respaldo como root en lugar de pasarle el archivo a `postgres`, y el nginx nuevo confía en el proxy. Conviene correr el respaldo una vez a mano al instalarla.
 
@@ -249,4 +249,39 @@ Lo que falló y cómo quedó corregido:
 | `respaldo` no puede crear carpetas en `/srv/respaldos` de asclepio | Las crea root, con permisos `700` |
 | fail2ban podía bloquear al equipo de administración | `SSH_SIN_BLOQUEO` en el paso 2 |
 
+| Se pegaron comandos de ejemplo con marcadores (`<puerto>`) o comandos de bash en PowerShell | Los comandos de esta guía se ejecutan en bash, en el servidor. Reemplace cada `<...>` antes de ejecutarlos |
+| Después del paso 3 no se podía entrar por SSH | El puerto cambió: `ssh -p <puerto> root@<IP>` |
+| El paso 2 rechazaba la sesión: root no tenía llave | Antes del paso 2, cargar la llave de la PC: `ssh-copy-id root@<IP>` |
+| La contraseña del rol `_respaldo` se escribió mal en ateneadev | Copiarla y pegarla desde `respaldo.pgpass`, sin tipearla |
+| El respaldo terminó en `failed` porque faltaban PDF registrados en la base | En desarrollo, copiar los PDF de pruebas. En producción, copiarlos **antes** del primer respaldo (corte, paso 5) |
+
 **Hallazgo:** asclepio (`.71`, respaldos) es una máquina virtual de adonis, en el mismo disco físico que todos los servidores. Antes del corte de producción hace falta una copia fuera de adonis.
+
+### Cómo quedó desarrollo (13/11/2026)
+
+Valores elegidos, para repetirlos en producción:
+- **caliopedev:** Rocky 9.8 (instalado con la ISO 9.5 y actualizado). Root es la única cuenta y entra **solo con llave**, por el puerto **22022**.
+- **Paso 2:** `WEB_DESDE="192.168.129.111 126.10.10.251"`, es decir, el proxy y la PC de administración. `SSH_SIN_BLOQUEO="126.10.10.251"` evita que fail2ban bloquee a la PC.
+- **Base:** `gestion_documental_pruebas` en ateneadev (`192.168.129.73`), con el rol del mismo nombre. La contraseña del rol se cambió el 13/11, y la nueva está en `DB_PASSWORD` de caliopedev y en `DB_PASSWORD_PRUEBAS` de la PC.
+- **Imagen:** `gestion-documental:35f7b39`, migración 29.
+- **Respaldo:** a `respaldo@192.168.129.71:/srv/respaldos/gestion_documental_pruebas`, a las 22:00.
+- **Proxy:** el bloque de `mesadev` está **dentro** de `/etc/httpd/conf/httpd.conf`. Antes de tocarlo se hizo una copia: `httpd.conf.antes-mesadev`.
+
+**Queda pendiente en desarrollo:**
+1. **Verificación en el proxy.** Para levantar Apache, el bloque de `mesadev` quedó **sin verificar** a caliopedev: `SSLProxyVerify none` y `SSLProxyCACertificateFile` comentado. Para activarla:
+   - Copiar el `certificado.crt` actual de caliopedev a `/etc/httpd/conf/gestion-documental/caliopedev.crt`. Es el certificado rehecho con `mesadev`.
+   - Volver a `SSLProxyVerify require` y quitar el comentario de la línea del certificado.
+   - Ejecutar `apachectl configtest && systemctl reload httpd`.
+
+   En producción, el bloque de `mesa` va verificado desde el principio.
+2. **Auditoría:** confirmar que una acción nueva quede registrada con `126.10.10.251` y no con `192.168.129.111`.
+3. **PDF de pruebas:** copiar los PDF de `C:\gestion-documental-uploads-pruebas\acuses` a la carpeta de PDF de caliopedev. Hay que asignarlos al dueño `10001` y ejecutar `chcon` según la carpeta. Después, repetir `systemctl start gestion-documental-respaldo.service` y comprobar que la copia llegue a `.71`.
+4. **Permisos en `.71`:** `chmod 700` en `gestion_documental_pruebas` y `gestion_documental_ensayo`, si se crearon antes de la corrección.
+5. **Restaurar** un respaldo de desarrollo en una base de ensayo, para probar que sirve.
+6. **Hora:** la de un registro nuevo coincide con la de Asunción.
+
+**Antes de producción (fuera de este repositorio):**
+- **DNS interno:** corregir `atenea` (→ `.72`) y `ateneadev` (→ `.73`) y crear `caliope` (→ `.82`). El día del corte, crear `mesa` → persefone.
+- **Copia de los respaldos fuera de adonis:** ver el hallazgo de asclepio.
+- **Espacio en `.71`.**
+- **En adonis,** `apt install libosinfo-bin`. Las máquinas van en `/home/virtual`.
